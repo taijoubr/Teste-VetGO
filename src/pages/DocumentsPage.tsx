@@ -107,6 +107,13 @@ export const DocumentsPage: React.FC = () => {
         );
         break;
 
+      case 'REQUISICAO_EXAMES':
+        setDocTitle(`Requisição de Exames Complementares - ${patientName}`);
+        setDocContent(
+          `REQUISIÇÃO DE EXAMES COMPLEMENTARES\n\nPACIENTE: ${patientName} (${species}, ${breed}, ${weight})\nTUTOR: ${tutorName}\nDATA: ${new Date().toLocaleDateString('pt-BR')}\n\nSOLICITAÇÃO DE EXAMES:\n[ ] Hemograma Completo com Pesquisa de Hemoparasitas\n[ ] Perfil Bioquímico Renal: Ureia e Creatinina\n[ ] Perfil Hepático: ALT e Fosfatase Alcalina (FA)\n[ ] Glicemia em Jejum\n[ ] Urinálise (Urina Tipo I / Sedimento)\n[ ] Ultrassonografia Abdominal Total\n[ ] Radiografia Torácica (Projeções Laterolateral e Ventrodorsal)\n\nHIPÓTESE DIAGNÓSTICA / JUSTIFICATIVA:\nInvestigação e acompanhamento clínico ambulatorial.\n\nRECOMENDAÇÕES AO TUTOR:\n- Jejum alimentar de 8 a 12 horas prévio à coleta de sangue/ultrassom.\n- Água à vontade (não suspender água).\n- Para ultrassom abdominal, manter bexiga moderadamente repleta.`
+        );
+        break;
+
       case 'ATESTADO_SAUDE':
         setDocTitle(`Atestado de Saúde Animal - ${patientName}`);
         setDocContent(
@@ -412,6 +419,7 @@ export const DocumentsPage: React.FC = () => {
                   >
                     <option value="RECEITA_SIMPLES">Receita Simples</option>
                     <option value="RECEITA_CONTROLE_ESPECIAL">Receita de Controle Especial (MAPA)</option>
+                    <option value="REQUISICAO_EXAMES">Requisição de Exames Complementares (Laboratório & Imagem)</option>
                     <option value="ATESTADO_SAUDE">Atestado de Saúde Animal</option>
                     <option value="ATESTADO_VACINACAO">Atestado de Vacinação</option>
                     <option value="TERMO_CONSENTIMENTO_LIVRE">Termo de Consentimento Livre (TCLE)</option>

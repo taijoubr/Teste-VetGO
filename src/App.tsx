@@ -20,6 +20,7 @@ import { ModulePlaceholder } from './pages/ModulePlaceholder';
 import { ClinicsPage } from './pages/ClinicsPage';
 import { SurgeonsPage } from './pages/SurgeonsPage';
 import { AnesthesiaPage } from './pages/AnesthesiaPage';
+import { ServicesPage } from './pages/ServicesPage';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PublicPetCardPage } from './pages/PublicPetCardPage';
 
@@ -216,6 +217,14 @@ export function App() {
             element={
               <AppLayout>
                 <DocumentsPage />
+              </AppLayout>
+            }
+          />
+          <Route
+            path="/servicos"
+            element={
+              <AppLayout>
+                <ServicesPage />
               </AppLayout>
             }
           />

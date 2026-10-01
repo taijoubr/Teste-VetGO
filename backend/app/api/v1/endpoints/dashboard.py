@@ -44,6 +44,9 @@ def get_dashboard_stats(
     for appt in today_appts_q:
         tutor = db.query(Tutor).filter(Tutor.id == appt.tutor_id).first()
         patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+        spec = None
+        if patient and patient.species:
+            spec = getattr(patient.species, "value", str(patient.species))
         today_appointments.append({
             "id": appt.id,
             "owner_id": appt.owner_id,
@@ -51,7 +54,7 @@ def get_dashboard_stats(
             "tutor_name": tutor.name if tutor else "Tutor",
             "patient_id": appt.patient_id,
             "patient_name": patient.name if patient else "Paciente",
-            "patient_species": patient.species.value if patient else None,
+            "patient_species": spec,
             "date_time": appt.date_time,
             "duration_minutes": appt.duration_minutes,
             "address": appt.address,

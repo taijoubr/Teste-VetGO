@@ -49,6 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const managementNavItems = [
     { name: 'Financeiro', path: '/financeiro', icon: DollarSign },
     { name: 'Estoque', path: '/estoque', icon: Package },
+    { name: 'Serviços & Exames', path: '/servicos', icon: Stethoscope },
     { name: 'Medicamentos', path: '/medicamentos', icon: Pill },
     { name: 'Produtos', path: '/produtos', icon: ShoppingBag },
     { name: 'Fornecedores', path: '/fornecedores', icon: Truck },

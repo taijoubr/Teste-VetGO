@@ -58,7 +58,7 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  if (loading || !stats) {
+  if (loading && !stats) {
     return (
       <div className="p-6 max-w-7xl mx-auto space-y-6 animate-pulse">
         <div className="h-8 bg-slate-200 rounded-md w-1/4"></div>
@@ -68,6 +68,26 @@ export const Dashboard: React.FC = () => {
           <div className="h-36 bg-slate-200 rounded-xl"></div>
           <div className="h-36 bg-slate-200 rounded-xl"></div>
         </div>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="p-8 max-w-xl mx-auto text-center space-y-3 mt-12 bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <h2 className="text-base font-bold text-slate-800">Não foi possível carregar as métricas</h2>
+        <p className="text-xs text-slate-500">
+          Ocorreu uma instabilidade na conexão com o servidor. Você pode tentar recarregar novamente.
+        </p>
+        <button
+          onClick={loadDashboard}
+          className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+        >
+          Recarregar Painel
+        </button>
       </div>
     );
   }

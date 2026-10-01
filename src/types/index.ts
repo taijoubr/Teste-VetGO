@@ -409,6 +409,29 @@ export interface VaccineRecord {
   applied_by?: string;
 }
 
+export interface ConsultationBillingItem {
+  id: string;
+  inventory_item_id?: number;
+  service_id?: number;
+  description: string;
+  category: 'CONSULTA' | 'PROCEDIMENTO' | 'MEDICAMENTO' | 'VACINA' | 'EXAME' | 'OUTROS';
+  unit_price: number;
+  quantity: number;
+  total_price: number;
+  deduct_from_stock?: boolean;
+}
+
+export interface ClinicalServiceItem {
+  id: number;
+  owner_id?: number;
+  name: string;
+  category: 'CONSULTA' | 'PROCEDIMENTO' | 'VACINA' | 'EXAME' | 'OUTROS';
+  price: number;
+  description?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
 export interface ClinicalConsultation {
   id: number;
   owner_id: number;
@@ -444,14 +467,25 @@ export interface ClinicalConsultation {
   system_dermatological?: string;
   system_urinary?: string;
   system_locomotor_neuro?: string;
+  system_eyes_ears?: string;
+  system_others?: string;
   anamnesis: string;
   vital_signs: VitalSigns;
   physical_examination: string;
   diagnosis_suspicions: string;
   prognosis?: 'Favorável' | 'Reservado' | 'Desfavorável' | 'Infausto';
   conduct_plan: string;
+  requested_exams?: string;
+  requested_exams_justification?: string;
   prescriptions: PrescriptionItem[];
   vaccines: VaccineRecord[];
+  // Integração Financeira, Estoque e Orçamento
+  billing_items?: ConsultationBillingItem[];
+  subtotal_amount?: number;
+  discount_amount?: number;
+  total_amount?: number;
+  payment_method?: PaymentMethod;
+  payment_status?: 'PAGO' | 'PENDENTE';
   is_volante: boolean;
   location_address?: string;
   status: 'EM_ANDAMENTO' | 'FINALIZADO';
@@ -539,6 +573,7 @@ export interface InventoryItem {
 export type DocumentType = 
   | 'RECEITA_SIMPLES'
   | 'RECEITA_CONTROLE_ESPECIAL'
+  | 'REQUISICAO_EXAMES'
   | 'ATESTADO_SAUDE'
   | 'ATESTADO_VACINACAO'
   | 'TERMO_CONSENTIMENTO_LIVRE'

@@ -27,7 +27,7 @@ import {
   MessageCircle,
   ThumbsUp
 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { PushNotificationManager } from '../components/PushNotificationManager';
 
 export const SettingsPage: React.FC = () => {
@@ -99,6 +99,7 @@ export const SettingsPage: React.FC = () => {
 
   const tabs = [
     { id: 'perfil', name: 'Perfil Pessoal', icon: UserIcon },
+    { id: 'servicos', name: 'Serviços & Exames', icon: Stethoscope },
     { id: 'especialidades', name: 'Especialidades & Módulos', icon: Activity },
     { id: 'profissional', name: 'Dados Profissionais', icon: Shield },
     { id: 'identidade', name: 'Identidade Visual & Logo', icon: ImageIcon },
@@ -245,6 +246,56 @@ export const SettingsPage: React.FC = () => {
               Salvar Alterações
             </button>
           </form>
+        )}
+
+        {/* TAB: CATÁLOGO DE SERVIÇOS, PROCEDIMENTOS & EXAMES */}
+        {activeTab === 'servicos' && (
+          <div className="space-y-6 max-w-3xl">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Stethoscope className="w-5 h-5 text-emerald-700" />
+                Catálogo de Serviços, Procedimentos & Exames
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Cadastre seus honorários de consultas, procedimentos ambulatoriais, vacinas e exames complementares com preços padrão para busca rápida durante o atendimento e montagem de orçamento.
+              </p>
+            </div>
+
+            <div className="p-5 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <h4 className="text-sm font-bold text-emerald-950">
+                    Gerenciador Central de Serviços & Exames
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-1 max-w-xl">
+                    Todos os itens cadastrados aqui aparecem instantaneamente na busca preditiva ao montar o orçamento do paciente durante a consulta volante, sem necessidade de atalhos fixos.
+                  </p>
+                </div>
+                <Link
+                  to="/servicos"
+                  className="px-4 py-2.5 rounded-xl font-bold text-xs bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition flex items-center gap-2 cursor-pointer"
+                >
+                  <Stethoscope className="w-4 h-4" />
+                  <span>Acessar Cadastro de Serviços & Exames</span>
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-emerald-200/60 text-xs">
+                <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+                  <span className="font-bold text-slate-800 block mb-0.5">🩺 Consultas & Visitas</span>
+                  <span className="text-slate-500 text-[11px]">Honorários domiciliares, retorno e plantão.</span>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+                  <span className="font-bold text-slate-800 block mb-0.5">🔬 Exames Complementares</span>
+                  <span className="text-slate-500 text-[11px]">Hemograma, perfis bioquímicos, ultrassom e ECG.</span>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+                  <span className="font-bold text-slate-800 block mb-0.5">💉 Procedimentos & Vacinas</span>
+                  <span className="text-slate-500 text-[11px]">Curativos, injeções, fluidoterapia e imunização.</span>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* TAB: ESPECIALIDADES & MÓDULOS CLÍNICOS */}
