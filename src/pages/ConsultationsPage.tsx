@@ -60,6 +60,29 @@ export const ConsultationsPage: React.FC = () => {
   const [form, setForm] = useState({
     patient_id: 1,
     chief_complaint: '',
+    symptom_onset_duration: '',
+    symptom_evolution: 'Agudo' as 'Agudo' | 'Crônico' | 'Recorrente' | 'Progressivo',
+    diet_type: 'Ração Seca Comercial',
+    diet_details: '',
+    water_intake: 'Normal' as 'Normal' | 'Aumentada (Polidipsia)' | 'Diminuída (Hipodipsia)',
+    environment_lifestyle: 'Casa com quintal',
+    other_animals_contact: 'Sem contato com outros animais',
+    vaccine_status: 'Em dia' as 'Em dia' | 'Atrasada' | 'Incompleta' | 'Nunca vacinado' | 'Não sabe',
+    vaccine_details: '',
+    deworming_status: 'Em dia' as 'Em dia' | 'Atrasada' | 'Não administrado',
+    deworming_date_product: '',
+    ectoparasites_status: 'Em dia' as 'Em dia' | 'Atrasado' | 'Não administrado',
+    ectoparasites_product: '',
+    is_neutered_record: false,
+    previous_surgeries: '',
+    chronic_diseases: '',
+    known_allergies: '',
+    continuous_medications: '',
+    system_digestive: 'Sem alterações (apetite e fezes normais)',
+    system_respiratory: 'Sem alterações (sem tosse/dispneia)',
+    system_dermatological: 'Sem alterações (sem prurido/lesões)',
+    system_urinary: 'Sem alterações (micção normal)',
+    system_locomotor_neuro: 'Sem alterações (ativo e sem claudicação)',
     anamnesis: '',
     temperature_c: 38.5,
     heart_rate_bpm: 110,
@@ -179,6 +202,29 @@ export const ConsultationsPage: React.FC = () => {
       tutor_id: tut ? tut.id : 1,
       tutor_name: tut ? tut.name : 'Tutor',
       chief_complaint: form.chief_complaint,
+      symptom_onset_duration: form.symptom_onset_duration,
+      symptom_evolution: form.symptom_evolution,
+      diet_type: form.diet_type,
+      diet_details: form.diet_details,
+      water_intake: form.water_intake,
+      environment_lifestyle: form.environment_lifestyle,
+      other_animals_contact: form.other_animals_contact,
+      vaccine_status: form.vaccine_status,
+      vaccine_details: form.vaccine_details,
+      deworming_status: form.deworming_status,
+      deworming_date_product: form.deworming_date_product,
+      ectoparasites_status: form.ectoparasites_status,
+      ectoparasites_product: form.ectoparasites_product,
+      is_neutered_record: form.is_neutered_record,
+      previous_surgeries: form.previous_surgeries,
+      chronic_diseases: form.chronic_diseases,
+      known_allergies: form.known_allergies,
+      continuous_medications: form.continuous_medications,
+      system_digestive: form.system_digestive,
+      system_respiratory: form.system_respiratory,
+      system_dermatological: form.system_dermatological,
+      system_urinary: form.system_urinary,
+      system_locomotor_neuro: form.system_locomotor_neuro,
       anamnesis: form.anamnesis,
       vital_signs: vitalSigns,
       physical_examination: form.physical_examination,
@@ -447,13 +493,67 @@ export const ConsultationsPage: React.FC = () => {
               {/* Clinical Details */}
               <div className="space-y-3 text-xs">
                 <div>
-                  <h4 className="font-bold text-slate-900 border-b border-slate-100 pb-1 uppercase tracking-wide text-[11px]">
-                    1. Queixa Principal e Anamnese
+                  <h4 className="font-bold text-slate-900 border-b border-slate-200 pb-1 uppercase tracking-wide text-[11px] flex items-center justify-between">
+                    <span>1. Queixa Principal & Anamnese Clínica Completa</span>
+                    {viewingConsultation.symptom_evolution && (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold uppercase">
+                        {viewingConsultation.symptom_evolution}
+                      </span>
+                    )}
                   </h4>
-                  <p className="mt-1 text-slate-700 leading-relaxed">{viewingConsultation.chief_complaint}</p>
-                  {viewingConsultation.anamnesis && (
-                    <p className="mt-1 text-slate-600 italic leading-relaxed">{viewingConsultation.anamnesis}</p>
-                  )}
+                  
+                  <div className="mt-2 space-y-2.5">
+                    <div>
+                      <strong className="text-slate-800">Motivo / Queixa: </strong>
+                      <span className="text-slate-700">{viewingConsultation.chief_complaint}</span>
+                      {viewingConsultation.symptom_onset_duration && (
+                        <span className="text-slate-500 text-[11px] ml-1">
+                          (Duração: {viewingConsultation.symptom_onset_duration})
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Manejo & Profilaxia Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px]">
+                      <div>
+                        <strong>Dieta & Água: </strong>
+                        <span>{viewingConsultation.diet_type || 'Ração comercial'} • Água: {viewingConsultation.water_intake || 'Normal'}</span>
+                      </div>
+                      <div>
+                        <strong>Ambiente & Contactantes: </strong>
+                        <span>{viewingConsultation.environment_lifestyle || 'Não informado'} • {viewingConsultation.other_animals_contact || 'Sem outros contactantes'}</span>
+                      </div>
+                      <div>
+                        <strong>Vacinação & Profilaxia: </strong>
+                        <span>Vacinas: {viewingConsultation.vaccine_status || 'Em dia'} • Vermífugo: {viewingConsultation.deworming_status || 'Em dia'} • Ectoparasitas: {viewingConsultation.ectoparasites_status || 'Em dia'}</span>
+                      </div>
+                      <div>
+                        <strong>Histórico Mórbido & Alergias: </strong>
+                        <span>{viewingConsultation.chronic_diseases || 'Sem comorbidades crônicas'} • Alergias: {viewingConsultation.known_allergies || 'Nenhuma relatada'}</span>
+                      </div>
+                    </div>
+
+                    {/* Revisão por Sistemas */}
+                    {(viewingConsultation.system_digestive || viewingConsultation.system_respiratory || viewingConsultation.system_dermatological) && (
+                      <div className="p-2.5 bg-emerald-50/40 border border-emerald-100 rounded-lg text-[11px] space-y-1">
+                        <strong className="text-emerald-950 block text-[10px] uppercase tracking-wider">Revisão por Sistemas Semiológicos:</strong>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-slate-700">
+                          {viewingConsultation.system_digestive && <div><strong>Digestório:</strong> {viewingConsultation.system_digestive}</div>}
+                          {viewingConsultation.system_respiratory && <div><strong>Cardiorrespiratório:</strong> {viewingConsultation.system_respiratory}</div>}
+                          {viewingConsultation.system_dermatological && <div><strong>Tegumentar/Pele:</strong> {viewingConsultation.system_dermatological}</div>}
+                          {viewingConsultation.system_urinary && <div><strong>Geniturinário:</strong> {viewingConsultation.system_urinary}</div>}
+                          {viewingConsultation.system_locomotor_neuro && <div><strong>Locomotor/Neuro:</strong> {viewingConsultation.system_locomotor_neuro}</div>}
+                        </div>
+                      </div>
+                    )}
+
+                    {viewingConsultation.anamnesis && (
+                      <div className="pt-1">
+                        <strong className="text-slate-800">Síntese do Relato: </strong>
+                        <span className="text-slate-600 italic">{viewingConsultation.anamnesis}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {viewingConsultation.vital_signs && (
@@ -627,27 +727,458 @@ export const ConsultationsPage: React.FC = () => {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Queixa Principal do Tutor *
-                    </label>
-                    <textarea
-                      required
-                      rows={2}
-                      placeholder="Ex: Prurido em orelhas e patas há 3 dias, vômitos esporádicos..."
-                      value={form.chief_complaint}
-                      onChange={(e) => setForm({ ...form, chief_complaint: e.target.value })}
-                      className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none"
-                    />
+                  {/* 1. Queixa Principal & Evolução */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px]">
+                        1
+                      </span>
+                      Queixa Principal & Evolução Temporal
+                    </h4>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Motivo da Consulta / Queixa Principal do Tutor *
+                      </label>
+                      <textarea
+                        required
+                        rows={2}
+                        placeholder="Ex: Prurido em orelhas e patas há 3 dias, vômitos pós-prandiais, tosse seca..."
+                        value={form.chief_complaint}
+                        onChange={(e) => setForm({ ...form, chief_complaint: e.target.value })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Início dos Sintomas / Duração
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Há 3 dias / Início súbito hoje cedo"
+                          value={form.symptom_onset_duration}
+                          onChange={(e) => setForm({ ...form, symptom_onset_duration: e.target.value })}
+                          className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Padrão de Evolução
+                        </label>
+                        <div className="grid grid-cols-4 gap-1">
+                          {(['Agudo', 'Crônico', 'Recorrente', 'Progressivo'] as const).map((ev) => (
+                            <button
+                              key={ev}
+                              type="button"
+                              onClick={() => setForm({ ...form, symptom_evolution: ev })}
+                              className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer text-center ${
+                                form.symptom_evolution === ev
+                                  ? 'bg-emerald-700 text-white shadow-2xs'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {ev}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
+                  {/* 2. Manejo, Ambiente & Nutrição */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px]">
+                        2
+                      </span>
+                      Manejo, Ambiente & Nutrição
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Tipo de Alimentação
+                        </label>
+                        <select
+                          value={form.diet_type}
+                          onChange={(e) => setForm({ ...form, diet_type: e.target.value })}
+                          className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                        >
+                          <option value="Ração Seca Comercial">Ração Seca Comercial</option>
+                          <option value="Ração Úmida / Sachê / Lata">Ração Úmida / Sachê / Lata</option>
+                          <option value="Alimentação Natural (AN Balanceada)">Alimentação Natural (AN Balanceada)</option>
+                          <option value="Dieta Caseira (Comida humana)">Dieta Caseira (Comida humana)</option>
+                          <option value="Alimentação Mista (Ração + AN/Sachê)">Alimentação Mista (Ração + AN/Sachê)</option>
+                          <option value="Outra Dieta">Outra Dieta</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Consumo de Água (Ingestão Hídrica)
+                        </label>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(['Normal', 'Aumentada (Polidipsia)', 'Diminuída (Hipodipsia)'] as const).map((w) => (
+                            <button
+                              key={w}
+                              type="button"
+                              onClick={() => setForm({ ...form, water_intake: w })}
+                              className={`py-1.5 px-1.5 rounded-lg text-[11px] font-semibold transition cursor-pointer text-center leading-tight ${
+                                form.water_intake === w
+                                  ? 'bg-emerald-700 text-white shadow-2xs'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {w.split(' ')[0]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Ambiente / Estilo de Vida
+                        </label>
+                        <select
+                          value={form.environment_lifestyle}
+                          onChange={(e) => setForm({ ...form, environment_lifestyle: e.target.value })}
+                          className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                        >
+                          <option value="Apartamento (Sem acesso à rua)">Apartamento (Sem acesso à rua)</option>
+                          <option value="Casa com quintal fechado">Casa com quintal fechado</option>
+                          <option value="Acesso livre à rua / Semienterrado">Acesso livre à rua / Semienterrado</option>
+                          <option value="Área Rural / Sítio / Chácara">Área Rural / Sítio / Chácara</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Contato com Outros Animais
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Único animal / Convive com 1 gato e 1 cão vacinados"
+                          value={form.other_animals_contact}
+                          onChange={(e) => setForm({ ...form, other_animals_contact: e.target.value })}
+                          className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Histórico Sanitário & Profilaxia */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px]">
+                        3
+                      </span>
+                      Histórico Profilático & Sanitário
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Status Vacinal
+                        </label>
+                        <select
+                          value={form.vaccine_status}
+                          onChange={(e) => setForm({ ...form, vaccine_status: e.target.value as any })}
+                          className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                        >
+                          <option value="Em dia">Em dia (Polivalente + Raiva)</option>
+                          <option value="Atrasada">Atrasada / Vencida</option>
+                          <option value="Incompleta">Incompleta (Filhote em protocolo)</option>
+                          <option value="Nunca vacinado">Nunca vacinado</option>
+                          <option value="Não sabe">Tutor não sabe informar</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Vermifugação
+                        </label>
+                        <div className="flex gap-2">
+                          <select
+                            value={form.deworming_status}
+                            onChange={(e) => setForm({ ...form, deworming_status: e.target.value as any })}
+                            className="w-1/2 px-2 py-2 text-xs border border-slate-300 rounded-lg outline-none bg-white"
+                          >
+                            <option value="Em dia">Em dia</option>
+                            <option value="Atrasada">Atrasada</option>
+                            <option value="Não administrado">Não fez</option>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Data / Produto"
+                            value={form.deworming_date_product}
+                            onChange={(e) => setForm({ ...form, deworming_date_product: e.target.value })}
+                            className="w-1/2 px-2 py-2 text-xs border border-slate-300 rounded-lg outline-none bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Antipulgas / Carrapatos
+                        </label>
+                        <div className="flex gap-2">
+                          <select
+                            value={form.ectoparasites_status}
+                            onChange={(e) => setForm({ ...form, ectoparasites_status: e.target.value as any })}
+                            className="w-1/2 px-2 py-2 text-xs border border-slate-300 rounded-lg outline-none bg-white"
+                          >
+                            <option value="Em dia">Em dia</option>
+                            <option value="Atrasado">Atrasado</option>
+                            <option value="Não administrado">Não usa</option>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Ex: Simparic / Bravecto"
+                            value={form.ectoparasites_product}
+                            onChange={(e) => setForm({ ...form, ectoparasites_product: e.target.value })}
+                            className="w-1/2 px-2 py-2 text-xs border border-slate-300 rounded-lg outline-none bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Histórico Mórbido Pregresso & Alergias */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px]">
+                        4
+                      </span>
+                      Histórico Mórbido, Alergias & Medicações Contínuas
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Doenças Crônicas / Preexistentes
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Nenhuma / Insuficiência renal / Diabetes / Cardiopatia"
+                          value={form.chronic_diseases}
+                          onChange={(e) => setForm({ ...form, chronic_diseases: e.target.value })}
+                          className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Alergias Conhecidas (Medicamentosa / Alimentar)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Sem histórico / Alergia a Dipirona / DAPP"
+                          value={form.known_allergies}
+                          onChange={(e) => setForm({ ...form, known_allergies: e.target.value })}
+                          className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Medicamentos em Uso Contínuo
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Nenhum / Enalapril 5mg / Omeprazol"
+                          value={form.continuous_medications}
+                          onChange={(e) => setForm({ ...form, continuous_medications: e.target.value })}
+                          className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Cirurgias Anteriores / Castração
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Castrado aos 7 meses / Nenhuma cirurgia prévia"
+                          value={form.previous_surgeries}
+                          onChange={(e) => setForm({ ...form, previous_surgeries: e.target.value })}
+                          className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5. Revisão Dirigida por Sistemas (Semiologia Rápida) */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px]">
+                        5
+                      </span>
+                      Revisão Dirigida por Sistemas (Checklist Clínico)
+                    </h4>
+
+                    <div className="space-y-2.5 text-xs">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Sistema Gastrointestinal:
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            'Sem alterações (Apetite e fezes normais)',
+                            'Vômito agudo',
+                            'Diarreia pastosa/líquida',
+                            'Hiporexia / Inapetência',
+                            'Regurgitação',
+                            'Fezes com sangue (Melena/Hematoquezia)'
+                          ].map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setForm({ ...form, system_digestive: opt })}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                                form.system_digestive === opt
+                                  ? 'bg-emerald-700 text-white font-bold'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Sistema Cardiorrespiratório:
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            'Sem alterações (Sem tosse/dispneia)',
+                            'Tosse seca engasgante',
+                            'Tosse produtiva',
+                            'Espirros frequentes',
+                            'Cansaço fácil aos passeios',
+                            'Dispneia / Respiração ofegante'
+                          ].map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setForm({ ...form, system_respiratory: opt })}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                                form.system_respiratory === opt
+                                  ? 'bg-emerald-700 text-white font-bold'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Sistema Tegumentar & Orelhas:
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            'Sem alterações (Pele e pelos íntegros)',
+                            'Prurido intenso (coceira)',
+                            'Queda excessiva de pelos / Falhas',
+                            'Otite (sacudimento de cabeça/cerúmen)',
+                            'Lambedura crônica de patas',
+                            'Lesões crostosas / Eritema'
+                          ].map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setForm({ ...form, system_dermatological: opt })}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                                form.system_dermatological === opt
+                                  ? 'bg-emerald-700 text-white font-bold'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Sistema Geniturinário:
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            'Sem alterações (Micção normal)',
+                            'Disúria (dor/dificuldade ao urinar)',
+                            'Poliúria / Polaciúria (urina frequente)',
+                            'Hematúria (urina avermelhada/sangue)',
+                            'Incontinência urinária',
+                            'Secreção prepucial/vulvar'
+                          ].map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setForm({ ...form, system_urinary: opt })}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                                form.system_urinary === opt
+                                  ? 'bg-emerald-700 text-white font-bold'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Locomotor, Neurológico & Comportamento:
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            'Sem alterações (Ativo e sem claudicação)',
+                            'Claudicação (mancando)',
+                            'Dor à palpação de coluna/quadril',
+                            'Prostração / Apatia intensa',
+                            'Tremores / Convulsão',
+                            'Ataxia / Dificuldade para levantar'
+                          ].map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setForm({ ...form, system_locomotor_neuro: opt })}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                                form.system_locomotor_neuro === opt
+                                  ? 'bg-emerald-700 text-white font-bold'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 6. Síntese Geral da Anamnese */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Anamnese e Histórico Pregresso
+                      Síntese da Anamnese & Relato do Tutor
                     </label>
                     <textarea
                       rows={2}
-                      placeholder="Alimentação, vacinas prévias, ambiente, contato com outros animais..."
+                      placeholder="Resumo geral das observações relatadas pelo tutor e histórico clínico prévio..."
                       value={form.anamnesis}
                       onChange={(e) => setForm({ ...form, anamnesis: e.target.value })}
                       className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none"

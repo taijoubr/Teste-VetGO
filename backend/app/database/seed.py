@@ -57,6 +57,28 @@ def init_db(db: Session) -> None:
         db.refresh(vet)
         print("Demo Vet created: dra.carolina@vetgo.com.br / Vet@123456")
 
+    # Check if vet@vetgo.com.br exists
+    vet_simple = db.query(User).filter(User.email == "vet@vetgo.com.br").first()
+    if not vet_simple:
+        vet_simple = User(
+            email="vet@vetgo.com.br",
+            hashed_password=get_password_hash("vet123"),
+            first_name="Carolina",
+            last_name="Mendes",
+            crmv="34892",
+            crmv_uf="SP",
+            phone="(11) 98765-4321",
+            whatsapp="(11) 98765-4321",
+            clinic_name="Dra. Carolina Mendes - Atendimento Volante & Domiciliar",
+            role=UserRole.VET,
+            plan=SubscriptionPlan.FREE,
+            subscription_status=SubscriptionStatus.ACTIVE,
+            is_lifetime=False
+        )
+        db.add(vet_simple)
+        db.commit()
+        db.refresh(vet_simple)
+
         # Seed Tutors
         tutor1 = Tutor(
             owner_id=vet.id,
