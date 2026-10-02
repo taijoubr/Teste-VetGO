@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AdminSidebar } from './AdminSidebar';
 import { AppLogo } from '../AppLogo';
+import { Footer } from '../Footer';
 import {
   Menu,
   ShieldCheck,
@@ -109,6 +110,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto overflow-x-hidden">
           {children}
         </main>
+        <Footer variant="dark" />
       </div>
     </div>
   );

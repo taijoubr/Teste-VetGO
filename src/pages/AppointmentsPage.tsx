@@ -107,7 +107,7 @@ export const AppointmentsPage: React.FC = () => {
   const appointmentsByDate = useMemo(() => {
     const map: Record<string, Appointment[]> = {};
     appointments.forEach((appt) => {
-      const dateKey = appt.date_time?.split('T')[0];
+      const dateKey = appt.date_time ? appt.date_time.replace(' ', 'T').split('T')[0] : '';
       if (dateKey) {
         if (!map[dateKey]) map[dateKey] = [];
         map[dateKey].push(appt);
@@ -655,7 +655,8 @@ export const AppointmentsPage: React.FC = () => {
               ) : (
                 <div className="space-y-3 max-h-[540px] overflow-y-auto pr-1">
                   {selectedDayAppointments.map((appt) => {
-                    const timePart = appt.date_time.split('T')[1]?.substring(0, 5) || '09:00';
+                    const normalizedDt = appt.date_time ? appt.date_time.replace(' ', 'T') : '';
+                    const timePart = normalizedDt.split('T')[1]?.substring(0, 5) || '09:00';
                     const tutorObj = tutors.find((t) => t.id === appt.tutor_id);
 
                     return (
@@ -862,10 +863,10 @@ export const AppointmentsPage: React.FC = () => {
                     <div className="flex items-start gap-4">
                       <div className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200/50 min-w-16 text-center">
                         <span className="text-xs uppercase font-bold tracking-wider">
-                          {appt.date_time.split('T')[0]?.substring(5) || 'Hoje'}
+                          {(appt.date_time ? appt.date_time.replace(' ', 'T') : '').split('T')[0]?.substring(5) || 'Hoje'}
                         </span>
                         <span className="text-sm font-black font-mono mt-0.5">
-                          {appt.date_time.split('T')[1]?.substring(0, 5) || '10:00'}
+                          {(appt.date_time ? appt.date_time.replace(' ', 'T') : '').split('T')[1]?.substring(0, 5) || '10:00'}
                         </span>
                       </div>
 

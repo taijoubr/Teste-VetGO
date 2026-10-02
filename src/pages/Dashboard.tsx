@@ -15,27 +15,69 @@ import {
   Stethoscope,
   ChevronRight,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  RotateCcw,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    loadDashboard();
+    let isMounted = true;
+
+    // Safety timeout: never leave user stuck on the skeleton loader for more than 2.5s
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        setLoading(false);
+      }
+    }, 2500);
+
+    loadDashboard().finally(() => {
+      if (isMounted) {
+        clearTimeout(timer);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   const loadDashboard = async () => {
     try {
       setLoading(true);
       const data = await api.getDashboardStats();
-      setStats(data);
+      if (data) {
+        setStats(data);
+      }
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao carregar métricas do painel:', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResetTestData = async () => {
+    try {
+      setIsResetting(true);
+      await api.resetTestData();
+      setShowResetModal(false);
+      setResetSuccessMessage('Dados de teste restaurados com sucesso para hoje!');
+      await loadDashboard();
+      setTimeout(() => setResetSuccessMessage(null), 4000);
+    } catch (err: any) {
+      console.error('Erro ao resetar dados de teste:', err);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -80,20 +122,45 @@ export const Dashboard: React.FC = () => {
         </div>
         <h2 className="text-base font-bold text-slate-800">Não foi possível carregar as métricas</h2>
         <p className="text-xs text-slate-500">
-          Ocorreu uma instabilidade na conexão com o servidor. Você pode tentar recarregar novamente.
+          Ocorreu uma instabilidade na conexão com o servidor. Você pode tentar recarregar novamente ou resetar os dados de demonstração.
         </p>
-        <button
-          onClick={loadDashboard}
-          className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
-        >
-          Recarregar Painel
-        </button>
+        <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+          <button
+            onClick={loadDashboard}
+            className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+          >
+            Recarregar Painel
+          </button>
+          <button
+            onClick={() => setShowResetModal(true)}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+            <span>Resetar Dados de Teste</span>
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      {/* Reset Toast Banner */}
+      {resetSuccessMessage && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{resetSuccessMessage}</span>
+          </div>
+          <button
+            onClick={() => setResetSuccessMessage(null)}
+            className="text-emerald-600 hover:text-emerald-800 p-0.5"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -107,6 +174,15 @@ export const Dashboard: React.FC = () => {
 
         {/* Quick actions */}
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowResetModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer border border-slate-200"
+            title="Restaurar dados de teste padrão do sistema para a data atual"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+            <span>Resetar Dados de Teste</span>
+          </button>
           <Link
             to="/agenda"
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition"
@@ -432,6 +508,77 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal de Confirmação para Resetar Dados de Teste */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-slate-900 font-bold text-base">
+                <div className="p-2 rounded-xl bg-amber-50 text-amber-700">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <span>Restaurar Dados de Teste</span>
+              </div>
+              <button
+                onClick={() => setShowResetModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Deseja restaurar a base de dados de demonstração para a data de hoje?
+            </p>
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs text-slate-700">
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                <span><strong>2 Atendimentos hoje:</strong> Thor (10:30) e Mel (15:00)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                <span><strong>4 Pacientes & 3 Tutores padrão:</strong> Thor, Mel, Paçoca e Pipoca</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-600"></span>
+                <span><strong>Estoque volante:</strong> Zoletil, Meloxicam, Dipirona e V10</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-600"></span>
+                <span><strong>Financeiro do mês:</strong> Receitas e despesas padrão limpas</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                disabled={isResetting}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleResetTestData}
+                disabled={isResetting}
+                className="px-4 py-2 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+              >
+                {isResetting ? (
+                  <span>Restaurando...</span>
+                ) : (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Confirmar e Resetar</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

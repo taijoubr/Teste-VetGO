@@ -82,10 +82,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       if (role === 'VET') {
-        const { user: vetUser } = await api.login('dra.carolina@vetgo.com.br', 'Vet@123456');
+        const { user: vetUser } = await api.login('vetteste@gmail.com', 'Nikolas13');
         setUser(vetUser);
       } else {
-        const { user: adminUser } = await api.login('admin@vetgo.com.br', 'Admin@123456');
+        const { user: adminUser } = await api.login('ncodestechnologies@gmail.com', 'Taijou13!');
         setUser(adminUser);
       }
     } finally {

@@ -25,7 +25,8 @@ import {
   QrCode,
   Send,
   MessageCircle,
-  ThumbsUp
+  ThumbsUp,
+  RotateCcw
 } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { PushNotificationManager } from '../components/PushNotificationManager';
@@ -726,6 +727,31 @@ export const SettingsPage: React.FC = () => {
                 className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition cursor-pointer"
               >
                 Atualizar Senha
+              </button>
+            </div>
+
+            {/* Reset de Dados de Demonstração / Teste */}
+            <div className="pt-6 border-t border-slate-200 space-y-3">
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-amber-600" />
+                Dados de Demonstração & Teste
+              </h4>
+              <p className="text-xs text-slate-500">
+                Caso precise recarregar os dados de exemplo (agendamentos de hoje, pacientes padrão, tutores e estoque volante de demonstração), utilize o botão abaixo para restaurar a base.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (confirm('Deseja restaurar os dados de demonstração para a data de hoje?')) {
+                    await api.resetTestData();
+                    alert('Dados de teste restaurados com sucesso!');
+                    window.location.reload();
+                  }
+                }}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Restaurar Base de Dados de Teste</span>
               </button>
             </div>
           </div>

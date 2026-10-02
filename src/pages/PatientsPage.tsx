@@ -94,14 +94,18 @@ export const PatientsPage: React.FC = () => {
   };
 
   const filteredPatients = patients.filter((p) => {
-    const q = search.toLowerCase();
+    const q = search.trim().toLowerCase();
     const matchQuery =
-      p.name.toLowerCase().includes(q) ||
+      !q ||
+      (p.name && p.name.toLowerCase().includes(q)) ||
       (p.tutor_name && p.tutor_name.toLowerCase().includes(q)) ||
-      (p.breed && p.breed.toLowerCase().includes(q));
-    const matchSpecies = speciesFilter === 'ALL' || p.species === speciesFilter;
+      (p.breed && p.breed.toLowerCase().includes(q)) ||
+      (p.microchip && p.microchip.toLowerCase().includes(q));
+    const matchSpecies =
+      speciesFilter === 'ALL' ||
+      (p.species && p.species.toLowerCase() === speciesFilter.toLowerCase());
     const matchTutor = !tutorFilterId || p.tutor_id === parseInt(tutorFilterId);
-    return matchQuery && matchSpecies && matchTutor;
+    return Boolean(matchQuery && matchSpecies && matchTutor);
   });
 
   const handleCreatePatient = async (e: React.FormEvent) => {

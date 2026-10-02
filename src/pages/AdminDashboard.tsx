@@ -34,7 +34,8 @@ import {
   ChevronUp,
   Eye,
   Phone,
-  Mail
+  Mail,
+  UserPlus
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -70,6 +71,22 @@ export const AdminDashboard: React.FC = () => {
   const [toggleUserTarget, setToggleUserTarget] = useState<AdminUser | null>(null);
   const [toggleReason, setToggleReason] = useState('');
   const [toggling, setToggling] = useState(false);
+
+  // New Admin / User Modal
+  const [showNewUserModal, setShowNewUserModal] = useState(false);
+  const [newUserRole, setNewUserRole] = useState<'ADMIN' | 'VET'>('ADMIN');
+  const [newFirstName, setNewFirstName] = useState('');
+  const [newLastName, setNewLastName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newCrmv, setNewCrmv] = useState('');
+  const [newCrmvUf, setNewCrmvUf] = useState('SP');
+  const [newPlan, setNewPlan] = useState<'FREE' | 'PRO'>('PRO');
+  const [newIsLifetime, setNewIsLifetime] = useState(true);
+  const [newUserNotes, setNewUserNotes] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [userError, setUserError] = useState<string | null>(null);
 
   // New Announcement Modal
   const [showAnnModal, setShowAnnModal] = useState(false);
@@ -206,6 +223,40 @@ export const AdminDashboard: React.FC = () => {
     if (!confirm('Deseja excluir este comunicado da plataforma?')) return;
     await adminService.deleteGlobalAnnouncement(id);
     await loadAllData();
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUserError(null);
+    setCreatingUser(true);
+    try {
+      await adminService.createUser({
+        email: newEmail,
+        password: newPassword,
+        first_name: newFirstName,
+        last_name: newLastName,
+        role: newUserRole,
+        phone: newPhone || undefined,
+        crmv: newUserRole === 'VET' ? newCrmv : undefined,
+        crmv_uf: newUserRole === 'VET' ? newCrmvUf : undefined,
+        plan: newUserRole === 'ADMIN' ? 'PRO' : newPlan,
+        is_lifetime: newUserRole === 'ADMIN' ? true : newIsLifetime,
+        admin_notes: newUserNotes || (newUserRole === 'ADMIN' ? 'Administrador cadastrado via controle interno' : undefined),
+      });
+      setShowNewUserModal(false);
+      setNewFirstName('');
+      setNewLastName('');
+      setNewEmail('');
+      setNewPassword('');
+      setNewPhone('');
+      setNewCrmv('');
+      setNewUserNotes('');
+      await loadAllData();
+    } catch (err: any) {
+      setUserError(err.message || 'Erro ao criar usuário.');
+    } finally {
+      setCreatingUser(false);
+    }
   };
 
   const filteredUsers = users.filter((u) => {
@@ -458,9 +509,21 @@ export const AdminDashboard: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
-                Total: <strong className="text-white">{filteredUsers.length}</strong> veterinários
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setNewUserRole('ADMIN');
+                  setUserError(null);
+                  setShowNewUserModal(true);
+                }}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4" />
+                Cadastrar Administrador / Usuário
+              </button>
+              <span className="text-xs text-slate-400 bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl">
+                Total: <strong className="text-white">{filteredUsers.length}</strong> usuários
               </span>
             </div>
           </div>
@@ -1416,6 +1479,270 @@ export const AdminDashboard: React.FC = () => {
                   className="px-4 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition cursor-pointer"
                 >
                   {creatingAnn ? 'Publicando...' : 'Publicar Comunicado'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* New Admin / User Modal (Controle Interno) */}
+      {showNewUserModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl my-8">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Novo Cadastro no Controle Interno
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Cadastre novos administradores ou médicos-veterinários na plataforma.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNewUserModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {userError && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{userError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateUser} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Tipo de Acesso / Perfil
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewUserRole('ADMIN');
+                      setNewPlan('PRO');
+                      setNewIsLifetime(true);
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      newUserRole === 'ADMIN'
+                        ? 'bg-blue-600/20 border-blue-500 text-blue-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    Administrador (Backoffice)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewUserRole('VET');
+                      setNewPlan('PRO');
+                      setNewIsLifetime(false);
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      newUserRole === 'VET'
+                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    Médico-Veterinário
+                  </button>
+                </div>
+                {newUserRole === 'ADMIN' && (
+                  <p className="text-[11px] text-blue-400/90 mt-1.5 bg-blue-950/40 border border-blue-900/40 p-2 rounded-lg">
+                    🛡️ <strong>Administrador do Sistema:</strong> Terá acesso total ao controle interno, backoffice, métricas e gestão de usuários.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Nome *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newFirstName}
+                    onChange={(e) => setNewFirstName(e.target.value)}
+                    placeholder="Ex: Nikolas"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Sobrenome
+                  </label>
+                  <input
+                    type="text"
+                    value={newLastName}
+                    onChange={(e) => setNewLastName(e.target.value)}
+                    placeholder="Ex: Silva"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    E-mail de Login *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="ex: admin.novo@vetgo.com"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Senha de Acesso *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    minLength={6}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Telefone / WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    placeholder="(11) 99999-9999"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+
+                {newUserRole === 'VET' ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        CRMV
+                      </label>
+                      <input
+                        type="text"
+                        value={newCrmv}
+                        onChange={(e) => setNewCrmv(e.target.value)}
+                        placeholder="Ex: 12345"
+                        className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        UF
+                      </label>
+                      <select
+                        value={newCrmvUf}
+                        onChange={(e) => setNewCrmvUf(e.target.value)}
+                        className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:border-blue-500 outline-none"
+                      >
+                        {['SP', 'RJ', 'MG', 'RS', 'PR', 'SC', 'BA', 'PE', 'CE', 'GO', 'DF'].map((uf) => (
+                          <option key={uf} value={uf}>{uf}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Plano Administrativo
+                    </label>
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Pro Vitalício (Acesso Irrestrito)
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {newUserRole === 'VET' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Plano Inicial
+                    </label>
+                    <select
+                      value={newPlan}
+                      onChange={(e) => setNewPlan(e.target.value as 'FREE' | 'PRO')}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:border-blue-500 outline-none"
+                    >
+                      <option value="FREE">Gratuito (Até 15 pacientes)</option>
+                      <option value="PRO">Pro (Ilimitado - R$ 18/mês)</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end pb-1">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={newIsLifetime}
+                        onChange={(e) => setNewIsLifetime(e.target.checked)}
+                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 bg-slate-950 border-slate-700"
+                      />
+                      <span>Conceder acesso vitalício gratuito</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Notas Internas (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={newUserNotes}
+                  onChange={(e) => setNewUserNotes(e.target.value)}
+                  placeholder="Informações adicionais sobre o cadastro..."
+                  className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowNewUserModal(false)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingUser}
+                  className="px-4 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition cursor-pointer flex items-center gap-1.5"
+                >
+                  {creatingUser ? (
+                    'Salvando...'
+                  ) : (
+                    <>
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Cadastrar {newUserRole === 'ADMIN' ? 'Administrador' : 'Usuário'}
+                    </>
+                  )}
                 </button>
               </div>
             </form>

@@ -85,6 +85,26 @@ export const adminService = {
     }
   },
 
+  async createUser(data: {
+    email: string;
+    password: string;
+    first_name: string;
+    last_name?: string;
+    role: 'ADMIN' | 'VET';
+    phone?: string;
+    crmv?: string;
+    crmv_uf?: string;
+    plan?: 'FREE' | 'PRO';
+    is_lifetime?: boolean;
+    admin_notes?: string;
+  }): Promise<AdminUser> {
+    const res = await adminRequest<{ message: string; user: AdminUser }>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+    return res.user;
+  },
+
   async updateAdminSubscription(
     userId: number,
     updates: {

@@ -72,8 +72,13 @@ export const api = {
     const cachedUser = this.getCachedUser();
     const isGet = !options.method || options.method === 'GET';
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const signal = options.signal || controller.signal;
+
     try {
-      const res = await fetch(url, { ...options, headers });
+      const res = await fetch(url, { ...options, headers, signal });
+      clearTimeout(timeoutId);
 
       if (res.status === 401) {
         this.removeToken();
@@ -110,6 +115,7 @@ export const api = {
 
       return data;
     } catch (err: any) {
+      clearTimeout(timeoutId);
       // Se a rede falhar ou estiver sem internet:
       if (cachedUser?.id) {
         // Fallback 1: Retorna do cache local para requisições GET
@@ -396,92 +402,129 @@ export const api = {
   // Dashboard Stats & Quotas (real backend queries with resilient fallback)
   async getDashboardStats(): Promise<DashboardStats> {
     try {
-      return await this.request<DashboardStats>('/dashboard/stats');
+      const res = await this.request<DashboardStats>('/dashboard/stats');
+      if (res && res.plan_usage) return res;
     } catch (e) {
       console.warn('Endpoint /dashboard/stats returned error or unreachable. Generating resilient dashboard stats:', e);
-      try {
-        const [tutors, patients, appointments, financial] = await Promise.all([
-          this.getTutors().catch(() => []),
-          this.getPatients().catch(() => []),
-          this.getAppointments().catch(() => []),
-          this.getFinancialEntries().catch(() => []),
-        ]);
-
-        const todayStr = new Date().toISOString().split('T')[0];
-        const todayAppts = appointments.filter((a) => a.date_time?.startsWith(todayStr));
-        
-        const receitasMes = financial
-          .filter((f) => f.entry_type === 'RECEITA' && f.status === 'PAGO')
-          .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-        const despesasMes = financial
-          .filter((f) => f.entry_type === 'DESPESA' && f.status === 'PAGO')
-          .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-        const pendentes = financial.filter((f) => f.status === 'PENDENTE');
-        const pendentesValor = pendentes.reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-
-        return {
-          plan_usage: {
-            plan: 'FREE',
-            is_lifetime: false,
-            is_expired: false,
-            tutors_count: tutors.length,
-            tutors_limit: 30,
-            tutors_limit_reached: tutors.length >= 30,
-            patients_count: patients.length,
-            patients_limit: 50,
-            patients_limit_reached: patients.length >= 50,
-          },
-          today_appointments_count: todayAppts.length,
-          upcoming_appointments_count: appointments.length,
-          total_patients_count: patients.length,
-          total_tutors_count: tutors.length,
-          total_clinics_count: 3,
-          total_anesthesias_count: 1,
-          financial_summary: {
-            total_receitas_mes: receitasMes || 2400.0,
-            total_despesas_mes: despesasMes || 650.0,
-            saldo_mes: (receitasMes || 2400.0) - (despesasMes || 650.0),
-            contas_pendentes_count: pendentes.length || 1,
-            contas_pendentes_valor: pendentesValor || 1850.0,
-          },
-          today_appointments: todayAppts,
-          recent_patients: patients.slice(0, 5),
-          recent_tutors: tutors.slice(0, 5),
-          low_stock_count: 0,
-        };
-      } catch {
-        return {
-          plan_usage: {
-            plan: 'FREE',
-            is_lifetime: false,
-            is_expired: false,
-            tutors_count: 3,
-            tutors_limit: 30,
-            tutors_limit_reached: false,
-            patients_count: 4,
-            patients_limit: 50,
-            patients_limit_reached: false,
-          },
-          today_appointments_count: 1,
-          upcoming_appointments_count: 2,
-          total_patients_count: 4,
-          total_tutors_count: 3,
-          total_clinics_count: 3,
-          total_anesthesias_count: 1,
-          financial_summary: {
-            total_receitas_mes: 2400.0,
-            total_despesas_mes: 650.0,
-            saldo_mes: 1750.0,
-            contas_pendentes_count: 1,
-            contas_pendentes_valor: 1850.0,
-          },
-          today_appointments: [],
-          recent_patients: [],
-          recent_tutors: [],
-          low_stock_count: 0,
-        };
-      }
     }
+
+    try {
+      const [tutors, patients, appointments, financial] = await Promise.all([
+        this.getTutors().catch(() => []),
+        this.getPatients().catch(() => []),
+        this.getAppointments().catch(() => []),
+        this.getFinancialEntries().catch(() => []),
+      ]);
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayAppts = appointments.filter((a) => a.date_time?.startsWith(todayStr));
+      
+      const receitasMes = financial
+        .filter((f) => f.entry_type === 'RECEITA' && f.status === 'PAGO')
+        .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+      const despesasMes = financial
+        .filter((f) => f.entry_type === 'DESPESA' && f.status === 'PAGO')
+        .reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+      const pendentes = financial.filter((f) => f.status === 'PENDENTE');
+      const pendentesValor = pendentes.reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+
+      return {
+        plan_usage: {
+          plan: 'FREE',
+          is_lifetime: false,
+          is_expired: false,
+          tutors_count: tutors.length,
+          tutors_limit: 30,
+          tutors_limit_reached: tutors.length >= 30,
+          patients_count: patients.length,
+          patients_limit: 50,
+          patients_limit_reached: patients.length >= 50,
+        },
+        today_appointments_count: todayAppts.length,
+        upcoming_appointments_count: appointments.length,
+        total_patients_count: patients.length,
+        total_tutors_count: tutors.length,
+        total_clinics_count: 0,
+        total_anesthesias_count: 0,
+        financial_summary: {
+          total_receitas_mes: receitasMes,
+          total_despesas_mes: despesasMes,
+          saldo_mes: receitasMes - despesasMes,
+          contas_pendentes_count: pendentes.length,
+          contas_pendentes_valor: pendentesValor,
+        },
+        today_appointments: todayAppts,
+        recent_patients: patients.slice(0, 5),
+        recent_tutors: tutors.slice(0, 5),
+        low_stock_count: 0,
+      };
+    } catch {
+      return {
+        plan_usage: {
+          plan: 'FREE',
+          is_lifetime: false,
+          is_expired: false,
+          tutors_count: 0,
+          tutors_limit: 30,
+          tutors_limit_reached: false,
+          patients_count: 0,
+          patients_limit: 50,
+          patients_limit_reached: false,
+        },
+        today_appointments_count: 0,
+        upcoming_appointments_count: 0,
+        total_patients_count: 0,
+        total_tutors_count: 0,
+        total_clinics_count: 0,
+        total_anesthesias_count: 0,
+        financial_summary: {
+          total_receitas_mes: 0,
+          total_despesas_mes: 0,
+          saldo_mes: 0,
+          contas_pendentes_count: 0,
+          contas_pendentes_valor: 0,
+        },
+        today_appointments: [],
+        recent_patients: [],
+        recent_tutors: [],
+        low_stock_count: 0,
+      };
+    }
+  },
+
+  // Reset test data endpoint
+  async resetTestData(): Promise<{ success: boolean; message: string }> {
+    try {
+      await fetch(`${API_BASE_URL}/reset-test-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(() => null);
+    } catch {}
+
+    const cached = this.getCachedUser();
+    if (cached?.id) {
+      offlineStorage.clearUserData(cached.id);
+    }
+
+    localStorage.removeItem('vetgo_consultations');
+    localStorage.removeItem('vetgo_financial');
+    localStorage.removeItem('vetgo_documents');
+    localStorage.removeItem('vetgo_inventory');
+    localStorage.removeItem('vetgo_tutors');
+    localStorage.removeItem('vetgo_patients');
+    localStorage.removeItem('vetgo_appointments');
+
+    // Remove chaves de cache offline
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('vetgo_offline_') || key.startsWith('offline_queue_')) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    return {
+      success: true,
+      message: 'Dados de teste restaurados com sucesso!'
+    };
   },
 
   async getPlanUsage(): Promise<PlanUsage> {
@@ -581,104 +624,20 @@ export const api = {
   },
 
   async getClinics(): Promise<Clinic[]> {
+    try {
+      const serverList = await this.request<Clinic[]>('/clinics');
+      if (Array.isArray(serverList)) {
+        localStorage.setItem('vetgo_clinics', JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch {
+      // Fallback
+    }
+
     const local = localStorage.getItem('vetgo_clinics');
     if (local) return JSON.parse(local);
 
-    const defaultClinics: Clinic[] = [
-      {
-        id: 1,
-        owner_id: 2,
-        code: 'CL-01',
-        name: 'Hospital Veterinário Jardins 24h',
-        corporate_name: 'Jardins Medicina Veterinária Integrada Ltda',
-        cnpj: '12.345.678/0001-90',
-        phone: '(11) 3088-1200',
-        whatsapp: '(11) 99887-1200',
-        email: 'cirurgia@hospjardins.com.br',
-        address: 'Av. Brigadeiro Luís Antônio',
-        address_number: '3450',
-        neighborhood: 'Jardins',
-        city: 'São Paulo',
-        state: 'SP',
-        postal_code: '01402-001',
-        manager_name: 'Dra. Camila Nogueira (Diretora Clínica)',
-        financial_contact: 'Mariana Financeiro (ramal 204) - financeiro@hospjardins.com.br',
-        payment_terms: 'Fechamento dia 25 de cada mês, pagamento até o 5º dia útil via Pix/TED.',
-        billing_type: 'FATURAMENTO_PERIODICO',
-        billing_closing_day: 25,
-        billing_due_day: 5,
-        price_table_type: 'ESPECIFICA',
-        custom_price_table: {
-          'Anestesia Geral Cirurgia Porte Médio': 480.0,
-          'Anestesia Geral Cirurgia Porte Grande': 650.0,
-          'Sedação / Procedimento Curto': 280.0,
-          'Monitorização Especializada': 180.0
-        },
-        notes: 'Hospital com estrutura completa, arco cirúrgico e monitor multiparamétrico próprio no Bloco 2.',
-        is_active: true,
-        created_at: new Date().toISOString(),
-        total_procedures: 14,
-        total_billed: 7420.0
-      },
-      {
-        id: 2,
-        owner_id: 2,
-        code: 'CL-02',
-        name: 'Clínica Pet & Cia Moema',
-        corporate_name: 'Pet & Cia Centro Veterinário Ltda - ME',
-        cnpj: '98.765.432/0001-10',
-        phone: '(11) 5051-8899',
-        whatsapp: '(11) 98112-3344',
-        email: 'contato@petciamoema.com.br',
-        address: 'Rua Canário',
-        address_number: '420',
-        neighborhood: 'Moema',
-        city: 'São Paulo',
-        state: 'SP',
-        postal_code: '04521-002',
-        manager_name: 'Dr. Paulo Esteves',
-        financial_contact: 'Dona Lúcia - adm@petciamoema.com.br',
-        payment_terms: 'Cobrança direta por atendimento ao final do procedimento via Pix ou Cartão.',
-        billing_type: 'POR_ATENDIMENTO',
-        price_table_type: 'PADRAO',
-        notes: 'Clínica de atendimento volante parceira. Realizam castrações e pequenas cirurgias às terças e quintas.',
-        is_active: true,
-        created_at: new Date().toISOString(),
-        total_procedures: 8,
-        total_billed: 3200.0
-      },
-      {
-        id: 3,
-        owner_id: 2,
-        code: 'CL-03',
-        name: 'Centro Cirúrgico VetCare Vila Mariana',
-        corporate_name: 'VetCare Centro Especializado em Cirurgia Animal Ltda',
-        cnpj: '45.123.890/0001-77',
-        phone: '(11) 5572-9090',
-        whatsapp: '(11) 97654-1122',
-        email: 'adm@vetcarevm.com.br',
-        address: 'Rua Domingos de Morais',
-        address_number: '1850',
-        neighborhood: 'Vila Mariana',
-        city: 'São Paulo',
-        state: 'SP',
-        postal_code: '04010-200',
-        manager_name: 'Dra. Beatriz Fontana',
-        financial_contact: 'Carlos Contabilidade - financeiro@vetcarevm.com.br',
-        payment_terms: 'Faturamento quinzenal (dias 15 e 30).',
-        billing_type: 'FATURAMENTO_PERIODICO',
-        billing_closing_day: 30,
-        billing_due_day: 10,
-        price_table_type: 'PADRAO',
-        notes: 'Especialistas em ortopedia e neurocirurgia.',
-        is_active: true,
-        created_at: new Date().toISOString(),
-        total_procedures: 6,
-        total_billed: 4100.0
-      }
-    ];
-    localStorage.setItem('vetgo_clinics', JSON.stringify(defaultClinics));
-    return defaultClinics;
+    return [];
   },
 
   async getClinic(id: number): Promise<Clinic | null> {
@@ -746,67 +705,28 @@ export const api = {
   // REQUISITO 2: CIRURGIÕES (identificador PR-xx)
   // -----------------------------------------------------------------
   async getSurgeons(clinicId?: number): Promise<Surgeon[]> {
+    try {
+      const serverList = await this.request<Surgeon[]>('/surgeons');
+      if (Array.isArray(serverList)) {
+        localStorage.setItem('vetgo_surgeons', JSON.stringify(serverList));
+        if (clinicId) return serverList.filter((s) => (s.clinic_ids && s.clinic_ids.includes(clinicId)) || (s as any).primary_clinic_id === clinicId);
+        return serverList;
+      }
+    } catch {
+      // Fallback
+    }
+
     const local = localStorage.getItem('vetgo_surgeons');
     let list: Surgeon[] = [];
 
     if (local) {
       list = JSON.parse(local);
-    } else {
-      list = [
-        {
-          id: 1,
-          owner_id: 2,
-          code: 'PR-42',
-          name: 'Dr. Roberto Martins de Castro',
-          crmv: '21450',
-          crmv_uf: 'SP',
-          phone: '(11) 98321-4567',
-          whatsapp: '(11) 98321-4567',
-          email: 'roberto.castro.cirurgia@gmail.com',
-          notes: 'Cirurgião especialista em tecidos moles e oncologia cirúrgica.',
-          clinic_ids: [1, 3], // Hospital Jardins e VetCare
-          is_active: true,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 2,
-          owner_id: 2,
-          code: 'PR-18',
-          name: 'Dra. Vanessa Meireles',
-          crmv: '32104',
-          crmv_uf: 'SP',
-          phone: '(11) 97234-8899',
-          whatsapp: '(11) 97234-8899',
-          email: 'dra.vanessameireles@gmail.com',
-          notes: 'Cirurgiã geral e procedimentos eletivos (ovariosalpingohisterectomia, orquiectomia).',
-          clinic_ids: [1, 2], // Hospital Jardins e Pet & Cia
-          is_active: true,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 3,
-          owner_id: 2,
-          code: 'PR-09',
-          name: 'Dr. Fernando Siqueira',
-          crmv: '19882',
-          crmv_uf: 'SP',
-          phone: '(11) 99123-5566',
-          whatsapp: '(11) 99123-5566',
-          email: 'dr.fernando.siqueira@cirurgiavet.com',
-          notes: 'Ortopedista e neurocirurgião veterinário.',
-          clinic_ids: [2, 3], // Pet & Cia e VetCare
-          is_active: true,
-          created_at: new Date().toISOString()
-        }
-      ];
-      localStorage.setItem('vetgo_surgeons', JSON.stringify(list));
     }
 
     if (clinicId) {
-      // Ordena mostrando prioritariamente os cirurgiões vinculados à clínica
       return [...list].sort((a, b) => {
-        const aLinked = a.clinic_ids.includes(clinicId);
-        const bLinked = b.clinic_ids.includes(clinicId);
+        const aLinked = (a.clinic_ids || []).includes(clinicId);
+        const bLinked = (b.clinic_ids || []).includes(clinicId);
         if (aLinked && !bLinked) return -1;
         if (!aLinked && bLinked) return 1;
         return a.name.localeCompare(b.name);
@@ -860,322 +780,24 @@ export const api = {
   // REQUISITOS 4 a 17: MÓDULO DE ANESTESIOLOGIA VETERINÁRIA
   // -----------------------------------------------------------------
   async getAnesthesias(filters?: { clinicId?: number; patientId?: number }): Promise<AnesthesiaRecord[]> {
-    const local = localStorage.getItem('vetgo_anesthesias');
-    let list: AnesthesiaRecord[] = [];
-
-    if (local) {
-      list = JSON.parse(local);
-    } else {
-      list = [
-        {
-          id: 1,
-          owner_id: 2,
-          code: 'AN-2026-001',
-          clinic_id: 1,
-          clinic_name: 'Hospital Veterinário Jardins 24h',
-          surgeon_id: 1,
-          surgeon_name: 'Dr. Roberto Martins de Castro (PR-42)',
-          patient_id: 1,
-          patient_name: 'Thor',
-          patient_species: 'Canina',
-          patient_breed: 'Golden Retriever',
-          tutor_id: 1,
-          tutor_name: 'Mariana Silveira Ramos',
-          procedure_name: 'Mastocitoma em Região Lombar (Ressecção Cirúrgica com Margem Ampla)',
-          procedure_nature: 'ELETIVA',
-          date: new Date().toISOString().split('T')[0],
-          scheduled_time: '09:00',
-          status: 'FINALIZADA',
-          pre_evaluation: {
-            weight_kg: 34.5,
-            fasting_food_hours: 8,
-            fasting_water_hours: 2,
-            consciousness_level: 'Alerta',
-            reflexes: 'Preservados',
-            heart_rate_bpm: 96,
-            respiratory_rate_mpm: 22,
-            temperature_c: 38.4,
-            mucous_membranes: 'Normocoradas',
-            capillary_refill_time_sec: 2,
-            hydration_status: 'Normal (Adequada)',
-            previous_diseases: 'Dermatite atópica sob controle',
-            allergies: 'Sem relatos de reações prévias a anestésicos',
-            continuous_medications: 'Nenhum no momento',
-            previous_anesthesias: 'Orquiectomia aos 8 meses sem intercorrências',
-            lab_tests_summary: 'Hemograma completo sem alterações; Função renal (Ureia 35, Creat 1.1) e hepática (ALT 42, FA 88) normais',
-            ecg_summary: 'Ritmo sinusal normal, sem bloqueios ou extrassístoles',
-            notes: 'Paciente cooperativo. Acesso venoso fácil.'
-          },
-          asa_category: 'ASA_II',
-          is_emergency: false,
-          asa_justification: 'Paciente hígido com afecção sistêmica localizada (neoplasia cutânea sem metástase ou comprometimento funcional grave).',
-          planning: {
-            technique: 'Anestesia Geral Balanceada com Bloqueio Tumescente Locorregional',
-            venous_access_site: 'Veia cefálica direita (Cateter 20G)',
-            fluid_type: 'Ringer com Lactato',
-            fluid_rate_ml_kg_h: 5.0,
-            oxygen_flow_l_min: 1.5,
-            intubation: true,
-            tube_size: 'Tubo endotraqueal com cuff nº 9.5',
-            breathing_circuit: 'Circular com absorvedor de CO2 (cal sodada)',
-            ventilation_type: 'Assistida',
-            maintenance_agent: 'Isoflurano vaporizado em 100% O2'
-          },
-          protocol_drugs: [
-            {
-              id: 'drug-1',
-              stage: 'MPA',
-              drug_name: 'Metadona 10mg/ml + Acepromazina 0,2%',
-              active_ingredient: 'Cloridrato de Metadona + Acepromazina',
-              presentation_type: 'LIQUIDO_ML',
-              dose_mg_kg: 0.3,
-              concentration_mg_ml: 10,
-              route: 'IM',
-              calculated_volume_ml: 1.03,
-              administered_volume: 1.0,
-              consumed_stock_units: 1.0,
-              billed_units: 1.0,
-              administered_at_time: '08:45',
-              anesthetic_elapsed_time: '00:00:00',
-              notes: 'Sedação e analgesia inicial excelente'
-            },
-            {
-              id: 'drug-2',
-              stage: 'INDUCAO',
-              drug_name: 'Propofol 10mg/ml (1%)',
-              active_ingredient: 'Propofol',
-              presentation_type: 'LIQUIDO_ML',
-              dose_mg_kg: 4.0,
-              concentration_mg_ml: 10,
-              route: 'IV',
-              calculated_volume_ml: 13.8,
-              administered_volume: 12.0,
-              consumed_stock_units: 1.0,
-              billed_units: 1.0,
-              administered_at_time: '09:05',
-              anesthetic_elapsed_time: '00:05:00',
-              notes: 'Administração lenta até perda de reflexo palpebral'
-            },
-            {
-              id: 'drug-3',
-              stage: 'ANALGESIA',
-              drug_name: 'Dipirona Sódica 500mg/ml',
-              active_ingredient: 'Dipirona',
-              presentation_type: 'LIQUIDO_ML',
-              dose_mg_kg: 25.0,
-              concentration_mg_ml: 500,
-              route: 'IV',
-              calculated_volume_ml: 1.72,
-              administered_volume: 1.8,
-              consumed_stock_units: 1.8,
-              billed_units: 1.8,
-              administered_at_time: '09:40',
-              anesthetic_elapsed_time: '00:40:00'
-            }
-          ],
-          times: {
-            mpa_time: '08:45',
-            induction_time: '09:00',
-            anesthesia_start_time: '09:05',
-            procedure_start_time: '09:20',
-            procedure_end_time: '10:15',
-            anesthesia_end_time: '10:20',
-            extubation_time: '10:32',
-            recovery_end_time: '11:15',
-            anesthetic_duration_minutes: 75,
-            procedure_duration_minutes: 55,
-            time_to_extubation_minutes: 12,
-            recovery_duration_minutes: 43
-          },
-          monitoring_interval_minutes: 5,
-          monitorings: [
-            {
-              id: 'm-0',
-              timestamp: '09:05',
-              elapsed_minutes: 0,
-              heart_rate_bpm: 88,
-              respiratory_rate_mpm: 14,
-              spo2_percentage: 99,
-              etco2_mmhg: 38,
-              pas_mmhg: 125,
-              pam_mmhg: 85,
-              pad_mmhg: 65,
-              temperature_c: 38.1,
-              ecg_rhythm: 'Sinusal'
-            },
-            {
-              id: 'm-5',
-              timestamp: '09:10',
-              elapsed_minutes: 5,
-              heart_rate_bpm: 86,
-              respiratory_rate_mpm: 12,
-              spo2_percentage: 99,
-              etco2_mmhg: 39,
-              pas_mmhg: 120,
-              pam_mmhg: 82,
-              pad_mmhg: 62,
-              temperature_c: 38.0,
-              ecg_rhythm: 'Sinusal'
-            },
-            {
-              id: 'm-10',
-              timestamp: '09:15',
-              elapsed_minutes: 10,
-              heart_rate_bpm: 84,
-              respiratory_rate_mpm: 12,
-              spo2_percentage: 98,
-              etco2_mmhg: 40,
-              pas_mmhg: 115,
-              pam_mmhg: 78,
-              pad_mmhg: 60,
-              temperature_c: 37.9,
-              ecg_rhythm: 'Sinusal'
-            },
-            {
-              id: 'm-15',
-              timestamp: '09:20',
-              elapsed_minutes: 15,
-              heart_rate_bpm: 92,
-              respiratory_rate_mpm: 14,
-              spo2_percentage: 99,
-              etco2_mmhg: 41,
-              pas_mmhg: 128,
-              pam_mmhg: 88,
-              pad_mmhg: 68,
-              temperature_c: 37.8,
-              ecg_rhythm: 'Sinusal (Início incisão)'
-            },
-            {
-              id: 'm-25',
-              timestamp: '09:30',
-              elapsed_minutes: 25,
-              heart_rate_bpm: 78,
-              respiratory_rate_mpm: 10,
-              spo2_percentage: 98,
-              etco2_mmhg: 42,
-              pas_mmhg: 98,
-              pam_mmhg: 64,
-              pad_mmhg: 48,
-              temperature_c: 37.6,
-              ecg_rhythm: 'Sinusal'
-            },
-            {
-              id: 'm-35',
-              timestamp: '09:40',
-              elapsed_minutes: 35,
-              heart_rate_bpm: 86,
-              respiratory_rate_mpm: 14,
-              spo2_percentage: 99,
-              etco2_mmhg: 38,
-              pas_mmhg: 118,
-              pam_mmhg: 80,
-              pad_mmhg: 62,
-              temperature_c: 37.5,
-              ecg_rhythm: 'Sinusal'
-            },
-            {
-              id: 'm-55',
-              timestamp: '10:00',
-              elapsed_minutes: 55,
-              heart_rate_bpm: 88,
-              respiratory_rate_mpm: 16,
-              spo2_percentage: 99,
-              etco2_mmhg: 36,
-              pas_mmhg: 122,
-              pam_mmhg: 84,
-              pad_mmhg: 64,
-              temperature_c: 37.4,
-              ecg_rhythm: 'Sinusal'
-            },
-            {
-              id: 'm-75',
-              timestamp: '10:20',
-              elapsed_minutes: 75,
-              heart_rate_bpm: 94,
-              respiratory_rate_mpm: 18,
-              spo2_percentage: 99,
-              etco2_mmhg: 35,
-              pas_mmhg: 126,
-              pam_mmhg: 86,
-              pad_mmhg: 66,
-              temperature_c: 37.3,
-              ecg_rhythm: 'Sinusal (Fim anestesia)'
-            }
-          ],
-          timeline_events: [
-            {
-              id: 'evt-1',
-              event_type: 'EVENTO',
-              real_time: '09:05:00',
-              elapsed_time: '00:00:00',
-              title: 'Início da Anestesia',
-              description: 'Intubação traqueal bem-sucedida com tubo 9.5 com cuff insuflado.'
-            },
-            {
-              id: 'evt-2',
-              event_type: 'EVENTO',
-              real_time: '09:20:00',
-              elapsed_time: '00:15:00',
-              title: 'Início do Procedimento',
-              description: 'Incisão cirúrgica inicial pelo cirurgião Dr. Roberto.'
-            },
-            {
-              id: 'evt-3',
-              event_type: 'INTERCORRENCIA',
-              real_time: '09:30:15',
-              elapsed_time: '00:25:15',
-              title: 'Hipotensão Transitória',
-              description: 'PAM atingiu 64 mmHg após aprofundamento com Isoflurano.',
-              intervention: 'Redução da fração expirada de Isoflurano para 1.1% e bolus de Ringer Lactato 10 ml/kg em 10 min.',
-              outcome: 'Pressão arterial normalizada com PAM em 80 mmHg após 8 minutos.'
-            },
-            {
-              id: 'evt-4',
-              event_type: 'MEDICAMENTO',
-              real_time: '09:40:00',
-              elapsed_time: '00:35:00',
-              title: 'Administração de Dipirona',
-              description: 'Dipirona 25 mg/kg IV lenta para reforço analgésico transoperatório.'
-            },
-            {
-              id: 'evt-5',
-              event_type: 'EVENTO',
-              real_time: '10:15:00',
-              elapsed_time: '01:10:00',
-              title: 'Fim do Procedimento',
-              description: 'Sutura de pele concluída sem intercorrências cirúrgicas.'
-            },
-            {
-              id: 'evt-6',
-              event_type: 'EVENTO',
-              real_time: '10:20:00',
-              elapsed_time: '01:15:00',
-              title: 'Fim da Anestesia',
-              description: 'Vaporizador fechado, mantido em 100% O2 até retorno de deglutição.'
-            }
-          ],
-          recovery: {
-            extubation_time: '10:32',
-            consciousness_level: 'Alerta',
-            heart_rate_bpm: 98,
-            respiratory_rate_mpm: 20,
-            spo2_percentage: 99,
-            temperature_c: 37.4,
-            pain_score: 'Sem dor',
-            recovery_quality: 'Excelente (Calma/Suave)',
-            complications: 'Nenhuma complicação na sala de recuperação pós-anestésica.',
-            post_op_medications: 'Meloxicam 0,1 mg/kg SID + Tramadol 3 mg/kg TID por 3 dias.',
-            discharge_notes: 'Paciente entregue consciente, com reflexos normais e parâmetros estáveis à equipe de internação.'
-          },
-          total_billed_amount: 550.0,
-          billing_status: 'PAGO',
-          notes: 'Ficha anestésica finalizada com sucesso e assinada digitalmente.',
-          created_at: new Date().toISOString()
-        }
-      ];
-      localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
+    try {
+      const serverList = await this.request<AnesthesiaRecord[]>("/anesthesias");
+      if (Array.isArray(serverList)) {
+        localStorage.setItem("vetgo_anesthesias", JSON.stringify(serverList));
+        let list = serverList;
+        if (filters?.clinicId) list = list.filter((a) => a.clinic_id === filters.clinicId);
+        if (filters?.patientId) list = list.filter((a) => a.patient_id === filters.patientId);
+        return list;
+      }
+    } catch {
+      // Fallback
     }
 
+    const local = localStorage.getItem("vetgo_anesthesias");
+    let list: AnesthesiaRecord[] = [];
+    if (local) {
+      list = JSON.parse(local);
+    }
     if (filters?.clinicId) {
       list = list.filter((a) => a.clinic_id === filters.clinicId);
     }
@@ -1373,170 +995,27 @@ export const api = {
   // REQUISITOS 18, 19 e 20: ESTOQUE, LOTES, TRANSFERÊNCIA & CONSUMO
   // -----------------------------------------------------------------
   async getInventory(): Promise<InventoryItem[]> {
+    try {
+      const serverList = await this.request<InventoryItem[]>('/inventory');
+      if (Array.isArray(serverList)) {
+        localStorage.setItem('vetgo_inventory', JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch {
+      // Fallback
+    }
+
     const local = localStorage.getItem('vetgo_inventory');
     if (local) return JSON.parse(local);
-
-    const defaultInventory: InventoryItem[] = [
-      {
-        id: 1,
-        owner_id: 2,
-        name: 'Zoletil 50 (Tiletamina + Zolazepam)',
-        category: 'Medicamento',
-        active_ingredient: 'Cloridrato de Tiletamina + Zolazepam',
-        presentation: 'Frasco ampola 5ml',
-        concentration: '50mg/ml',
-        presentation_type: 'LIQUIDO_ML',
-        batch_number: 'ZT-9941A',
-        expiration_date: '2027-08-30',
-        quantity_in_kit: 2, // Na maleta volante
-        quantity_in_stock: 4, // No estoque central
-        unit: 'Frasco',
-        min_alert_quantity: 2,
-        cost_price: 185.0,
-        sale_price: 240.0,
-        supplier_name: 'Virbac Distribuidora',
-        is_controlled_substance: true,
-        notes: 'Medicamento de controle especial MAPA. Manter refrigerado.',
-        batches: [
-          {
-            id: 'b-1',
-            item_id: 1,
-            batch_number: 'ZT-9941A',
-            expiration_date: '2027-08-30',
-            quantity_purchased: 6,
-            quantity_remaining: 6,
-            unit_cost: 185.0,
-            supplier_name: 'Virbac Distribuidora',
-            purchase_date: '2026-08-10',
-            target_location: 'ESTOQUE_CENTRAL',
-            created_at: new Date().toISOString()
-          }
-        ],
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 2,
-        owner_id: 2,
-        name: 'Propofol 1% Injetável',
-        category: 'Medicamento',
-        active_ingredient: 'Propofol',
-        presentation: 'Frasco ampola 20ml',
-        concentration: '10mg/ml',
-        presentation_type: 'LIQUIDO_ML',
-        batch_number: 'PP-2026-B4',
-        expiration_date: '2027-05-18',
-        quantity_in_kit: 3,
-        quantity_in_stock: 8,
-        unit: 'Frasco',
-        min_alert_quantity: 3,
-        cost_price: 28.0,
-        sale_price: 65.0,
-        supplier_name: 'Fresenius Kabi',
-        is_controlled_substance: true,
-        notes: 'Uso intravenoso para indução anestésica.',
-        batches: [
-          {
-            id: 'b-2',
-            item_id: 2,
-            batch_number: 'PP-2026-B4',
-            expiration_date: '2027-05-18',
-            quantity_purchased: 12,
-            quantity_remaining: 11,
-            unit_cost: 28.0,
-            supplier_name: 'Fresenius Kabi',
-            purchase_date: '2026-07-20',
-            target_location: 'ESTOQUE_CENTRAL',
-            created_at: new Date().toISOString()
-          }
-        ],
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 3,
-        owner_id: 2,
-        name: 'Apoquel (Oclacitinib) 16mg Comprimidos',
-        category: 'Medicamento',
-        active_ingredient: 'Oclacitinib',
-        presentation: 'Cartela com 20 comprimidos',
-        concentration: '16mg',
-        presentation_type: 'COMPRIMIDO',
-        batch_number: 'APQ-8820',
-        expiration_date: '2027-10-30',
-        quantity_in_kit: 10, // 10 comprimidos físicos na maleta
-        quantity_in_stock: 30, // 30 comprimidos físicos na central
-        unit: 'Comprimido',
-        min_alert_quantity: 8,
-        cost_price: 9.5,
-        sale_price: 18.0,
-        supplier_name: 'Zoetis Brasil',
-        is_controlled_substance: false,
-        notes: 'Comprimido sulcado e fracionável. Frações (ex: 1/2 comp) geram baixa de 1 comprimido físico no estoque.',
-        batches: [
-          {
-            id: 'b-3',
-            item_id: 3,
-            batch_number: 'APQ-8820',
-            expiration_date: '2027-10-30',
-            quantity_purchased: 40,
-            quantity_remaining: 40,
-            unit_cost: 9.5,
-            supplier_name: 'Zoetis Brasil',
-            purchase_date: '2026-08-01',
-            target_location: 'ESTOQUE_CENTRAL',
-            created_at: new Date().toISOString()
-          }
-        ],
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 4,
-        owner_id: 2,
-        name: 'Meloxicam Injetável 0,2%',
-        category: 'Medicamento',
-        active_ingredient: 'Meloxicam',
-        presentation: 'Frasco 20ml',
-        concentration: '2mg/ml',
-        presentation_type: 'LIQUIDO_ML',
-        batch_number: 'MX-4401',
-        expiration_date: '2027-11-20',
-        quantity_in_kit: 2,
-        quantity_in_stock: 4,
-        unit: 'Frasco',
-        min_alert_quantity: 2,
-        cost_price: 42.0,
-        sale_price: 75.0,
-        supplier_name: 'Ourofino Pet',
-        is_controlled_substance: false,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 5,
-        owner_id: 2,
-        name: 'Tubos Traqueais com Cuff (Kits variados nº 5 a 10)',
-        category: 'Material Cirúrgico',
-        presentation: 'Caixa com 10 unidades esterilizadas',
-        presentation_type: 'UNIDADE',
-        quantity_in_kit: 4,
-        quantity_in_stock: 12,
-        unit: 'Unidade',
-        min_alert_quantity: 3,
-        cost_price: 16.0,
-        supplier_name: 'Cirúrgica Fernandes',
-        is_controlled_substance: false,
-        created_at: new Date().toISOString()
-      }
-    ];
-    localStorage.setItem('vetgo_inventory', JSON.stringify(defaultInventory));
-    return defaultInventory;
+    return [];
   },
 
-  // Requisito 18: Transferência entre estoque central e maleta (NÃO É CONSUMO)
   async transferStock(
     itemId: number,
-    from: StockLocation,
-    to: StockLocation,
+    from: 'ESTOQUE_CENTRAL' | 'MALETA_VOLANTE',
+    to: 'ESTOQUE_CENTRAL' | 'MALETA_VOLANTE',
     quantity: number
-  ): Promise<InventoryItem> {
+  ): Promise<void> {
     const list = await this.getInventory();
     const idx = list.findIndex((i) => i.id === itemId);
     if (idx === -1) throw new Error('Item de estoque não encontrado');
@@ -1555,75 +1034,7 @@ export const api = {
       item.quantity_in_kit -= quantity;
       item.quantity_in_stock += quantity;
     }
-
     localStorage.setItem('vetgo_inventory', JSON.stringify(list));
-    return item;
-  },
-
-  // Requisito 20: Consumo durante atendimento
-  // Medicamentos líquidos usam consumo proporcional por ml
-  // Comprimidos: fração clínica dá baixa em comprimidos físicos inteiros (Math.ceil)
-  async consumeStock(
-    itemId: number,
-    location: StockLocation,
-    clinicalQuantityUsed: number,
-    isTabletFraction: boolean = false
-  ): Promise<{
-    item: InventoryItem;
-    administeredDose: number;
-    consumedPhysicalStock: number;
-    billedQuantity: number;
-  }> {
-    const list = await this.getInventory();
-    const idx = list.findIndex((i) => i.id === itemId);
-    if (idx === -1) throw new Error('Item de estoque não encontrado');
-
-    const item = list[idx];
-    const physicalDeduction = isTabletFraction ? Math.ceil(clinicalQuantityUsed) : clinicalQuantityUsed;
-
-    if (location === 'MALETA_VOLANTE') {
-      item.quantity_in_kit = Math.max(0, item.quantity_in_kit - physicalDeduction);
-    } else {
-      item.quantity_in_stock = Math.max(0, item.quantity_in_stock - physicalDeduction);
-    }
-
-    localStorage.setItem('vetgo_inventory', JSON.stringify(list));
-    return {
-      item,
-      administeredDose: clinicalQuantityUsed,
-      consumedPhysicalStock: physicalDeduction,
-      billedQuantity: clinicalQuantityUsed
-    };
-  },
-
-  async addInventoryBatch(itemId: number, batchData: Omit<InventoryBatchEntry, 'id' | 'item_id' | 'created_at'>): Promise<InventoryItem> {
-    const list = await this.getInventory();
-    const idx = list.findIndex((i) => i.id === itemId);
-    if (idx === -1) throw new Error('Item não encontrado');
-
-    const item = list[idx];
-    if (!item.batches) item.batches = [];
-
-    const newBatch: InventoryBatchEntry = {
-      ...batchData,
-      id: `batch-${Date.now()}`,
-      item_id: itemId,
-      created_at: new Date().toISOString()
-    };
-    item.batches.unshift(newBatch);
-
-    if (batchData.target_location === 'MALETA_VOLANTE') {
-      item.quantity_in_kit += batchData.quantity_purchased;
-    } else {
-      item.quantity_in_stock += batchData.quantity_purchased;
-    }
-
-    item.batch_number = batchData.batch_number;
-    item.expiration_date = batchData.expiration_date;
-    item.cost_price = batchData.unit_cost;
-
-    localStorage.setItem('vetgo_inventory', JSON.stringify(list));
-    return item;
   },
 
   async createInventoryItem(data: Partial<InventoryItem>): Promise<InventoryItem> {
@@ -1631,7 +1042,7 @@ export const api = {
     const newItem: InventoryItem = {
       id: Date.now(),
       owner_id: 2,
-      name: data.name || '',
+      name: data.name || 'Novo Medicamento',
       category: data.category || 'Medicamento',
       active_ingredient: data.active_ingredient,
       presentation: data.presentation,
@@ -1646,10 +1057,10 @@ export const api = {
       cost_price: data.cost_price || 0,
       sale_price: data.sale_price,
       supplier_name: data.supplier_name,
-      is_controlled_substance: !!data.is_controlled_substance,
+      is_controlled_substance: Boolean(data.is_controlled_substance),
       notes: data.notes,
       batches: data.batches || [],
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
     list.unshift(newItem);
     localStorage.setItem('vetgo_inventory', JSON.stringify(list));
@@ -1665,9 +1076,6 @@ export const api = {
     }
   },
 
-  // -----------------------------------------------------------------
-  // CONSULTAS, AGENDAMENTOS, FINANCEIRO & DOCUMENTOS
-  // -----------------------------------------------------------------
   async getAppointments(): Promise<Appointment[]> {
     return this.request<Appointment[]>('/appointments');
   },
@@ -1675,67 +1083,42 @@ export const api = {
   async createAppointment(data: Partial<Appointment>): Promise<Appointment> {
     return this.request<Appointment>('/appointments', {
       method: 'POST',
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     });
   },
 
   async updateAppointment(id: number, updates: Partial<Appointment>): Promise<Appointment> {
     return this.request<Appointment>(`/appointments/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(updates)
+      body: JSON.stringify(updates),
     });
   },
 
   async deleteAppointment(id: number): Promise<void> {
-    await this.request<{ message: string }>(`/appointments/${id}`, {
-      method: 'DELETE'
-    });
+    await this.request(`/appointments/${id}`, { method: 'DELETE' });
   },
 
   async getConsultations(patientId?: number): Promise<ClinicalConsultation[]> {
-    const local = localStorage.getItem('vetgo_consultations');
-    let list: ClinicalConsultation[] = [];
-    if (local) {
-      list = JSON.parse(local);
-    } else {
-      list = [
-        {
-          id: 1,
-          owner_id: 2,
-          patient_id: 1,
-          patient_name: 'Thor',
-          tutor_id: 1,
-          tutor_name: 'Mariana Silveira Ramos',
-          date_time: new Date().toISOString(),
-          chief_complaint: 'Avaliação pré-anestésica para ressecção de mastocitoma',
-          anamnesis: 'Animal ativo, histórico de alergia cutânea, sem outras comorbidades.',
-          vital_signs: {
-            temperature_c: 38.4,
-            heart_rate_bpm: 96,
-            respiratory_rate_mpm: 22,
-            capillary_refill_time_sec: 2,
-            blood_pressure: '125/85',
-            body_condition_score: 5,
-            hydration_status: 'Normal (Adequada)',
-            mucous_membranes: 'Normocoradas'
-          },
-          physical_examination: 'Nódulo cutâneo único em dorso lombar (2.5 cm). Ausculta cardiopulmonar fisiológica.',
-          diagnosis_suspicions: 'Mastocitoma cutâneo grau II',
-          prognosis: 'Favorável',
-          conduct_plan: 'Cirurgia agendada no Hosp. Jardins sob anestesia geral balanceada com Dr. Roberto.',
-          prescriptions: [],
-          vaccines: [],
-          is_volante: true,
-          status: 'FINALIZADO',
-          created_at: new Date().toISOString()
+    try {
+      const query = patientId ? `?patient_id=${patientId}` : '';
+      const serverList = await this.request<ClinicalConsultation[]>(`/consultations${query}`);
+      if (Array.isArray(serverList)) {
+        if (!patientId) {
+          localStorage.setItem('vetgo_consultations', JSON.stringify(serverList));
         }
-      ];
-      localStorage.setItem('vetgo_consultations', JSON.stringify(list));
+        return serverList;
+      }
+    } catch {
+      // Fallback
     }
-    if (patientId) {
-      return list.filter((c) => c.patient_id === patientId);
+
+    const local = localStorage.getItem('vetgo_consultations');
+    if (local) {
+      const list: ClinicalConsultation[] = JSON.parse(local);
+      if (patientId) return list.filter((c) => c.patient_id === patientId);
+      return list;
     }
-    return list;
+    return [];
   },
 
   async createConsultation(data: Partial<ClinicalConsultation>): Promise<ClinicalConsultation> {
@@ -1796,37 +1179,37 @@ export const api = {
       is_volante: true,
       location_address: data.location_address,
       status: 'FINALIZADO',
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
+
     list.unshift(newConsultation);
     localStorage.setItem('vetgo_consultations', JSON.stringify(list));
 
-    // Abate automático do estoque (Maleta Volante) para itens marcados
     if (data.billing_items && data.billing_items.length > 0) {
       try {
-        const invList = await this.getInventory();
+        const inventory = await this.getInventory();
         let changed = false;
-        for (const bi of data.billing_items) {
-          if (bi.deduct_from_stock && bi.inventory_item_id) {
-            const idx = invList.findIndex((i) => i.id === bi.inventory_item_id);
+        for (const item of data.billing_items) {
+          if (item.deduct_from_stock && item.inventory_item_id) {
+            const idx = inventory.findIndex((inv) => inv.id === item.inventory_item_id);
             if (idx !== -1) {
-              const qtyToDeduct = bi.quantity || 1;
-              if (invList[idx].quantity_in_kit >= qtyToDeduct) {
-                invList[idx].quantity_in_kit -= qtyToDeduct;
+              const qty = item.quantity || 1;
+              if (inventory[idx].quantity_in_kit >= qty) {
+                inventory[idx].quantity_in_kit -= qty;
               } else {
-                const remaining = qtyToDeduct - invList[idx].quantity_in_kit;
-                invList[idx].quantity_in_kit = 0;
-                invList[idx].quantity_in_stock = Math.max(0, invList[idx].quantity_in_stock - remaining);
+                const remainder = qty - inventory[idx].quantity_in_kit;
+                inventory[idx].quantity_in_kit = 0;
+                inventory[idx].quantity_in_stock = Math.max(0, inventory[idx].quantity_in_stock - remainder);
               }
               changed = true;
             }
           }
         }
         if (changed) {
-          localStorage.setItem('vetgo_inventory', JSON.stringify(invList));
+          localStorage.setItem('vetgo_inventory', JSON.stringify(inventory));
         }
-      } catch (err) {
-        console.warn('Erro ao abater itens do estoque:', err);
+      } catch (e) {
+        console.warn('Erro ao abater itens do estoque:', e);
       }
     }
 
@@ -1834,61 +1217,19 @@ export const api = {
   },
 
   async getFinancialEntries(): Promise<FinancialEntry[]> {
+    try {
+      const serverList = await this.request<FinancialEntry[]>('/financial');
+      if (Array.isArray(serverList)) {
+        localStorage.setItem('vetgo_financial', JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch {
+      // Fallback
+    }
+
     const local = localStorage.getItem('vetgo_financial');
     if (local) return JSON.parse(local);
-
-    const defaultEntries: FinancialEntry[] = [
-      {
-        id: 1,
-        owner_id: 2,
-        entry_type: 'RECEITA',
-        category: 'Procedimento Anestésico',
-        description: 'Anestesia Mastocitoma - Thor (Hosp. Jardins / Dr. Roberto)',
-        amount: 550.0,
-        payment_method: 'PIX',
-        status: 'PAGO',
-        date: new Date().toISOString().split('T')[0],
-        tutor_id: 1,
-        tutor_name: 'Mariana Silveira Ramos',
-        patient_id: 1,
-        patient_name: 'Thor',
-        clinic_id: 1,
-        clinic_name: 'Hospital Veterinário Jardins 24h',
-        receipt_number: 'REC-2026-001',
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 2,
-        owner_id: 2,
-        entry_type: 'RECEITA',
-        category: 'Procedimento Anestésico',
-        description: 'Faturamento periódico quinzenal - VetCare Vila Mariana',
-        amount: 1850.0,
-        payment_method: 'FATURAMENTO_CLINICA',
-        status: 'PENDENTE',
-        date: new Date().toISOString().split('T')[0],
-        due_date: new Date(Date.now() + 3600000 * 24 * 7).toISOString().split('T')[0],
-        clinic_id: 3,
-        clinic_name: 'Centro Cirúrgico VetCare Vila Mariana',
-        receipt_number: 'FAT-CL03-0926',
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 3,
-        owner_id: 2,
-        entry_type: 'DESPESA',
-        category: 'Reposição de Anestésicos e Fármacos',
-        description: 'Compra de Propofol 1% e Zoletil - Virbac & Fresenius',
-        amount: 480.0,
-        payment_method: 'PIX',
-        status: 'PAGO',
-        date: new Date().toISOString().split('T')[0],
-        notes: 'Entrada de lote registrada no estoque.',
-        created_at: new Date().toISOString()
-      }
-    ];
-    localStorage.setItem('vetgo_financial', JSON.stringify(defaultEntries));
-    return defaultEntries;
+    return [];
   },
 
   async createFinancialEntry(data: Partial<FinancialEntry>): Promise<FinancialEntry> {
@@ -1913,7 +1254,7 @@ export const api = {
       anesthesia_id: data.anesthesia_id,
       notes: data.notes,
       receipt_number: `REC-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
     entries.unshift(newEntry);
     localStorage.setItem('vetgo_financial', JSON.stringify(entries));
@@ -1928,31 +1269,23 @@ export const api = {
   },
 
   async getDocuments(): Promise<DocumentRecord[]> {
+    try {
+      const serverList = await this.request<DocumentRecord[]>('/documents');
+      if (Array.isArray(serverList)) {
+        localStorage.setItem('vetgo_documents', JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch {
+      // Fallback
+    }
+
     const local = localStorage.getItem('vetgo_documents');
     if (local) return JSON.parse(local);
-
-    const defaultDocs: DocumentRecord[] = [
-      {
-        id: 1,
-        owner_id: 2,
-        doc_type: 'FICHA_ANESTESICA',
-        title: 'Ficha Anestésica - Thor (AN-2026-001)',
-        patient_id: 1,
-        patient_name: 'Thor',
-        tutor_id: 1,
-        tutor_name: 'Mariana Silveira Ramos',
-        clinic_id: 1,
-        clinic_name: 'Hospital Veterinário Jardins 24h',
-        content: 'Ficha Anestésica Completa gerada automaticamente no sistema.',
-        created_at: new Date().toISOString()
-      }
-    ];
-    localStorage.setItem('vetgo_documents', JSON.stringify(defaultDocs));
-    return defaultDocs;
+    return [];
   },
 
   async createDocument(data: Partial<DocumentRecord>): Promise<DocumentRecord> {
-    const list = await this.getDocuments();
+    const docs = await this.getDocuments();
     const newDoc: DocumentRecord = {
       id: Date.now(),
       owner_id: 2,
@@ -1966,136 +1299,92 @@ export const api = {
       clinic_name: data.clinic_name,
       content: data.content || '',
       metadata_json: data.metadata_json,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
-    list.unshift(newDoc);
-    localStorage.setItem('vetgo_documents', JSON.stringify(list));
+    docs.unshift(newDoc);
+    localStorage.setItem('vetgo_documents', JSON.stringify(docs));
     return newDoc;
   },
 
-  // -----------------------------------------------------------------
-  // REQUISITO 25: ADMINISTRAÇÃO PLATAFORMA VETGO (Delegado para adminService)
-  // -----------------------------------------------------------------
-  async getAdminStats(): Promise<AdminStats> {
+  // Delegated admin service methods
+  async getAdminStats() {
     return adminService.getAdminStats();
   },
-
-  async getAdminUsers(): Promise<AdminUser[]> {
+  async getAdminUsers() {
     return adminService.getAdminUsers();
   },
-
-  async updateAdminSubscription(
-    userId: number,
-    updates: {
-      plan?: 'FREE' | 'PRO';
-      is_lifetime?: boolean;
-      subscription_status?: 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
-      admin_notes?: string;
-    }
-  ): Promise<void> {
+  async updateAdminSubscription(userId: number, updates: any) {
     return adminService.updateAdminSubscription(userId, updates);
   },
-
-  async toggleUserStatus(userId: number, reason: string): Promise<boolean> {
+  async toggleUserStatus(userId: number, reason: string) {
     return adminService.toggleUserStatus(userId, reason);
   },
-
-  async getPlatformPlans(): Promise<PlatformPlan[]> {
+  async getPlatformPlans() {
     return adminService.getPlatformPlans();
   },
-
-  async updatePlatformPlan(id: string, updates: Partial<PlatformPlan>): Promise<PlatformPlan> {
-    return adminService.updatePlatformPlan(id, updates);
+  async updatePlatformPlan(id: string, updates: any) {
+    return adminService.updatePlatformPlan(id as any, updates);
   },
-
-  async getGlobalAnnouncements(): Promise<GlobalAnnouncement[]> {
+  async getGlobalAnnouncements() {
     return adminService.getGlobalAnnouncements();
   },
-
-  async createGlobalAnnouncement(data: Partial<GlobalAnnouncement>): Promise<GlobalAnnouncement> {
+  async createGlobalAnnouncement(data: any) {
     return adminService.createGlobalAnnouncement(data);
   },
-
-  async deleteGlobalAnnouncement(id: number): Promise<boolean> {
+  async deleteGlobalAnnouncement(id: number) {
     return adminService.deleteGlobalAnnouncement(id);
   },
-
-  async getAdminAuditLogs(): Promise<AdminAuditLog[]> {
+  async getAdminAuditLogs() {
     return adminService.getAdminAuditLogs();
   },
-
-  async updateUserProfile(data: Partial<User>): Promise<User> {
-    return this.updateProfile(data);
+  async updateUserProfile(updates: any) {
+    return this.updateProfile(updates);
   },
 
-  // -------------------------------------------------------------
-  // CATÁLOGO DE SERVIÇOS, PROCEDIMENTOS & EXAMES
-  // -------------------------------------------------------------
   async getServices(): Promise<ClinicalServiceItem[]> {
+    try {
+      const serverList = await this.request<ClinicalServiceItem[]>('/services');
+      if (Array.isArray(serverList)) {
+        localStorage.setItem('vetgo_services', JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch {
+      // Fallback
+    }
+
     const local = localStorage.getItem('vetgo_services');
     if (local) {
       try {
         return JSON.parse(local);
-      } catch {
-        // fallback
-      }
+      } catch {}
     }
 
-    const defaultServices: ClinicalServiceItem[] = [
-      { id: 1, name: 'Consulta Clínica Volante Domiciliar', category: 'CONSULTA', price: 180, description: 'Atendimento clínico veterinário geral em domicílio com anamnese, exame físico e orientação', is_active: true },
-      { id: 2, name: 'Retorno Clínico Volante (até 15 dias)', category: 'CONSULTA', price: 90, description: 'Reavaliação clínica e evolução do paciente', is_active: true },
-      { id: 3, name: 'Consulta de Emergência / Plantão Volante', category: 'CONSULTA', price: 260, description: 'Atendimento de urgência e emergência domiciliar', is_active: true },
-      { id: 4, name: 'Aplicação de Injetável (SC / IM)', category: 'PROCEDIMENTO', price: 35, description: 'Administração de medicação injetável com assepsia', is_active: true },
-      { id: 5, name: 'Curativo & Higienização Local', category: 'PROCEDIMENTO', price: 50, description: 'Limpeza, antissepsia e curativo de feridas ou pós-cirúrgico', is_active: true },
-      { id: 6, name: 'Fluidoterapia Ambulatorial', category: 'PROCEDIMENTO', price: 80, description: 'Terapia de hidratação e reposição eletrolítica ambulatorial', is_active: true },
-      { id: 7, name: 'Coleta de Sangue / Triagem de Amostras', category: 'EXAME', price: 45, description: 'Punção venosa, fracionamento e acondicionamento para laboratório', is_active: true },
-      { id: 8, name: 'Limpeza e Tratamento Otológico', category: 'PROCEDIMENTO', price: 60, description: 'Remoção de cerúmen e instilação de solução otológica', is_active: true },
-      { id: 9, name: 'Corte de Unhas & Higiene Sanitária', category: 'PROCEDIMENTO', price: 30, description: 'Corte seguro de unhas e limpeza higiênica de patas', is_active: true },
-      { id: 10, name: 'Sondagem Uretral e Alívio Vesical', category: 'PROCEDIMENTO', price: 130, description: 'Desobstrução e esvaziamento vesical em cães e gatos', is_active: true },
-      { id: 11, name: 'Vacina V10 / Polivalente Canina (Dose + Aplicação)', category: 'VACINA', price: 110, description: 'Imunização contra cinomose, parvovirose, hepatite, leptospirose e coronavírus', is_active: true },
-      { id: 12, name: 'Vacina V8 Canina (Dose + Aplicação)', category: 'VACINA', price: 100, description: 'Imunização óctupla canina preventiva', is_active: true },
-      { id: 13, name: 'Vacina V4 / V5 Felina (Dose + Aplicação)', category: 'VACINA', price: 120, description: 'Imunização contra panleucopenia, calicivirose, rinotraqueíte e clamidiose/leucemia', is_active: true },
-      { id: 14, name: 'Vacina Antirrábica (Dose + Aplicação)', category: 'VACINA', price: 80, description: 'Imunização contra raiva animal', is_active: true },
-      { id: 15, name: 'Hemograma Completo com Pesquisa de Hemoparasitas', category: 'EXAME', price: 65, description: 'Avaliação da série vermelha, branca, plaquetas e pesquisa de hematozoários', is_active: true },
-      { id: 16, name: 'Perfil Bioquímico Renal (Ureia + Creatinina)', category: 'EXAME', price: 75, description: 'Avaliação da função e taxa de filtração renal', is_active: true },
-      { id: 17, name: 'Perfil Bioquímico Hepático (ALT + FA)', category: 'EXAME', price: 75, description: 'Avaliação de integridade hepatocelular e colestase', is_active: true },
-      { id: 18, name: 'Perfil Geriátrico Completo (Hemograma + Renal + Hepático + Glicemia)', category: 'EXAME', price: 180, description: 'Check-up laboratorial completo para pacientes sêniores', is_active: true },
-      { id: 19, name: 'Urinálise / Urina Tipo I com Sedimento', category: 'EXAME', price: 55, description: 'Exame físico-químico e sedimentoscopia urinária', is_active: true },
-      { id: 20, name: 'Ultrassonografia Abdominal Total Volante', category: 'EXAME', price: 230, description: 'Varredura ultrassonográfica completa dos órgãos abdominais em domicílio', is_active: true },
-      { id: 21, name: 'Eletrocardiograma (ECG) Veterinário Volante', category: 'EXAME', price: 160, description: 'Traçado de 12 derivações com laudo cardiológico', is_active: true },
-      { id: 22, name: 'Teste Rápido FIV / FeLV', category: 'EXAME', price: 120, description: 'Imunocromatografia para detecção de imunodeficiência e leucemia felina', is_active: true },
-      { id: 23, name: 'Raspado Cutâneo / Citologia Dermatológica', category: 'EXAME', price: 60, description: 'Pesquisa microscópica de ácaros, bactérias e fungos (Malassezia)', is_active: true }
-    ];
-
-    localStorage.setItem('vetgo_services', JSON.stringify(defaultServices));
-    return defaultServices;
+    return [];
   },
 
   async createService(data: Partial<ClinicalServiceItem>): Promise<ClinicalServiceItem> {
     const list = await this.getServices();
     const newService: ClinicalServiceItem = {
       id: Date.now(),
-      owner_id: 2,
       name: data.name?.trim() || 'Novo Serviço',
       category: data.category || 'PROCEDIMENTO',
-      price: data.price !== undefined ? Number(data.price) : 50,
+      price: data.price === undefined ? 50 : Number(data.price),
       description: data.description?.trim() || '',
-      is_active: data.is_active !== undefined ? data.is_active : true,
-      created_at: new Date().toISOString()
+      is_active: data.is_active === undefined ? true : data.is_active,
     };
     list.unshift(newService);
     localStorage.setItem('vetgo_services', JSON.stringify(list));
     return newService;
   },
 
-  async updateService(id: number, data: Partial<ClinicalServiceItem>): Promise<ClinicalServiceItem> {
+  async updateService(id: number, updates: Partial<ClinicalServiceItem>): Promise<ClinicalServiceItem> {
     const list = await this.getServices();
     const idx = list.findIndex((s) => s.id === id);
     if (idx === -1) throw new Error('Serviço não encontrado');
     list[idx] = {
       ...list[idx],
-      ...data,
-      price: data.price !== undefined ? Number(data.price) : list[idx].price
+      ...updates,
+      price: updates.price === undefined ? list[idx].price : Number(updates.price),
     };
     localStorage.setItem('vetgo_services', JSON.stringify(list));
     return list[idx];
@@ -2106,5 +1395,5 @@ export const api = {
     const filtered = list.filter((s) => s.id !== id);
     localStorage.setItem('vetgo_services', JSON.stringify(filtered));
     return true;
-  }
+  },
 };

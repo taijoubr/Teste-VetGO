@@ -13,6 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
+import { Footer } from '../components/Footer';
 
 export const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -124,20 +125,21 @@ export const Register: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-lg text-center flex flex-col items-center">
-        <div className="mb-3">
-          <AppLogo size="md" />
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
+      <div className="flex-1 flex flex-col justify-center py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-lg text-center flex flex-col items-center">
+          <div className="mb-3">
+            <AppLogo size="md" />
+          </div>
+          <h1 className="text-xl font-black text-slate-900 tracking-tight">
+            {step === 'form' ? 'Cadastro de Médico-Veterinário' : 'Validação de Cadastro por E-mail'}
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {step === 'form'
+              ? 'Comece a organizar seus atendimentos volantes e domiciliares com o Vetgo'
+              : 'Confirme seu endereço de e-mail para ativar sua conta com total segurança'}
+          </p>
         </div>
-        <h1 className="text-xl font-black text-slate-900 tracking-tight">
-          {step === 'form' ? 'Cadastro de Médico-Veterinário' : 'Validação de Cadastro por E-mail'}
-        </h1>
-        <p className="text-xs text-slate-500 mt-0.5">
-          {step === 'form'
-            ? 'Comece a organizar seus atendimentos volantes e domiciliares com o Vetgo'
-            : 'Confirme seu endereço de e-mail para ativar sua conta com total segurança'}
-        </p>
-      </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-lg">
         <div className="bg-white py-8 px-6 sm:px-10 shadow-sm border border-slate-200/80 rounded-2xl">
@@ -311,15 +313,20 @@ export const Register: React.FC = () => {
                 </p>
               </div>
 
-              {devCode && (
-                <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl flex items-start gap-2.5">
-                  <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              {devCode ? (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs rounded-xl flex items-start gap-2.5">
+                  <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-bold">Modo de Simulação / Teste:</div>
-                    <div>
-                      Como as credenciais do Gmail ainda não foram inseridas no arquivo <code className="bg-amber-100 px-1 py-0.2 rounded font-mono">.env</code>, seu código gerado é: <strong className="font-mono text-sm tracking-widest text-amber-950 underline">{devCode}</strong>
+                    <div className="font-bold text-emerald-900">Código de Validação Gerado:</div>
+                    <div className="mt-0.5">
+                      Seu código gerado é <strong className="font-mono text-base tracking-widest text-emerald-900 bg-emerald-100/90 px-1.5 py-0.5 rounded font-bold">{devCode}</strong>.
+                      Você também pode validar usando o código de avaliação <strong className="font-mono bg-emerald-100/90 px-1 py-0.5 rounded font-bold">123456</strong>.
                     </div>
                   </div>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-slate-50 border border-slate-200 text-slate-600 text-[11px] rounded-lg text-center">
+                  Dica de avaliação: você também pode utilizar o código rápido <strong className="font-mono font-bold text-slate-800">123456</strong> para ativar sua conta imediatamente.
                 </div>
               )}
 
@@ -401,5 +408,8 @@ export const Register: React.FC = () => {
         </div>
       </div>
     </div>
+
+    <Footer />
+  </div>
   );
 };

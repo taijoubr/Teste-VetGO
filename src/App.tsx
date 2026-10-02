@@ -23,6 +23,7 @@ import { AnesthesiaPage } from './pages/AnesthesiaPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PublicPetCardPage } from './pages/PublicPetCardPage';
+import { Footer } from './components/Footer';
 
 // Protected layout wrapper
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -55,6 +56,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
         <main className="flex-1">{children}</main>
+        <Footer />
       </div>
     </div>
   );

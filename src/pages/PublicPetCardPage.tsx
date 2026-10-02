@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Syringe
 } from 'lucide-react';
+import { Footer } from '../components/Footer';
 
 interface PublicCardData {
   id: number;
@@ -290,6 +291,7 @@ export const PublicPetCardPage: React.FC = () => {
           </div>
         </div>
       </div>
+      <Footer className="mt-8" />
     </div>
   );
 };
