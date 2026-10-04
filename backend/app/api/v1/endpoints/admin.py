@@ -211,16 +211,26 @@ def delete_user(
         )
 
     user_email = user.email
+    user_name = f"{user.first_name} {user.last_name}".strip()
+
+    # Desvincular registros de auditoria existentes para não violar integridade referencial
+    db.query(AuditLog).filter(AuditLog.target_user_id == user_id).update({"target_user_id": None}, synchronize_session=False)
+    db.query(AuditLog).filter(AuditLog.admin_id == user_id).update({"admin_id": None}, synchronize_session=False)
+
     db.delete(user)
     db.commit()
 
-    record_audit_log(
-        db=db,
-        admin=admin,
+    # Gravar auditoria sem referenciar o objeto excluído
+    log = AuditLog(
+        admin_id=admin.id,
+        admin_name=admin.full_name,
+        target_user_id=None,
+        target_user_name=user_name,
         action="DELETE_USER",
-        target_user=user,
         details=f"Conta de usuário excluída permanentemente pelo administrador: {user_email}"
     )
+    db.add(log)
+    db.commit()
 
     return {"message": f"Usuário {user_email} excluído com sucesso."}
 

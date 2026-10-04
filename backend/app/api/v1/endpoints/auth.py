@@ -16,10 +16,15 @@ router = APIRouter()
 verification_codes = {}
 
 def send_gmail_code(to_email: str, name: str, code: str, is_recovery: bool = False) -> bool:
-    user = "vetgoveterinarios@gmail.com"
-    pwd = "zwhuxcxyfqtewqrb"
+    from app.api.v1.endpoints.settings import load_smtp_config
+    cfg = load_smtp_config()
+    user = (cfg.get("user") or "vetgoveterinarios@gmail.com").strip()
+    pwd = (cfg.get("pass") or "zwhuxcxyfqtewqrb").replace(" ", "").strip()
+    from_name = cfg.get("from_name") or "Vetgo"
+    from_email = cfg.get("from_email") or user
+
     msg = MIMEMultipart("alternative")
-    msg["From"] = f"Vetgo <{user}>"
+    msg["From"] = f"{from_name} <{from_email}>"
     msg["To"] = to_email
     subject = f"Recuperação de Senha Vetgo: {code}" if is_recovery else f"Seu código de validação Vetgo: {code}"
     msg["Subject"] = subject

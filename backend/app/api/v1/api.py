@@ -6,7 +6,8 @@ from app.api.v1.endpoints import (
     patients,
     appointments,
     dashboard,
-    admin
+    admin,
+    settings
 )
 
 api_router = APIRouter()
@@ -18,3 +19,4 @@ api_router.include_router(tutors.router, prefix="/tutors", tags=["Tutores"])
 api_router.include_router(patients.router, prefix="/patients", tags=["Pacientes"])
 api_router.include_router(appointments.router, prefix="/appointments", tags=["Agenda e Atendimentos"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Administração Vetgo"])
+api_router.include_router(settings.router, prefix="/settings", tags=["Configurações"])

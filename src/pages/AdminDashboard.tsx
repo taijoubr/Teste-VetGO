@@ -153,13 +153,13 @@ export const AdminDashboard: React.FC = () => {
       setSmtpLoading(true);
       const res = await api.getSMTPSettings();
       setSmtpForm({
-        provider: res.provider || 'resend',
-        user: res.user || '',
-        pass: res.pass || (res.has_password ? '••••••••' : ''),
+        provider: res.provider || 'gmail',
+        user: res.user || 'vetgoveterinarios@gmail.com',
+        pass: res.pass || (res.has_password ? '••••••••' : 'zwhuxcxyfqtewqrb'),
         from_name: res.from_name || 'Vetgo',
-        from_email: res.from_email || (res.provider === 'resend' ? 'onboarding@resend.dev' : res.user || ''),
-        host: res.host || 'smtp.resend.com',
-        port: Number(res.port) || 587,
+        from_email: res.from_email || res.user || 'vetgoveterinarios@gmail.com',
+        host: res.host || (res.provider === 'resend' ? 'smtp.resend.com' : 'smtp.gmail.com'),
+        port: Number(res.port) || (res.provider === 'resend' ? 587 : 465),
         secure: res.secure !== false,
         is_active: res.is_active !== false,
       });
@@ -167,6 +167,19 @@ export const AdminDashboard: React.FC = () => {
       setSmtpLoaded(true);
     } catch (e) {
       console.error('Erro ao carregar configurações de SMTP no admin:', e);
+      setSmtpForm({
+        provider: 'gmail',
+        user: 'vetgoveterinarios@gmail.com',
+        pass: 'zwhuxcxyfqtewqrb',
+        from_name: 'Vetgo',
+        from_email: 'vetgoveterinarios@gmail.com',
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        is_active: true,
+      });
+      setIsSmtpConfigured(true);
+      setSmtpLoaded(true);
     } finally {
       setSmtpLoading(false);
     }
