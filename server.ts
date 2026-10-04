@@ -511,6 +511,91 @@ app.post('/api/v1/auth/register', async (req, res) => {
   });
 });
 
+app.post('/api/v1/auth/google', (req, res) => {
+  let { email, name, first_name, last_name, picture, credential } = req.body;
+
+  if (credential) {
+    try {
+      const parts = String(credential).split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+        if (payload.email) email = payload.email;
+        if (payload.name && !name) name = payload.name;
+        if (payload.picture && !picture) picture = payload.picture;
+        if (payload.given_name && !first_name) first_name = payload.given_name;
+        if (payload.family_name && !last_name) last_name = payload.family_name;
+      }
+    } catch (e) {
+      console.warn('Erro ao decodificar token Google:', e);
+    }
+  }
+
+  if (!email) {
+    return res.status(400).json({ detail: 'E-mail da conta Google não informado.' });
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  let user = db.users.find((u) => u.email.toLowerCase() === cleanEmail);
+
+  if (user) {
+    user.is_active = true;
+    user.email_verified = true;
+    if (picture && !user.logo_url) {
+      user.logo_url = picture;
+    }
+    saveDB(db);
+    const token = `token-${user.id}-${Date.now()}`;
+    return res.json({
+      access_token: token,
+      token_type: 'bearer',
+      user,
+      is_new: false,
+    });
+  }
+
+  // Criação automática de usuário via conta Google
+  const nameParts = (name || '').trim().split(' ');
+  const fName = String(first_name || nameParts[0] || 'Veterinário(a)').trim();
+  const lName = String(last_name || nameParts.slice(1).join(' ') || '').trim();
+  const nextId = db.users.length ? Math.max(...db.users.map((u) => u.id || 0)) + 1 : 1;
+
+  const newUser = {
+    id: nextId,
+    email: cleanEmail,
+    hashed_password: bcrypt.hashSync('GoogleAuth@' + Math.random().toString(36), 10),
+    first_name: fName,
+    last_name: lName,
+    phone: null,
+    whatsapp: null,
+    crmv: null,
+    crmv_uf: 'SP',
+    clinic_name: null,
+    logo_url: picture || null,
+    role: cleanEmail === 'ncodestechnologies@gmail.com' ? 'ADMIN' : 'VET',
+    is_active: true,
+    specialty_anesthesia_enabled: true,
+    active_specialties: [],
+    email_verified: true,
+    plan: 'FREE',
+    subscription_status: 'ACTIVE',
+    subscription_origin: 'GOOGLE_AUTH',
+    is_lifetime: cleanEmail === 'ncodestechnologies@gmail.com',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  db.users.push(newUser);
+  saveDB(db);
+
+  const token = `token-${newUser.id}-${Date.now()}`;
+  return res.status(201).json({
+    access_token: token,
+    token_type: 'bearer',
+    user: newUser,
+    is_new: true,
+  });
+});
+
 app.post('/api/v1/auth/verify-email', (req, res) => {
   const { email, code } = req.body;
   if (!email || !code) {

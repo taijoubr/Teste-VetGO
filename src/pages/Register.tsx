@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
 import { Footer } from '../components/Footer';
+import { GoogleSignInButton, GoogleOrDivider } from '../components/GoogleSignInButton';
 
 export const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -156,7 +157,14 @@ export const Register: React.FC = () => {
           )}
 
           {step === 'form' ? (
-            <form className="space-y-4" onSubmit={handleSubmit}>
+            <>
+              {/* BOTÃO CADASTRO COM GOOGLE */}
+              <div className="mb-4">
+                <GoogleSignInButton mode="register" onError={(err) => setError(err)} />
+                <GoogleOrDivider />
+              </div>
+
+              <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -300,6 +308,7 @@ export const Register: React.FC = () => {
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
+          </>
           ) : (
             /* STEP 2: VERIFICATION CODE ENTRY */
             <div className="space-y-5">

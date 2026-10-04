@@ -220,6 +220,37 @@ export const api = {
     return { user, token: data.access_token };
   },
 
+  async loginWithGoogle(payload: {
+    email: string;
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    picture?: string;
+    credential?: string;
+  }): Promise<{ user: User; token: string; is_new?: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      let errMsg = 'Falha ao autenticar com a conta Google.';
+      try {
+        const errJson = await res.json();
+        if (errJson?.detail) errMsg = errJson.detail;
+      } catch {}
+      throw new Error(errMsg);
+    }
+    const data = await res.json();
+    this.setToken(data.access_token);
+    const user: User = {
+      ...data.user,
+      specialty_anesthesia_enabled: data.user.specialty_anesthesia_enabled !== false
+    };
+    localStorage.setItem('vetgo_current_user', JSON.stringify(user));
+    return { user, token: data.access_token, is_new: data.is_new };
+  },
+
   async register(data: any): Promise<{ user: User; token: string; email_sent?: boolean; dev_code?: string }> {
     // Limpa caches e estados anteriores para garantir isolamento absoluto da nova conta
     const legacyKeys = [

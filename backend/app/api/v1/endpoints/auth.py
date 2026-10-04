@@ -297,6 +297,77 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
 
     return {"message": "Senha redefinida com sucesso! Agora você já pode acessar sua conta com a nova senha."}
 
+@router.post("/google", response_model=Token)
+def google_auth(payload: dict, db: Session = Depends(get_db)):
+    email = payload.get("email")
+    credential = payload.get("credential")
+    name = payload.get("name")
+    first_name = payload.get("first_name")
+    last_name = payload.get("last_name")
+    picture = payload.get("picture")
+
+    if credential:
+        try:
+            import base64
+            import json
+            parts = str(credential).split(".")
+            if len(parts) == 3:
+                padded = parts[1] + "=" * (-len(parts[1]) % 4)
+                decoded = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+                if decoded.get("email"):
+                    email = decoded.get("email")
+                if decoded.get("name") and not name:
+                    name = decoded.get("name")
+                if decoded.get("picture") and not picture:
+                    picture = decoded.get("picture")
+                if decoded.get("given_name") and not first_name:
+                    first_name = decoded.get("given_name")
+                if decoded.get("family_name") and not last_name:
+                    last_name = decoded.get("family_name")
+        except Exception as e:
+            print("[GOOGLE DECODE ERROR]:", e)
+
+    if not email:
+        raise HTTPException(status_code=400, detail="E-mail da conta Google não informado.")
+
+    clean_email = email.strip().lower()
+    user = db.query(User).filter(User.email == clean_email).first()
+
+    if not user:
+        name_parts = (name or "").strip().split(" ")
+        f_name = first_name or (name_parts[0] if name_parts else "Veterinário(a)")
+        l_name = last_name or (" ".join(name_parts[1:]) if len(name_parts) > 1 else "")
+        
+        user = User(
+            email=clean_email,
+            hashed_password=get_password_hash("GoogleAuth@" + clean_email),
+            first_name=f_name,
+            last_name=l_name,
+            role=UserRole.ADMIN if clean_email == "ncodestechnologies@gmail.com" else UserRole.VET,
+            plan=SubscriptionPlan.FREE,
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_origin="GOOGLE_AUTH",
+            is_lifetime=True if clean_email == "ncodestechnologies@gmail.com" else False,
+            is_active=True,
+            logo_url=picture
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        user.is_active = True
+        if picture and not user.logo_url:
+            user.logo_url = picture
+        db.commit()
+        db.refresh(user)
+
+    access_token = create_access_token(subject=user.id)
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user
+    }
+
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user

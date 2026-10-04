@@ -5,6 +5,7 @@ import { Lock, Mail, ArrowRight, CheckCircle2, Shield, KeyRound, Copy, X, AlertC
 import { api } from '../services/api';
 import { AppLogo } from '../components/AppLogo';
 import { Footer } from '../components/Footer';
+import { GoogleSignInButton, GoogleOrDivider } from '../components/GoogleSignInButton';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -153,6 +154,12 @@ export const Login: React.FC = () => {
                 {error}
               </div>
             )}
+
+            {/* BOTÃO CONTINUAR COM O GOOGLE */}
+            <div className="mb-3">
+              <GoogleSignInButton mode="login" onError={(err) => setError(err)} />
+              <GoogleOrDivider />
+            </div>
 
             <form className="space-y-3.5" onSubmit={handleSubmit}>
               <div>

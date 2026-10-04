@@ -9,6 +9,7 @@ interface AuthContextType {
   isVet: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<User>;
+  loginWithGoogle: (payload: { email: string; name?: string; first_name?: string; last_name?: string; picture?: string; credential?: string }) => Promise<{ user: User; is_new?: boolean }>;
   register: (data: any) => Promise<{ user: User; email_sent?: boolean; dev_code?: string }>;
   verifyEmail: (code: string, email?: string) => Promise<User>;
   logout: () => void;
@@ -43,6 +44,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { user: loggedInUser } = await api.login(email, password);
       setUser(loggedInUser);
       return loggedInUser;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithGoogle = async (payload: {
+    email: string;
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    picture?: string;
+    credential?: string;
+  }): Promise<{ user: User; is_new?: boolean }> => {
+    setIsLoading(true);
+    try {
+      const res = await api.loginWithGoogle(payload);
+      setUser(res.user);
+      return { user: res.user, is_new: res.is_new };
     } finally {
       setIsLoading(false);
     }
@@ -102,6 +121,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVet: user?.role === 'VET',
         isAdmin: user?.role === 'ADMIN',
         login,
+        loginWithGoogle,
         register,
         verifyEmail,
         logout,
