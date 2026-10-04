@@ -185,6 +185,45 @@ def toggle_user_active(
 
     return {"message": f"Usuário {'desbloqueado' if user.is_active else 'bloqueado'} com sucesso.", "is_active": user.is_active}
 
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    if user_id == admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Você não pode excluir sua própria conta de administrador."
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuário não encontrado."
+        )
+
+    if user.email in ("ncodestechnologies@gmail.com", "admin@vetgo.com.br"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esta conta principal de administrador não pode ser excluída."
+        )
+
+    user_email = user.email
+    db.delete(user)
+    db.commit()
+
+    record_audit_log(
+        db=db,
+        admin=admin,
+        action="DELETE_USER",
+        target_user=user,
+        details=f"Conta de usuário excluída permanentemente pelo administrador: {user_email}"
+    )
+
+    return {"message": f"Usuário {user_email} excluído com sucesso."}
+
 @router.get("/audit-logs", response_model=List[AdminAuditLogItem])
 def list_audit_logs(
     skip: int = Query(0, ge=0),
