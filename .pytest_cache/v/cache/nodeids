@@ -1,0 +1,9 @@
+[
+  "backend/app/tests/test_rules.py::test_financial_amount_decimal_precision",
+  "backend/app/tests/test_rules.py::test_free_plan_tutor_limit_counts_inactive",
+  "backend/app/tests/test_rules.py::test_lifetime_plan_never_expires",
+  "backend/app/tests/test_rules.py::test_multi_tenant_isolation",
+  "backend/app/tests/test_rules.py::test_password_hash",
+  "backend/app/tests/test_rules.py::test_patient_limit_free_plan_counts_inactive",
+  "backend/app/tests/test_rules.py::test_pro_plan_removes_limit"
+]

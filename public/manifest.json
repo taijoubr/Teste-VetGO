@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "Vetgo - Sistema de Gestão Veterinária",
+  "short_name": "Vetgo",
+  "description": "Veterinária onde você precisa. Plataforma SaaS de gestão para médicos-veterinários autônomos e atendimentos volantes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#047857",
+  "background_color": "#f8fafc",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
