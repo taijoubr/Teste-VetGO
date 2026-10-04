@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Lock, Mail, ArrowRight, CheckCircle2, Shield, KeyRound, Copy, X, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Lock, Mail, ArrowRight, CheckCircle2, KeyRound, X, AlertCircle, ArrowLeft } from 'lucide-react';
 import { api } from '../services/api';
 import { AppLogo } from '../components/AppLogo';
 import { Footer } from '../components/Footer';
@@ -15,7 +15,6 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Password recovery states
   const [isForgotOpen, setIsForgotOpen] = useState(false);
@@ -93,45 +92,6 @@ export const Login: React.FC = () => {
       setError(err.message || 'E-mail ou senha incorretos.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleQuickLogin = async (type: 'VET' | 'ADMIN') => {
-    setError(null);
-    setLoading(true);
-    try {
-      let targetEmail = '';
-      let targetPass = '';
-      if (type === 'VET') {
-        targetEmail = 'vetteste@gmail.com';
-        targetPass = 'Nikolas13';
-      } else {
-        targetEmail = 'ncodestechnologies@gmail.com';
-        targetPass = 'Taijou13!';
-      }
-
-      setEmail(targetEmail);
-      setPassword(targetPass);
-      const user = await login(targetEmail, targetPass);
-      if (user.role === 'ADMIN') {
-        navigate('/admin');
-      } else {
-        navigate('/');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Erro ao efetuar login.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFillOnly = (type: 'VET' | 'ADMIN') => {
-    if (type === 'VET') {
-      setEmail('vetteste@gmail.com');
-      setPassword('Nikolas13');
-    } else {
-      setEmail('ncodestechnologies@gmail.com');
-      setPassword('Taijou13!');
     }
   };
 
@@ -227,72 +187,6 @@ export const Login: React.FC = () => {
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
-
-            {/* Quick Demo Access shortcuts with explicit credentials visible */}
-            <div className="mt-5 pt-4 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block">
-                  Senhas de Teste & Acesso Rápido
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium">Toque para entrar</span>
-              </div>
-
-              <div className="space-y-2.5">
-                {/* Vet Teste */}
-                <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/70 transition text-left flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full bg-emerald-700 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                        V
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-emerald-950 leading-tight">Veterinário Teste (Atendimento Volante)</div>
-                        <div className="text-[10px] text-emerald-700 leading-tight">CRMV-SP 12345 • Dados Zerados (Teste Manual)</div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => handleQuickLogin('VET')}
-                      className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition shadow-2xs shrink-0 cursor-pointer"
-                    >
-                      Entrar →
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-1 pt-1.5 border-t border-emerald-200/80 text-[11px] text-emerald-900 font-mono">
-                    <span>E-mail: <strong className="font-semibold select-all">vetteste@gmail.com</strong></span>
-                    <span>Senha: <strong className="font-semibold bg-emerald-100 px-1.5 py-0.5 rounded select-all">Nikolas13</strong></span>
-                  </div>
-                </div>
-
-                {/* Admin NCodes Technologies */}
-                <div className="p-3 rounded-xl border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 transition text-left flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full bg-blue-700 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                        <Shield className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-blue-950 leading-tight">Administrador do Sistema (Programador)</div>
-                        <div className="text-[10px] text-blue-700 leading-tight">NCodes Technologies • Controle Interno & Backoffice</div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => handleQuickLogin('ADMIN')}
-                      className="px-3 py-1.5 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition shadow-2xs shrink-0 cursor-pointer"
-                    >
-                      Entrar →
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-1 pt-1.5 border-t border-blue-200/80 text-[11px] text-blue-900 font-mono">
-                    <span>E-mail: <strong className="font-semibold select-all">ncodestechnologies@gmail.com</strong></span>
-                    <span>Senha: <strong className="font-semibold bg-blue-100 px-1.5 py-0.5 rounded select-all">Taijou13!</strong></span>
-                  </div>
-                </div>
-              </div>
-            </div>
 
             <div className="mt-4 text-center text-xs text-slate-500">
               Ainda não tem conta no Vetgo?{' '}

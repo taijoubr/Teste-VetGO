@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { AlertCircle, CheckCircle2, X, Sparkles, User as UserIcon } from 'lucide-react';
+import { AlertCircle, X, Mail } from 'lucide-react';
 
 interface GoogleSignInButtonProps {
   mode?: 'login' | 'register';
@@ -33,14 +33,14 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
   const { loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [showPickerModal, setShowPickerModal] = useState(false);
-  const [customEmail, setCustomEmail] = useState('');
-  const [customName, setCustomName] = useState('');
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState('');
+  const [googleName, setGoogleName] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
-  // Initialize official Google Identity Services if client ID is set
+  // Inicializa a biblioteca nativa do Google Identity Services se o Client ID estiver definido
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).google?.accounts?.id && googleClientId) {
       try {
@@ -48,17 +48,17 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
           client_id: googleClientId,
           callback: async (response: any) => {
             if (response.credential) {
-              await handleExecuteGoogleAuth({ credential: response.credential });
+              await handleExecuteAuth({ credential: response.credential });
             }
           },
         });
       } catch (e) {
-        console.warn('Google Identity Services init error:', e);
+        console.warn('Google Identity Services init:', e);
       }
     }
   }, [googleClientId]);
 
-  const handleExecuteGoogleAuth = async (data: {
+  const handleExecuteAuth = async (data: {
     email?: string;
     name?: string;
     first_name?: string;
@@ -78,14 +78,14 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
         credential: data.credential,
       });
 
-      setShowPickerModal(false);
+      setShowPromptModal(false);
       if (res.user.role === 'ADMIN') {
         navigate('/admin');
       } else {
         navigate('/');
       }
     } catch (err: any) {
-      const msg = err.message || 'Erro ao conectar com a conta Google.';
+      const msg = err.message || 'Erro ao autenticar com a conta Google.';
       setErrorMsg(msg);
       if (onError) onError(msg);
     } finally {
@@ -94,23 +94,31 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
   };
 
   const handleClick = () => {
-    // If official Google Client ID is configured and GIS is loaded, prompt Google One-Tap/Popup
+    // Se o Client ID oficial do Google estiver configurado nas variáveis de ambiente, aciona o popup nativo do Google
     if (typeof window !== 'undefined' && (window as any).google?.accounts?.id && googleClientId) {
       try {
         (window as any).google.accounts.id.prompt((notification: any) => {
           if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            // Fallback to picker modal if prompt was dismissed or blocked
-            setShowPickerModal(true);
+            setShowPromptModal(true);
           }
         });
         return;
       } catch (e) {
-        console.warn('GIS prompt error, opening account selector:', e);
+        console.warn('GIS prompt error:', e);
       }
     }
 
-    // Default: Open the clean Google Account Selector dialog
-    setShowPickerModal(true);
+    // Caso o Client ID ainda não tenha sido adicionado no Google Console, abre modal limpo para informar o e-mail Google
+    setShowPromptModal(true);
+  };
+
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!googleEmail.trim()) return;
+    handleExecuteAuth({
+      email: googleEmail.trim(),
+      name: googleName.trim() || undefined,
+    });
   };
 
   return (
@@ -126,13 +134,13 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
         <span>{loading ? 'Conectando ao Google...' : 'Continuar com o Google'}</span>
       </button>
 
-      {/* DIÁLOGO OFICIAL DE CONEXÃO COM CONTA GOOGLE */}
-      {showPickerModal && (
+      {/* MODAL DE ENTRADA COM CONTA GOOGLE (SEM CONTAS DE TESTE FALSAS) */}
+      {showPromptModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-200 relative space-y-4">
             <button
               type="button"
-              onClick={() => setShowPickerModal(false)}
+              onClick={() => setShowPromptModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -143,10 +151,10 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
                 <GoogleLogoSvg className="w-6 h-6" />
               </div>
               <h3 className="text-base font-bold text-slate-900 pt-1">
-                Fazer login com o Google
+                Entrar com Conta Google
               </h3>
               <p className="text-xs text-slate-500">
-                Escolha uma conta para continuar no <strong>Vetgo</strong>
+                Informe o seu e-mail do Google para acessar ou criar sua conta no <strong>Vetgo</strong>
               </p>
             </div>
 
@@ -157,148 +165,51 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
               </div>
             )}
 
-            {/* Contas sugeridas pré-carregadas para acesso com 1 clique */}
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() =>
-                  handleExecuteGoogleAuth({
-                    email: 'p.nikolas3@gmail.com',
-                    name: 'Nikolas Silva',
-                    first_name: 'Nikolas',
-                    last_name: 'Silva',
-                  })
-                }
-                className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition group cursor-pointer text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm shadow-2xs">
-                    N
+            <form onSubmit={handleManualSubmit} className="space-y-3 pt-1">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Seu E-mail do Google (Gmail) *
+                </label>
+                <div className="relative rounded-lg shadow-2xs">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Mail className="w-4 h-4" />
                   </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-950">
-                      Nikolas Veterinário
-                    </div>
-                    <div className="text-[11px] text-slate-500 font-mono">
-                      p.nikolas3@gmail.com
-                    </div>
-                  </div>
-                </div>
-                <div className="text-[11px] font-semibold text-emerald-700 opacity-0 group-hover:opacity-100 transition">
-                  Acessar →
-                </div>
-              </button>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() =>
-                  handleExecuteGoogleAuth({
-                    email: 'vetteste@gmail.com',
-                    name: 'Veterinário Teste',
-                    first_name: 'Veterinário',
-                    last_name: 'Teste',
-                  })
-                }
-                className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition group cursor-pointer text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-2xs">
-                    V
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-950">
-                      Veterinário Teste
-                    </div>
-                    <div className="text-[11px] text-slate-500 font-mono">
-                      vetteste@gmail.com
-                    </div>
-                  </div>
-                </div>
-                <div className="text-[11px] font-semibold text-emerald-700 opacity-0 group-hover:opacity-100 transition">
-                  Acessar →
-                </div>
-              </button>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() =>
-                  handleExecuteGoogleAuth({
-                    email: 'ncodestechnologies@gmail.com',
-                    name: 'Programador NCodes',
-                    first_name: 'Programador',
-                    last_name: 'NCodes Technologies',
-                  })
-                }
-                className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 transition group cursor-pointer text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-2xs">
-                    P
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900 group-hover:text-blue-950">
-                      NCodes Technologies
-                    </div>
-                    <div className="text-[11px] text-slate-500 font-mono">
-                      ncodestechnologies@gmail.com
-                    </div>
-                  </div>
-                </div>
-                <div className="text-[11px] font-semibold text-blue-700 opacity-0 group-hover:opacity-100 transition">
-                  Acessar →
-                </div>
-              </button>
-            </div>
-
-            {/* Opção para entrar com qualquer outra conta Google */}
-            <div className="pt-2 border-t border-slate-100">
-              <details className="group">
-                <summary className="text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer list-none flex items-center justify-between py-1">
-                  <span>Usar outra conta Google</span>
-                  <span className="text-slate-400 group-open:rotate-180 transition">▾</span>
-                </summary>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!customEmail.trim()) return;
-                    handleExecuteGoogleAuth({
-                      email: customEmail.trim(),
-                      name: customName.trim() || undefined,
-                    });
-                  }}
-                  className="space-y-2.5 pt-2"
-                >
                   <input
                     type="email"
                     required
-                    value={customEmail}
-                    onChange={(e) => setCustomEmail(e.target.value)}
-                    placeholder="seuemail@gmail.com"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none"
+                    autoFocus
+                    value={googleEmail}
+                    onChange={(e) => setGoogleEmail(e.target.value)}
+                    placeholder="seu.email@gmail.com"
+                    className="block w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none transition"
                   />
-                  <input
-                    type="text"
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder="Seu nome completo (opcional)"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-2 px-3 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition shadow-2xs cursor-pointer"
-                  >
-                    {loading ? 'Criando / Conectando...' : 'Conectar com esta conta →'}
-                  </button>
-                </form>
-              </details>
-            </div>
+                </div>
+              </div>
 
-            <div className="text-[10px] text-slate-400 text-center leading-relaxed">
-              O Vetgo utilizará apenas seu nome e e-mail Google para identificar seu cadastro com segurança.
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Seu Nome Completo (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={googleName}
+                  onChange={(e) => setGoogleName(e.target.value)}
+                  placeholder="Ex: Dr. Nikolas Silva"
+                  className="block w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none transition"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 shadow-2xs disabled:opacity-50 transition cursor-pointer"
+              >
+                {loading ? 'Validando conta Google...' : 'Continuar com esta Conta →'}
+              </button>
+            </form>
+
+            <div className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-[11px] text-slate-500 leading-relaxed">
+              💡 <strong>Dica para Produção:</strong> Ao cadastrar seu <code>VITE_GOOGLE_CLIENT_ID</code> no Google Cloud Console, a janela nativa do Google com seleção automática de contas do navegador abrirá diretamente ao clicar.
             </div>
           </div>
         </div>
