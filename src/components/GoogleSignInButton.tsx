@@ -119,24 +119,65 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
   };
 
   const handleClick = () => {
-    const inIframe = typeof window !== 'undefined' && window.self !== window.top;
-    const gsi = (window as any).google?.accounts?.id;
+    setErrorMsg(null);
+    const google = (typeof window !== 'undefined' ? (window as any).google : null);
 
-    // Se o Client ID oficial do Google estiver configurado e não estiver restrito por iframe, tenta o One Tap nativo
-    if (gsi && activeClientId && !inIframe) {
+    // Aciona a janela oficial do Google (popup de seleção de contas) usando Google OAuth 2.0
+    if (google?.accounts?.oauth2 && activeClientId) {
       try {
-        gsi.prompt((notification: any) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            setShowPromptModal(true);
-          }
+        setLoading(true);
+        const tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: activeClientId,
+          scope: 'email profile openid',
+          prompt: 'select_account',
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse.error) {
+              setLoading(false);
+              if (tokenResponse.error !== 'popup_closed_by_user') {
+                setErrorMsg('Erro ao autenticar com o Google: ' + tokenResponse.error);
+                if (onError) onError('Erro ao autenticar com o Google: ' + tokenResponse.error);
+              }
+              return;
+            }
+
+            try {
+              // Obtém os dados oficiais do perfil autenticado pelo Google
+              const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: {
+                  Authorization: `Bearer ${tokenResponse.access_token}`,
+                },
+              });
+
+              if (!profileRes.ok) {
+                throw new Error('Falha ao obter perfil do Google.');
+              }
+
+              const profile = await profileRes.json();
+              await handleExecuteAuth({
+                email: profile.email,
+                name: profile.name,
+                first_name: profile.given_name,
+                last_name: profile.family_name,
+                picture: profile.picture,
+              });
+            } catch (err: any) {
+              setLoading(false);
+              const msg = err.message || 'Falha ao processar login Google.';
+              setErrorMsg(msg);
+              if (onError) onError(msg);
+            }
+          },
         });
+
+        tokenClient.requestAccessToken();
         return;
-      } catch (e) {
-        console.warn('GIS prompt error:', e);
+      } catch (e: any) {
+        console.warn('Erro ao acionar OAuth Google:', e);
+        setLoading(false);
       }
     }
 
-    // Abre o modal limpo para informar o e-mail Google
+    // Fallback caso a API do Google esteja offline ou bloqueada
     setShowPromptModal(true);
   };
 
