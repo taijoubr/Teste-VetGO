@@ -157,3 +157,50 @@ def send_test_smtp_email(payload: dict, admin: User = Depends(get_current_admin)
         return {"success": True, "message": f"E-mail de teste enviado com sucesso para {to_email}!"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Falha ao enviar e-mail de teste: {str(e)}")
+
+# GOOGLE AUTHENTICATION / SIGN-IN SETTINGS
+GOOGLE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../../../google_auth_config.json")
+
+def load_google_config() -> dict:
+    env_client_id = os.environ.get("VITE_GOOGLE_CLIENT_ID", "")
+    if os.path.exists(GOOGLE_CONFIG_FILE):
+        try:
+            with open(GOOGLE_CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return {"client_id": data.get("client_id") or env_client_id}
+        except Exception:
+            pass
+    return {"client_id": env_client_id}
+
+def save_google_config(cfg: dict):
+    try:
+        with open(GOOGLE_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print("[GOOGLE CONFIG SAVE ERROR]:", e)
+
+@router.get("/public")
+def get_public_settings():
+    google_cfg = load_google_config()
+    return {
+        "google_client_id": google_cfg.get("client_id", "")
+    }
+
+@router.get("/google")
+def get_google_settings(admin: User = Depends(get_current_admin)):
+    cfg = load_google_config()
+    cid = cfg.get("client_id", "")
+    return {
+        "client_id": cid,
+        "is_configured": bool(cid and ".apps.googleusercontent.com" in cid)
+    }
+
+@router.post("/google")
+def update_google_settings(data: dict, admin: User = Depends(get_current_admin)):
+    cid = str(data.get("client_id", "")).strip()
+    save_google_config({"client_id": cid})
+    return {
+        "message": "Configurações do Google salvas com sucesso!",
+        "client_id": cid,
+        "is_configured": bool(cid and ".apps.googleusercontent.com" in cid)
+    }
