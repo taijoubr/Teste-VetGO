@@ -2013,6 +2013,39 @@ app.post('/api/v1/settings/smtp/test', requireAdmin, async (req, res) => {
 });
 
 // -------------------------------------------------------------
+// GOOGLE AUTHENTICATION / OAUTH SETTINGS
+// -------------------------------------------------------------
+const DEFAULT_GOOGLE_CLIENT_ID = '916489101501-qc2u92j7nhj0ou9j5et1frfu912eve3k.apps.googleusercontent.com';
+
+app.get('/api/v1/settings/public', (_req, res) => {
+  const cid = (db as any).google_client_id || process.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
+  res.json({
+    google_client_id: cid,
+  });
+});
+
+app.get('/api/v1/settings/google', requireAdmin, (_req, res) => {
+  const cid = (db as any).google_client_id || process.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
+  res.json({
+    client_id: cid,
+    is_configured: Boolean(cid && cid.includes('.apps.googleusercontent.com')),
+  });
+});
+
+app.post('/api/v1/settings/google', requireAdmin, (req, res) => {
+  const { client_id } = req.body;
+  const cleanId = String(client_id || '').trim();
+  (db as any).google_client_id = cleanId;
+  saveDB(db);
+  console.log(`[GOOGLE AUTH] Google Client ID atualizado pelo Administrador: ${cleanId ? 'Configurado' : 'Removido'}`);
+  res.json({
+    message: 'Configurações de autenticação Google salvas com sucesso!',
+    client_id: cleanId,
+    is_configured: Boolean(cleanId && cleanId.includes('.apps.googleusercontent.com')),
+  });
+});
+
+// -------------------------------------------------------------
 // ADMIN ENDPOINTS
 // -------------------------------------------------------------
 app.get('/api/v1/admin/stats', requireAdmin, (_req, res) => {

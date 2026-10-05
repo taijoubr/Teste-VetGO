@@ -38,14 +38,39 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
   const [googleName, setGoogleName] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const DEFAULT_GOOGLE_CLIENT_ID = '916489101501-qc2u92j7nhj0ou9j5et1frfu912eve3k.apps.googleusercontent.com';
 
-  // Inicializa a biblioteca nativa do Google Identity Services se o Client ID estiver definido
+  const [activeClientId, setActiveClientId] = useState<string>(() => {
+    return import.meta.env.VITE_GOOGLE_CLIENT_ID || (typeof window !== 'undefined' ? localStorage.getItem('vetgo_google_client_id') || DEFAULT_GOOGLE_CLIENT_ID : DEFAULT_GOOGLE_CLIENT_ID);
+  });
+
+  // Carrega dinamicamente o Google Client ID configurado pelo Administrador
   useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).google?.accounts?.id && googleClientId) {
+    if (!activeClientId) {
+      import('../services/api').then(({ api }) => {
+        api.getPublicSettings().then((res) => {
+          if (res?.google_client_id) {
+            setActiveClientId(res.google_client_id);
+          }
+        }).catch(() => {});
+      });
+    }
+  }, [activeClientId]);
+
+  // Inicializa a biblioteca nativa do Google Identity Services de forma segura (sem erros de FedCM)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !activeClientId) return;
+
+    const inIframe = window.self !== window.top;
+    const gsi = (window as any).google?.accounts?.id;
+
+    if (gsi && !inIframe) {
       try {
-        (window as any).google.accounts.id.initialize({
-          client_id: googleClientId,
+        gsi.initialize({
+          client_id: activeClientId,
+          use_fedcm_for_prompt: false, // Desativa FedCM para evitar NotAllowedError em iframes e navegadores restritos
+          auto_select: false,
+          cancel_on_tap_outside: true,
           callback: async (response: any) => {
             if (response.credential) {
               await handleExecuteAuth({ credential: response.credential });
@@ -53,10 +78,10 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
           },
         });
       } catch (e) {
-        console.warn('Google Identity Services init:', e);
+        console.warn('Google Identity Services seguro:', e);
       }
     }
-  }, [googleClientId]);
+  }, [activeClientId]);
 
   const handleExecuteAuth = async (data: {
     email?: string;
@@ -94,10 +119,13 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
   };
 
   const handleClick = () => {
-    // Se o Client ID oficial do Google estiver configurado nas variáveis de ambiente, aciona o popup nativo do Google
-    if (typeof window !== 'undefined' && (window as any).google?.accounts?.id && googleClientId) {
+    const inIframe = typeof window !== 'undefined' && window.self !== window.top;
+    const gsi = (window as any).google?.accounts?.id;
+
+    // Se o Client ID oficial do Google estiver configurado e não estiver restrito por iframe, tenta o One Tap nativo
+    if (gsi && activeClientId && !inIframe) {
       try {
-        (window as any).google.accounts.id.prompt((notification: any) => {
+        gsi.prompt((notification: any) => {
           if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
             setShowPromptModal(true);
           }
@@ -108,7 +136,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
       }
     }
 
-    // Caso o Client ID ainda não tenha sido adicionado no Google Console, abre modal limpo para informar o e-mail Google
+    // Abre o modal limpo para informar o e-mail Google
     setShowPromptModal(true);
   };
 

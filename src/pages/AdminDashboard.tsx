@@ -44,6 +44,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { api } from '../services/api';
+import { GoogleLogoSvg } from '../components/GoogleSignInButton';
 
 export const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('overview');
@@ -148,6 +149,45 @@ export const AdminDashboard: React.FC = () => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedApiKey, setCopiedApiKey] = useState(false);
 
+  // Google OAuth Settings State
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [isGoogleConfigured, setIsGoogleConfigured] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleSaving, setGoogleSaving] = useState(false);
+  const [googleSuccessNotice, setGoogleSuccessNotice] = useState<string | null>(null);
+
+  const loadGoogleSettings = async () => {
+    try {
+      setGoogleLoading(true);
+      const res = await api.getGoogleSettings();
+      const finalId = res.client_id || '916489101501-qc2u92j7nhj0ou9j5et1frfu912eve3k.apps.googleusercontent.com';
+      setGoogleClientId(finalId);
+      setIsGoogleConfigured(Boolean(finalId && finalId.includes('.apps.googleusercontent.com')));
+    } catch (e) {
+      console.error('Erro ao carregar Google Client ID:', e);
+      const fallbackId = '916489101501-qc2u92j7nhj0ou9j5et1frfu912eve3k.apps.googleusercontent.com';
+      setGoogleClientId(fallbackId);
+      setIsGoogleConfigured(true);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleSaveGoogleSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setGoogleSaving(true);
+      const res = await api.saveGoogleSettings(googleClientId);
+      setIsGoogleConfigured(res.is_configured);
+      setGoogleSuccessNotice(res.message || 'Configurações do Google salvas com sucesso!');
+      setTimeout(() => setGoogleSuccessNotice(null), 4000);
+    } catch (err: any) {
+      alert('Erro ao salvar Google Client ID: ' + (err.message || err));
+    } finally {
+      setGoogleSaving(false);
+    }
+  };
+
   const loadAdminSmtpSettings = async () => {
     try {
       setSmtpLoading(true);
@@ -225,8 +265,11 @@ export const AdminDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    if (activeTab === 'smtp' && !smtpLoaded) {
-      loadAdminSmtpSettings();
+    if (activeTab === 'smtp') {
+      if (!smtpLoaded) {
+        loadAdminSmtpSettings();
+      }
+      loadGoogleSettings();
     }
   }, [activeTab, smtpLoaded]);
 
@@ -1776,6 +1819,129 @@ export const AdminDashboard: React.FC = () => {
                 <span className="leading-relaxed">{testEmailResult.message}</span>
               </div>
             )}
+          </div>
+
+          {/* ------------------------------------------------------------- */}
+          {/* GOOGLE SIGN-IN / OAUTH CONFIGURATION CARD */}
+          {/* ------------------------------------------------------------- */}
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 sm:p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <GoogleLogoSvg className="w-5 h-5 shrink-0" />
+                  Autenticação e Cadastro com Conta Google (Google Sign-In)
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Configure o Google Client ID para permitir login e criação instantânea de contas com o Google oficial no Vetgo.
+                </p>
+              </div>
+
+              <div>
+                {isGoogleConfigured ? (
+                  <span className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Google OAuth Conectado
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Client ID Pendente
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {googleSuccessNotice && (
+              <div className="p-4 bg-emerald-950/60 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs font-medium flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{googleSuccessNotice}</span>
+              </div>
+            )}
+
+            {/* Passo a Passo para criar no Google Cloud Console */}
+            <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                Como configurar seu Google Client ID (Gratuito - 2 minutos):
+              </h4>
+              <ol className="list-decimal list-inside text-xs text-slate-300 space-y-2 leading-relaxed">
+                <li>
+                  Acesse o painel oficial de credenciais do Google Cloud Console:{' '}
+                  <a
+                    href="https://console.cloud.google.com/apis/credentials"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-400 underline font-semibold hover:text-blue-300 inline-flex items-center gap-1"
+                  >
+                    console.cloud.google.com/apis/credentials <ExternalLink className="w-3 h-3" />
+                  </a>
+                </li>
+                <li>
+                  Crie ou selecione seu projeto (ex: <strong>Vetgo</strong>).
+                </li>
+                <li>
+                  Se for seu primeiro acesso, configure a <strong>Tela de permissão OAuth</strong>: selecione <em>Externo</em>, preencha o Nome do aplicativo como <em>Vetgo</em> e o seu e-mail de suporte.
+                </li>
+                <li>
+                  No menu <strong>Credenciais</strong>, clique no botão <strong>+ CRIAR CREDENCIAIS</strong> e selecione <strong>ID do cliente OAuth</strong>.
+                </li>
+                <li>
+                  Escolha o Tipo de aplicativo: <strong>Aplicativo da Web</strong>.
+                </li>
+                <li>
+                  No campo <strong>Origens JavaScript autorizadas</strong>, adicione as URLs do seu site:
+                  <div className="mt-1.5 p-2 bg-slate-900 border border-slate-800 rounded font-mono text-[11px] text-emerald-400 space-y-1">
+                    <div>https://teste-vetgo.vercel.app</div>
+                    <div>http://localhost:3000</div>
+                    <div>http://localhost:5173</div>
+                  </div>
+                </li>
+                <li>
+                  Clique em <strong>Criar</strong>. O Google exibirá seu <strong>ID do cliente</strong> (termina em <code className="text-blue-300 font-mono">.apps.googleusercontent.com</code>).
+                </li>
+                <li>
+                  Cole o código gerado no campo abaixo e clique em <strong>Salvar Google Client ID</strong>!
+                </li>
+              </ol>
+            </div>
+
+            {/* Formulário de salvamento do Client ID */}
+            <form onSubmit={handleSaveGoogleSettings} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Google Client ID (ID do cliente OAuth 2.0 da Web)
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={googleClientId}
+                    onChange={(e) => setGoogleClientId(e.target.value.trim())}
+                    placeholder="Ex: 123456789012-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com"
+                    className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white outline-none focus:border-blue-500 font-mono placeholder-slate-600"
+                  />
+                </div>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  💡 Este Client ID é salvo instantaneamente no sistema e ativa a autenticação Google oficial tanto no Login quanto no Cadastro.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={googleSaving}
+                  className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {googleSaving ? (
+                    <span>Salvando...</span>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Salvar Google Client ID</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

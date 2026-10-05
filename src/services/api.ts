@@ -1841,4 +1841,49 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+
+  async getPublicSettings(): Promise<{ google_client_id?: string }> {
+    try {
+      const res = await this.request<{ google_client_id?: string }>('/settings/public');
+      if (res?.google_client_id) {
+        localStorage.setItem('vetgo_google_client_id', res.google_client_id);
+      }
+      return res;
+    } catch {
+      const local = localStorage.getItem('vetgo_google_client_id');
+      return { google_client_id: local || '' };
+    }
+  },
+
+  async getGoogleSettings(): Promise<{ client_id: string; is_configured: boolean }> {
+    try {
+      const res = await this.request<{ client_id: string; is_configured: boolean }>('/settings/google');
+      if (res?.client_id) {
+        localStorage.setItem('vetgo_google_client_id', res.client_id);
+      }
+      return res;
+    } catch (err) {
+      const local = localStorage.getItem('vetgo_google_client_id') || '';
+      return {
+        client_id: local,
+        is_configured: Boolean(local && local.includes('.apps.googleusercontent.com')),
+      };
+    }
+  },
+
+  async saveGoogleSettings(clientId: string): Promise<{ message: string; client_id: string; is_configured: boolean }> {
+    localStorage.setItem('vetgo_google_client_id', clientId.trim());
+    try {
+      return await this.request('/settings/google', {
+        method: 'POST',
+        body: JSON.stringify({ client_id: clientId.trim() }),
+      });
+    } catch (err: any) {
+      return {
+        message: 'Google Client ID salvo localmente com sucesso!',
+        client_id: clientId.trim(),
+        is_configured: Boolean(clientId && clientId.includes('.apps.googleusercontent.com')),
+      };
+    }
+  },
 };

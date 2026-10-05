@@ -1,0 +1,12 @@
+{
+  "provider": "gmail",
+  "user": "vetgoveterinarios@gmail.com",
+  "pass": "zwhuxcxyfqtewqrb",
+  "from_name": "Vetgo",
+  "from_email": "vetgoveterinarios@gmail.com",
+  "host": "smtp.gmail.com",
+  "port": 465,
+  "secure": true,
+  "is_active": true,
+  "is_configured": true
+}

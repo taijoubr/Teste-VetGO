@@ -159,18 +159,23 @@ def send_test_smtp_email(payload: dict, admin: User = Depends(get_current_admin)
         raise HTTPException(status_code=400, detail=f"Falha ao enviar e-mail de teste: {str(e)}")
 
 # GOOGLE AUTHENTICATION / SIGN-IN SETTINGS
+DEFAULT_CLIENT_ID = "916489101501-qc2u92j7nhj0ou9j5et1frfu912eve3k.apps.googleusercontent.com"
 GOOGLE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../../../google_auth_config.json")
+GOOGLE_CONFIG_FILE_ALT = os.path.join(os.path.dirname(__file__), "../../../../google_auth_config.json")
 
 def load_google_config() -> dict:
     env_client_id = os.environ.get("VITE_GOOGLE_CLIENT_ID", "")
-    if os.path.exists(GOOGLE_CONFIG_FILE):
-        try:
-            with open(GOOGLE_CONFIG_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return {"client_id": data.get("client_id") or env_client_id}
-        except Exception:
-            pass
-    return {"client_id": env_client_id}
+    for path in [GOOGLE_CONFIG_FILE, GOOGLE_CONFIG_FILE_ALT]:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    cid = data.get("client_id")
+                    if cid:
+                        return {"client_id": cid}
+            except Exception:
+                pass
+    return {"client_id": env_client_id or DEFAULT_CLIENT_ID}
 
 def save_google_config(cfg: dict):
     try:
