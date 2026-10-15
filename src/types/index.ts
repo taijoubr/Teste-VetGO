@@ -703,3 +703,32 @@ export interface GlobalAnnouncement {
   created_at: string;
   created_by: string;
 }
+
+export type SupplierCategory = 
+  | 'DISTRIBUIDORA'
+  | 'LABORATORIO'
+  | 'MANIPULACAO'
+  | 'INSUMOS'
+  | 'EQUIPAMENTOS'
+  | 'OUTROS';
+
+export interface Supplier {
+  id: number;
+  owner_id: number;
+  name: string;
+  category: SupplierCategory;
+  representative_name?: string;
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
+  website?: string;
+  city?: string;
+  state?: string;
+  pix_key?: string;
+  delivery_time?: string;
+  minimum_order?: number;
+  notes?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}

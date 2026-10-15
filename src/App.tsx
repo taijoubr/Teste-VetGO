@@ -21,9 +21,11 @@ import { ClinicsPage } from './pages/ClinicsPage';
 import { SurgeonsPage } from './pages/SurgeonsPage';
 import { AnesthesiaPage } from './pages/AnesthesiaPage';
 import { ServicesPage } from './pages/ServicesPage';
+import { SuppliersPage } from './pages/SuppliersPage';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PublicPetCardPage } from './pages/PublicPetCardPage';
 import { Footer } from './components/Footer';
+import { CompleteProfileModal } from './components/CompleteProfileModal';
 
 // Protected layout wrapper
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -57,6 +59,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <Navbar onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
         <main className="flex-1">{children}</main>
         <Footer />
+        <CompleteProfileModal />
       </div>
     </div>
   );
@@ -234,17 +237,7 @@ export function App() {
             path="/fornecedores"
             element={
               <AppLayout>
-                <ModulePlaceholder
-                  moduleName="Fornecedores & Distribuidoras"
-                  category="Fornecedores"
-                  description="Distribuidores farmacêuticos, laboratórios de apoio e fornecedores de insumos"
-                  features={[
-                    'Cadastro de distribuidores parceiros com contatos de representantes',
-                    'Laboratórios conveniados para envio de amostras biológicas coletadas',
-                    'Histórico de cotações e compras de vacinas e medicamentos',
-                    'Avisos de reposição integrados à maleta volante'
-                  ]}
-                />
+                <SuppliersPage />
               </AppLayout>
             }
           />

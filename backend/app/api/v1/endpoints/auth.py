@@ -337,12 +337,20 @@ def google_auth(payload: dict, db: Session = Depends(get_db)):
         name_parts = (name or "").strip().split(" ")
         f_name = first_name or (name_parts[0] if name_parts else "Veterinário(a)")
         l_name = last_name or (" ".join(name_parts[1:]) if len(name_parts) > 1 else "")
+        crmv = payload.get("crmv")
+        crmv_uf = payload.get("crmv_uf") or "SP"
+        phone = payload.get("phone") or payload.get("whatsapp")
+        clinic_name = payload.get("clinic_name")
         
         user = User(
             email=clean_email,
             hashed_password=get_password_hash("GoogleAuth@" + clean_email),
             first_name=f_name,
             last_name=l_name,
+            crmv=crmv,
+            crmv_uf=crmv_uf,
+            phone=phone,
+            clinic_name=clinic_name,
             role=UserRole.ADMIN if clean_email == "ncodestechnologies@gmail.com" else UserRole.VET,
             plan=SubscriptionPlan.FREE,
             subscription_status=SubscriptionStatus.ACTIVE,
@@ -358,6 +366,14 @@ def google_auth(payload: dict, db: Session = Depends(get_db)):
         user.is_active = True
         if picture and not user.logo_url:
             user.logo_url = picture
+        if payload.get("crmv") and not user.crmv:
+            user.crmv = payload.get("crmv")
+        if payload.get("crmv_uf") and not user.crmv_uf:
+            user.crmv_uf = payload.get("crmv_uf")
+        if payload.get("phone") and not user.phone:
+            user.phone = payload.get("phone")
+        if payload.get("clinic_name") and not user.clinic_name:
+            user.clinic_name = payload.get("clinic_name")
         db.commit()
         db.refresh(user)
 

@@ -23,7 +23,8 @@ import {
   InventoryBatchEntry,
   StockLocation,
   DocumentRecord,
-  ClinicalServiceItem
+  ClinicalServiceItem,
+  Supplier
 } from '../types';
 import { adminService } from './adminService';
 import { offlineStorage } from './offlineStorage';
@@ -227,6 +228,11 @@ export const api = {
     last_name?: string;
     picture?: string;
     credential?: string;
+    crmv?: string;
+    crmv_uf?: string;
+    phone?: string;
+    whatsapp?: string;
+    clinic_name?: string;
   }): Promise<{ user: User; token: string; is_new?: boolean }> {
     const res = await fetch(`${API_BASE_URL}/auth/google`, {
       method: 'POST',
@@ -1886,4 +1892,163 @@ export const api = {
       };
     }
   },
+
+  // -------------------------------------------------------------
+  // SUPPLIERS & PARTNERS (FORNECEDORES E LABORATÓRIOS)
+  // -------------------------------------------------------------
+  async getSuppliers(): Promise<Supplier[]> {
+    try {
+      const data = await this.request<Supplier[]>('/suppliers');
+      if (Array.isArray(data)) {
+        localStorage.setItem('vetgo_suppliers', JSON.stringify(data));
+        return data;
+      }
+    } catch (e) {
+      console.warn('Fallback to local suppliers:', e);
+    }
+
+    const local = localStorage.getItem('vetgo_suppliers');
+    if (local) {
+      try {
+        return JSON.parse(local);
+      } catch {}
+    }
+
+    // Dados iniciais de demonstração para o veterinário
+    const initialSuppliers: Supplier[] = [
+      {
+        id: 1,
+        owner_id: 1,
+        name: 'Distribuidora VetPrime Farmacêutica',
+        category: 'DISTRIBUIDORA',
+        representative_name: 'Carlos Henrique',
+        phone: '(11) 3456-7890',
+        whatsapp: '11987654321',
+        email: 'pedidos@vetprime.com.br',
+        city: 'São Paulo',
+        state: 'SP',
+        pix_key: 'financeiro@vetprime.com.br',
+        delivery_time: '24 a 48 horas',
+        minimum_order: 350,
+        notes: 'Frete grátis para pedidos acima de R$ 500. Condições de 28 dias no boleto.',
+        is_active: true,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 2,
+        owner_id: 1,
+        name: 'Laboratório VetPat - Diagnósticos & Biópsias',
+        category: 'LABORATORIO',
+        representative_name: 'Dra. Fernanda (Patologista)',
+        phone: '(11) 2345-6789',
+        whatsapp: '11998877665',
+        email: 'laudos@vetpatlab.com.br',
+        city: 'São Paulo',
+        state: 'SP',
+        pix_key: 'pix@vetpatlab.com.br',
+        delivery_time: 'Hemograma em 4h / Citologia em 24h',
+        notes: 'Motoboy retira amostras em domicílio até às 17h. Enviar sangue em tubo EDTA roxo refrigerado.',
+        is_active: true,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 3,
+        owner_id: 1,
+        name: 'DrogaVet - Farmácia de Manipulação Veterinária',
+        category: 'MANIPULACAO',
+        representative_name: 'Atendimento Farmacêutico',
+        phone: '(11) 4004-1234',
+        whatsapp: '11977665544',
+        email: 'receitas@drogavet.com.br',
+        city: 'São Paulo',
+        state: 'SP',
+        pix_key: 'financeiro@drogavet.com.br',
+        delivery_time: '24 a 48 horas',
+        notes: 'Manipulação de biscoitos medicamentosos palatáveis, pastas orais e colírios especiais. Desconto de parceiro para clientes indicados.',
+        is_active: true,
+        created_at: new Date().toISOString()
+      }
+    ];
+
+    localStorage.setItem('vetgo_suppliers', JSON.stringify(initialSuppliers));
+    return initialSuppliers;
+  },
+
+  async createSupplier(data: Partial<Supplier>): Promise<Supplier> {
+    const localSuppliers = await this.getSuppliers();
+    const newSupplier: Supplier = {
+      id: Date.now(),
+      owner_id: 1,
+      name: data.name || '',
+      category: data.category || 'DISTRIBUIDORA',
+      representative_name: data.representative_name || '',
+      phone: data.phone || '',
+      whatsapp: data.whatsapp || '',
+      email: data.email || '',
+      website: data.website || '',
+      city: data.city || '',
+      state: data.state || 'SP',
+      pix_key: data.pix_key || '',
+      delivery_time: data.delivery_time || '',
+      minimum_order: data.minimum_order || undefined,
+      notes: data.notes || '',
+      is_active: data.is_active !== false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...data
+    };
+
+    try {
+      const serverRes = await this.request<Supplier>('/suppliers', {
+        method: 'POST',
+        body: JSON.stringify(newSupplier)
+      });
+      if (serverRes) {
+        localSuppliers.unshift(serverRes);
+        localStorage.setItem('vetgo_suppliers', JSON.stringify(localSuppliers));
+        return serverRes;
+      }
+    } catch {}
+
+    localSuppliers.unshift(newSupplier);
+    localStorage.setItem('vetgo_suppliers', JSON.stringify(localSuppliers));
+    return newSupplier;
+  },
+
+  async updateSupplier(id: number, updates: Partial<Supplier>): Promise<Supplier> {
+    const list = await this.getSuppliers();
+    const idx = list.findIndex(s => s.id === id);
+    const updated: Supplier = {
+      ...(idx !== -1 ? list[idx] : ({} as Supplier)),
+      ...updates,
+      id,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      await this.request<Supplier>(`/suppliers/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+    } catch {}
+
+    if (idx !== -1) {
+      list[idx] = updated;
+    } else {
+      list.push(updated);
+    }
+    localStorage.setItem('vetgo_suppliers', JSON.stringify(list));
+    return updated;
+  },
+
+  async deleteSupplier(id: number): Promise<{ message: string }> {
+    try {
+      await this.request(`/suppliers/${id}`, { method: 'DELETE' });
+    } catch {}
+
+    const list = await this.getSuppliers();
+    const filtered = list.filter(s => s.id !== id);
+    localStorage.setItem('vetgo_suppliers', JSON.stringify(filtered));
+    return { message: 'Fornecedor excluído com sucesso.' };
+  }
 };

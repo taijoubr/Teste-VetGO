@@ -14,11 +14,11 @@ import {
 } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
 import { Footer } from '../components/Footer';
-import { GoogleSignInButton, GoogleOrDivider } from '../components/GoogleSignInButton';
+import { GoogleSignInButton, GoogleOrDivider, GoogleLogoSvg } from '../components/GoogleSignInButton';
 
 export const Register: React.FC = () => {
   const navigate = useNavigate();
-  const { register, verifyEmail, isAuthenticated, isAdmin, user } = useAuth();
+  const { register, verifyEmail, loginWithGoogle, isAuthenticated, isAdmin, user } = useAuth();
 
   const [step, setStep] = useState<'form' | 'verify'>('form');
   const [formData, setFormData] = useState({
@@ -31,6 +31,14 @@ export const Register: React.FC = () => {
     phone: '',
     clinic_name: ''
   });
+  const [googleData, setGoogleData] = useState<{
+    email: string;
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    picture?: string;
+    credential?: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +50,25 @@ export const Register: React.FC = () => {
   const [verifySuccess, setVerifySuccess] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+
+  const handleGoogleData = (data: {
+    email: string;
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    picture?: string;
+    credential?: string;
+  }) => {
+    setGoogleData(data);
+    const nameParts = (data.name || '').trim().split(' ');
+    setFormData((prev) => ({
+      ...prev,
+      email: data.email,
+      first_name: data.first_name || nameParts[0] || prev.first_name,
+      last_name: data.last_name || nameParts.slice(1).join(' ') || prev.last_name,
+    }));
+    setError(null);
+  };
 
   // If already authenticated and already verified, redirect
   if (isAuthenticated && user?.email_verified !== false && step === 'form') {
@@ -64,6 +91,40 @@ export const Register: React.FC = () => {
     e.preventDefault();
     setError(null);
     setLoading(true);
+
+    // Se estiver no fluxo do Google, conclui o cadastro com os dados profissionais
+    if (googleData) {
+      if (!formData.crmv.trim()) {
+        setError('Por favor, informe seu número de CRMV para concluir o cadastro.');
+        setLoading(false);
+        return;
+      }
+      try {
+        const res = await loginWithGoogle({
+          email: googleData.email,
+          name: googleData.name,
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
+          picture: googleData.picture,
+          credential: googleData.credential,
+          crmv: formData.crmv.trim(),
+          crmv_uf: formData.crmv_uf,
+          phone: formData.phone.trim(),
+          clinic_name: formData.clinic_name.trim(),
+        });
+
+        if (res.user.role === 'ADMIN') {
+          navigate('/admin');
+        } else {
+          navigate('/');
+        }
+        return;
+      } catch (err: any) {
+        setError(err.message || 'Erro ao concluir cadastro com o Google.');
+        setLoading(false);
+        return;
+      }
+    }
 
     try {
       const res = await register(formData);
@@ -158,11 +219,43 @@ export const Register: React.FC = () => {
 
           {step === 'form' ? (
             <>
-              {/* BOTÃO CADASTRO COM GOOGLE */}
-              <div className="mb-4">
-                <GoogleSignInButton mode="register" onError={(err) => setError(err)} />
-                <GoogleOrDivider />
-              </div>
+              {/* BOTÃO CADASTRO COM GOOGLE OU CARD DE CONEXÃO ATIVA */}
+              {googleData ? (
+                <div className="mb-5 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in">
+                  <div className="flex items-center gap-2.5">
+                    {googleData.picture ? (
+                      <img src={googleData.picture} alt="Google" className="w-9 h-9 rounded-full border border-emerald-300 shadow-2xs" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-white border border-emerald-200 flex items-center justify-center">
+                        <GoogleLogoSvg className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Autenticado com a Conta Google</span>
+                      </div>
+                      <p className="text-[11px] text-emerald-700 font-mono">{googleData.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGoogleData(null)}
+                    className="text-[11px] text-emerald-800 hover:text-emerald-950 font-semibold underline cursor-pointer"
+                  >
+                    Trocar
+                  </button>
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <GoogleSignInButton
+                    mode="register"
+                    onGoogleData={handleGoogleData}
+                    onError={(err) => setError(err)}
+                  />
+                  <GoogleOrDivider />
+                </div>
+              )}
 
               <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -200,21 +293,28 @@ export const Register: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Número do CRMV
+                    Número do CRMV *
                   </label>
                   <input
                     type="text"
                     name="crmv"
+                    required
+                    autoFocus={!!googleData}
                     value={formData.crmv}
                     onChange={handleChange}
                     placeholder="Ex: 34892"
                     className="block w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none font-mono"
                   />
+                  {googleData && (
+                    <span className="text-[11px] text-emerald-700 mt-0.5 block font-medium">
+                      Obrigatório para emissão de receitas, laudos e termos com validade legal.
+                    </span>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    UF do CRMV
+                    UF do CRMV *
                   </label>
                   <select
                     name="crmv_uf"
@@ -261,35 +361,45 @@ export const Register: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    E-mail *
+                    E-mail {googleData ? '(Verificado pelo Google)' : '*'}
                   </label>
                   <input
                     type="email"
                     name="email"
                     required
+                    readOnly={!!googleData}
                     value={formData.email}
                     onChange={handleChange}
                     placeholder="seu.email@exemplo.com"
-                    className="block w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none"
+                    className={`block w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none ${
+                      googleData ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed' : 'border-slate-300'
+                    }`}
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Senha de acesso * (mínimo 6 caracteres)
-                </label>
-                <input
-                  type="password"
-                  name="password"
-                  required
-                  minLength={6}
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="••••••••"
-                  className="block w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none"
-                />
-              </div>
+              {!googleData ? (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Senha de acesso * (mínimo 6 caracteres)
+                  </label>
+                  <input
+                    type="password"
+                    name="password"
+                    required
+                    minLength={6}
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder="••••••••"
+                    className="block w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none"
+                  />
+                </div>
+              ) : (
+                <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-lg flex items-center gap-2 text-xs text-emerald-900">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Autenticação vinculada à sua Conta Google. Você não precisará de senha para acessar.</span>
+                </div>
+              )}
 
               {/* Free plan terms */}
               <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-lg flex items-start gap-2 text-xs text-emerald-900">
@@ -304,7 +414,7 @@ export const Register: React.FC = () => {
                 disabled={loading}
                 className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-xs text-sm font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 transition cursor-pointer"
               >
-                {loading ? 'Criando Conta...' : 'Concluir Cadastro Gratuito'}
+                {loading ? 'Salvando...' : (googleData ? 'Concluir Cadastro e Acessar o Vetgo' : 'Concluir Cadastro Gratuito')}
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>

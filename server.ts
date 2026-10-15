@@ -512,7 +512,7 @@ app.post('/api/v1/auth/register', async (req, res) => {
 });
 
 app.post('/api/v1/auth/google', (req, res) => {
-  let { email, name, first_name, last_name, picture, credential } = req.body;
+  let { email, name, first_name, last_name, picture, credential, crmv, crmv_uf, phone, whatsapp, clinic_name } = req.body;
 
   if (credential) {
     try {
@@ -543,6 +543,10 @@ app.post('/api/v1/auth/google', (req, res) => {
     if (picture && !user.logo_url) {
       user.logo_url = picture;
     }
+    if (crmv && !user.crmv) user.crmv = crmv;
+    if (crmv_uf && !user.crmv_uf) user.crmv_uf = crmv_uf;
+    if (phone && !user.phone) user.phone = phone;
+    if (clinic_name && !user.clinic_name) user.clinic_name = clinic_name;
     saveDB(db);
     const token = `token-${user.id}-${Date.now()}`;
     return res.json({
@@ -553,7 +557,7 @@ app.post('/api/v1/auth/google', (req, res) => {
     });
   }
 
-  // Criação automática de usuário via conta Google
+  // Criação de usuário via conta Google com dados profissionais
   const nameParts = (name || '').trim().split(' ');
   const fName = String(first_name || nameParts[0] || 'Veterinário(a)').trim();
   const lName = String(last_name || nameParts.slice(1).join(' ') || '').trim();
@@ -565,11 +569,11 @@ app.post('/api/v1/auth/google', (req, res) => {
     hashed_password: bcrypt.hashSync('GoogleAuth@' + Math.random().toString(36), 10),
     first_name: fName,
     last_name: lName,
-    phone: null,
-    whatsapp: null,
-    crmv: null,
-    crmv_uf: 'SP',
-    clinic_name: null,
+    phone: phone || whatsapp || null,
+    whatsapp: whatsapp || phone || null,
+    crmv: crmv || null,
+    crmv_uf: crmv_uf || 'SP',
+    clinic_name: clinic_name || null,
     logo_url: picture || null,
     role: cleanEmail === 'ncodestechnologies@gmail.com' ? 'ADMIN' : 'VET',
     is_active: true,
@@ -1806,6 +1810,146 @@ app.post('/api/v1/surgeons', requireAuth, (req, res) => {
   db.surgeons.unshift(newSurgeon);
   saveDB(db);
   res.status(201).json(newSurgeon);
+});
+
+// -------------------------------------------------------------
+// SUPPLIERS & PARTNERS ENDPOINTS (FORNECEDORES E LABORATÓRIOS)
+// -------------------------------------------------------------
+app.get('/api/v1/suppliers', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  if (!Array.isArray((db as any).suppliers)) (db as any).suppliers = [];
+  let list = (db as any).suppliers.filter((s: any) => s.owner_id === user.id);
+
+  if (list.length === 0) {
+    const defaultSuppliers = [
+      {
+        id: Date.now(),
+        owner_id: user.id,
+        name: 'Distribuidora VetPrime Farmacêutica & Hospitalar',
+        category: 'DISTRIBUIDORA',
+        representative_name: 'Carlos Henrique (Vendas Hospitalares)',
+        phone: '(11) 3456-7890',
+        whatsapp: '11987654321',
+        email: 'pedidos@vetprime.com.br',
+        city: 'São Paulo',
+        state: 'SP',
+        pix_key: 'financeiro@vetprime.com.br',
+        delivery_time: '24 a 48 horas',
+        minimum_order: 350,
+        notes: 'Frete grátis para pedidos acima de R$ 500. Condições de 28 dias no boleto. Linha completa de anestésicos e antibióticos.',
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: Date.now() + 1,
+        owner_id: user.id,
+        name: 'Laboratório VetPat - Diagnósticos & Biópsias',
+        category: 'LABORATORIO',
+        representative_name: 'Dra. Fernanda (Patologista Clínica)',
+        phone: '(11) 2345-6789',
+        whatsapp: '11998877665',
+        email: 'laudos@vetpatlab.com.br',
+        city: 'São Paulo',
+        state: 'SP',
+        pix_key: 'pix@vetpatlab.com.br',
+        delivery_time: 'Hemograma em 4h / Citologia em 24h',
+        notes: 'Motoboy retira amostras em domicílio ou clínicas até às 17h. Enviar sangue em tubo EDTA roxo refrigerado.',
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: Date.now() + 2,
+        owner_id: user.id,
+        name: 'DrogaVet - Farmácia de Manipulação Veterinária',
+        category: 'MANIPULACAO',
+        representative_name: 'Atendimento Farmacêutico',
+        phone: '(11) 4004-1234',
+        whatsapp: '11977665544',
+        email: 'receitas@drogavet.com.br',
+        city: 'São Paulo',
+        state: 'SP',
+        pix_key: 'financeiro@drogavet.com.br',
+        delivery_time: '24 a 48 horas',
+        minimum_order: 0,
+        notes: 'Manipulação de biscoitos medicamentosos palatáveis, pastas orais e colírios especiais. Desconto de parceiro.',
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: Date.now() + 3,
+        owner_id: user.id,
+        name: 'Cirúrgica BioVet Insumos & Descartáveis',
+        category: 'INSUMOS',
+        representative_name: 'Mariana Costa',
+        phone: '(11) 3890-1122',
+        whatsapp: '11981123344',
+        email: 'vendas@biovetcirurgica.com.br',
+        city: 'Campinas',
+        state: 'SP',
+        pix_key: 'contato@biovetcirurgica.com.br',
+        delivery_time: '24h a 48h',
+        minimum_order: 200,
+        notes: 'Fios de sutura cirúrgica (Nylon, Vicryl, Monocryl), luvas cirúrgicas estéreis, agulhas, seringas e campos.',
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    (db as any).suppliers.push(...defaultSuppliers);
+    saveDB(db);
+    list = defaultSuppliers;
+  }
+
+  res.json(list);
+});
+
+app.post('/api/v1/suppliers', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  if (!Array.isArray((db as any).suppliers)) (db as any).suppliers = [];
+
+  const newSupplier = {
+    ...req.body,
+    id: Date.now(),
+    owner_id: user.id,
+    created_at: new Date().toISOString(),
+    is_active: req.body.is_active !== false,
+  };
+
+  (db as any).suppliers.unshift(newSupplier);
+  saveDB(db);
+  res.status(201).json(newSupplier);
+});
+
+app.put('/api/v1/suppliers/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray((db as any).suppliers)) (db as any).suppliers = [];
+
+  const idx = (db as any).suppliers.findIndex((s: any) => s.id === id && s.owner_id === user.id);
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Fornecedor não encontrado.' });
+  }
+
+  (db as any).suppliers[idx] = {
+    ...(db as any).suppliers[idx],
+    ...req.body,
+    id,
+    owner_id: user.id,
+    updated_at: new Date().toISOString(),
+  };
+
+  saveDB(db);
+  res.json((db as any).suppliers[idx]);
+});
+
+app.delete('/api/v1/suppliers/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray((db as any).suppliers)) (db as any).suppliers = [];
+
+  (db as any).suppliers = (db as any).suppliers.filter((s: any) => !(s.id === id && s.owner_id === user.id));
+  saveDB(db);
+  res.json({ message: 'Fornecedor excluído com sucesso.' });
 });
 
 // -------------------------------------------------------------

@@ -6,6 +6,14 @@ import { AlertCircle, X, Mail } from 'lucide-react';
 interface GoogleSignInButtonProps {
   mode?: 'login' | 'register';
   onError?: (err: string) => void;
+  onGoogleData?: (data: {
+    email: string;
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    picture?: string;
+    credential?: string;
+  }) => void;
 }
 
 export const GoogleLogoSvg: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' }) => (
@@ -29,7 +37,7 @@ export const GoogleLogoSvg: React.FC<{ className?: string }> = ({ className = 'w
   </svg>
 );
 
-export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = 'login', onError }) => {
+export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = 'login', onError, onGoogleData }) => {
   const { loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -91,6 +99,22 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode = '
     picture?: string;
     credential?: string;
   }) => {
+    // Se for modo de cadastro e o callback onGoogleData foi fornecido,
+    // envia os dados do Google diretamente para a tela de cadastro preencher os dados profissionais (CRMV) antes de dar acesso
+    if (mode === 'register' && onGoogleData && data.email) {
+      onGoogleData({
+        email: data.email,
+        name: data.name,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        picture: data.picture,
+        credential: data.credential,
+      });
+      setShowPromptModal(false);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setErrorMsg(null);
     try {

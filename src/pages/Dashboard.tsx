@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import { DashboardStats, Appointment, Patient, Tutor } from '../types';
 import { PlanQuotaBanner } from '../components/PlanQuotaBanner';
 import {
@@ -23,6 +24,7 @@ import {
 import { Link } from 'react-router-dom';
 
 export const Dashboard: React.FC = () => {
+  const { user, isVet } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -156,6 +158,25 @@ export const Dashboard: React.FC = () => {
           </Link>
         </div>
       </div>
+
+      {/* Alerta de Perfil Profissional Pendente (CRMV) */}
+      {isVet && user && !user.crmv && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <p className="text-xs font-bold">Seu CRMV ainda não foi cadastrado no perfil</p>
+              <p className="text-[11px] text-amber-700">Para emitir receitas, laudos e termos com validade e assinatura, informe seu CRMV e UF.</p>
+            </div>
+          </div>
+          <Link
+            to="/configuracoes"
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition shrink-0 text-center"
+          >
+            Completar Dados Profissionais →
+          </Link>
+        </div>
+      )}
 
       {/* Free Plan Quota Indicator */}
       <PlanQuotaBanner planUsage={stats.plan_usage} />

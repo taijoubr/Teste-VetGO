@@ -9,7 +9,18 @@ interface AuthContextType {
   isVet: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<User>;
-  loginWithGoogle: (payload: { email: string; name?: string; first_name?: string; last_name?: string; picture?: string; credential?: string }) => Promise<{ user: User; is_new?: boolean }>;
+  loginWithGoogle: (payload: {
+    email: string;
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    picture?: string;
+    credential?: string;
+    crmv?: string;
+    crmv_uf?: string;
+    phone?: string;
+    clinic_name?: string;
+  }) => Promise<{ user: User; is_new?: boolean }>;
   register: (data: any) => Promise<{ user: User; email_sent?: boolean; dev_code?: string }>;
   verifyEmail: (code: string, email?: string) => Promise<User>;
   logout: () => void;
@@ -56,6 +67,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     last_name?: string;
     picture?: string;
     credential?: string;
+    crmv?: string;
+    crmv_uf?: string;
+    phone?: string;
+    whatsapp?: string;
+    clinic_name?: string;
   }): Promise<{ user: User; is_new?: boolean }> => {
     setIsLoading(true);
     try {
