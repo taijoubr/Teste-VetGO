@@ -24,7 +24,8 @@ import {
   StockLocation,
   DocumentRecord,
   ClinicalServiceItem,
-  Supplier
+  Supplier,
+  SupplierOrder
 } from '../types';
 import { adminService } from './adminService';
 import { offlineStorage } from './offlineStorage';
@@ -2044,11 +2045,127 @@ export const api = {
   async deleteSupplier(id: number): Promise<{ message: string }> {
     try {
       await this.request(`/suppliers/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Backend deleteSupplier error, proceeding with local update:', e);
+    }
+
+    const local = localStorage.getItem('vetgo_suppliers');
+    if (local) {
+      try {
+        const list = JSON.parse(local);
+        const filtered = list.filter((s: any) => Number(s.id) !== Number(id));
+        localStorage.setItem('vetgo_suppliers', JSON.stringify(filtered));
+      } catch {}
+    }
+    return { message: 'Fornecedor excluído com sucesso.' };
+  },
+
+  // -------------------------------------------------------------
+  // SUPPLIER ORDERS & PURCHASES
+  // -------------------------------------------------------------
+  async getSupplierOrders(): Promise<SupplierOrder[]> {
+    try {
+      const data = await this.request<SupplierOrder[]>('/supplier-orders');
+      if (Array.isArray(data)) {
+        localStorage.setItem('vetgo_supplier_orders', JSON.stringify(data));
+        return data;
+      }
+    } catch (e) {
+      console.warn('Fallback to local supplier orders:', e);
+    }
+
+    const local = localStorage.getItem('vetgo_supplier_orders');
+    if (local) {
+      try {
+        return JSON.parse(local);
+      } catch {}
+    }
+
+    return [];
+  },
+
+  async createSupplierOrder(data: Partial<SupplierOrder>): Promise<SupplierOrder> {
+    const localOrders = await this.getSupplierOrders();
+    const newOrder: SupplierOrder = {
+      id: Date.now(),
+      owner_id: 1,
+      order_number: data.order_number || `PED-${Math.floor(1000 + Math.random() * 9000)}`,
+      supplier_id: data.supplier_id || 1,
+      supplier_name: data.supplier_name || 'Distribuidora',
+      supplier_category: data.supplier_category || 'DISTRIBUIDORA',
+      representative_name: data.representative_name,
+      representative_phone: data.representative_phone,
+      items: data.items || [],
+      total_amount: data.total_amount || 0,
+      status: data.status || 'PENDENTE',
+      urgency: data.urgency || 'NORMAL',
+      expected_delivery_date: data.expected_delivery_date,
+      delivery_tracking_code: data.delivery_tracking_code,
+      payment_method: data.payment_method,
+      notes: data.notes,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...data
+    };
+
+    try {
+      const serverRes = await this.request<SupplierOrder>('/supplier-orders', {
+        method: 'POST',
+        body: JSON.stringify(newOrder)
+      });
+      if (serverRes) {
+        localOrders.unshift(serverRes);
+        localStorage.setItem('vetgo_supplier_orders', JSON.stringify(localOrders));
+        return serverRes;
+      }
     } catch {}
 
-    const list = await this.getSuppliers();
-    const filtered = list.filter(s => s.id !== id);
-    localStorage.setItem('vetgo_suppliers', JSON.stringify(filtered));
-    return { message: 'Fornecedor excluído com sucesso.' };
+    localOrders.unshift(newOrder);
+    localStorage.setItem('vetgo_supplier_orders', JSON.stringify(localOrders));
+    return newOrder;
+  },
+
+  async updateSupplierOrder(id: number, updates: Partial<SupplierOrder>): Promise<SupplierOrder> {
+    const list = await this.getSupplierOrders();
+    const idx = list.findIndex(o => o.id === id);
+    const updated: SupplierOrder = {
+      ...(idx !== -1 ? list[idx] : ({} as SupplierOrder)),
+      ...updates,
+      id,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      await this.request<SupplierOrder>(`/supplier-orders/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+    } catch {}
+
+    if (idx !== -1) {
+      list[idx] = updated;
+    } else {
+      list.push(updated);
+    }
+    localStorage.setItem('vetgo_supplier_orders', JSON.stringify(list));
+    return updated;
+  },
+
+  async deleteSupplierOrder(id: number): Promise<{ message: string }> {
+    try {
+      await this.request(`/supplier-orders/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Backend deleteSupplierOrder error, proceeding with local update:', e);
+    }
+
+    const local = localStorage.getItem('vetgo_supplier_orders');
+    if (local) {
+      try {
+        const list = JSON.parse(local);
+        const filtered = list.filter((o: any) => Number(o.id) !== Number(id));
+        localStorage.setItem('vetgo_supplier_orders', JSON.stringify(filtered));
+      } catch {}
+    }
+    return { message: 'Pedido excluído com sucesso.' };
   }
 };

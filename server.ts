@@ -1953,6 +1953,201 @@ app.delete('/api/v1/suppliers/:id', requireAuth, (req, res) => {
 });
 
 // -------------------------------------------------------------
+// SUPPLIER ORDERS & PURCHASES ENDPOINTS (PEDIDOS DE COMPRA E INSUMOS)
+// -------------------------------------------------------------
+app.get('/api/v1/supplier-orders', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  if (!Array.isArray((db as any).supplier_orders)) (db as any).supplier_orders = [];
+  if (!Array.isArray((db as any).seeded_orders_users)) (db as any).seeded_orders_users = [];
+  let list = (db as any).supplier_orders.filter((o: any) => Number(o.owner_id) === Number(user.id));
+
+  if (list.length === 0 && !(db as any).seeded_orders_users.includes(user.id)) {
+    (db as any).seeded_orders_users.push(user.id);
+    const defaultOrders = [
+      {
+        id: Date.now() - 3600000 * 4,
+        owner_id: user.id,
+        order_number: 'PED-1048',
+        supplier_id: 1,
+        supplier_name: 'Distribuidora VetPrime Farmacêutica & Hospitalar',
+        supplier_category: 'DISTRIBUIDORA',
+        representative_name: 'Carlos Henrique',
+        representative_phone: '(11) 98765-4321',
+        status: 'EM_TRANSITO',
+        urgency: 'HOJE',
+        total_amount: 995.0,
+        expected_delivery_date: 'Hoje até às 18:00',
+        delivery_tracking_code: 'EXP-SP-9821',
+        payment_method: 'Boleto 28d',
+        notes: 'Motorista em rota de entrega na região metropolitana. Urgente para cirurgias programadas.',
+        items: [
+          { name: 'Propofol 1% 20ml', quantity: 6, unit: 'frascos', unit_price: 32.5, total_price: 195.0 },
+          { name: 'Cetamina 10% 50ml', quantity: 2, unit: 'frascos', unit_price: 85.0, total_price: 170.0 },
+          { name: 'Vacina V10 Nobivac Puppy DP', quantity: 15, unit: 'doses', unit_price: 42.0, total_price: 630.0 },
+        ],
+        created_at: new Date(Date.now() - 3600000 * 6).toISOString(),
+        updated_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+      },
+      {
+        id: Date.now() - 3600000 * 18,
+        owner_id: user.id,
+        order_number: 'PED-1047',
+        supplier_id: 2,
+        supplier_name: 'Laboratório VetPat - Diagnósticos & Biópsias',
+        supplier_category: 'LABORATORIO',
+        representative_name: 'Dra. Fernanda (Patologista)',
+        representative_phone: '(11) 99887-7665',
+        status: 'PENDENTE',
+        urgency: 'NORMAL',
+        total_amount: 325.0,
+        expected_delivery_date: 'Amanhã pela manhã',
+        payment_method: 'Faturamento Mensal',
+        notes: 'Aguardando coleta das amostras em domicílio pelo motoboy do laboratório.',
+        items: [
+          { name: 'Hemograma Completo + Plaquetas', quantity: 3, unit: 'amostras', unit_price: 45.0, total_price: 135.0 },
+          { name: 'Painel Renal (Ureia + Creatinina)', quantity: 2, unit: 'amostras', unit_price: 55.0, total_price: 110.0 },
+          { name: 'Citologia Aspirativa (PAAF)', quantity: 1, unit: 'lâmina', unit_price: 80.0, total_price: 80.0 },
+        ],
+        created_at: new Date(Date.now() - 3600000 * 18).toISOString(),
+      },
+      {
+        id: Date.now() - 86400000 * 1.5,
+        owner_id: user.id,
+        order_number: 'PED-1046',
+        supplier_id: 3,
+        supplier_name: 'DrogaVet - Farmácia de Manipulação Veterinária',
+        supplier_category: 'MANIPULACAO',
+        representative_name: 'Atendimento Farmacêutico',
+        representative_phone: '(11) 97766-5544',
+        status: 'APROVADO',
+        urgency: 'NORMAL',
+        total_amount: 248.0,
+        expected_delivery_date: 'Em até 48 horas',
+        payment_method: 'PIX à Vista',
+        notes: 'Fórmulas aprovadas pela farmacêutica responsável e em processo de pesagem/manipulação.',
+        items: [
+          { name: 'Biscoitos Palatáveis Gabapentina 50mg (carne)', quantity: 60, unit: 'unid.', unit_price: 1.8, total_price: 108.0 },
+          { name: 'Pasta Oral Prednisolona 5mg/ml (atum)', quantity: 1, unit: 'frasco 30ml', unit_price: 64.0, total_price: 64.0 },
+          { name: 'Colírio Ciprofloxacino Oftálmico', quantity: 2, unit: 'frascos 5ml', unit_price: 38.0, total_price: 76.0 },
+        ],
+        created_at: new Date(Date.now() - 86400000 * 1.5).toISOString(),
+      },
+      {
+        id: Date.now() - 86400000 * 4,
+        owner_id: user.id,
+        order_number: 'PED-1045',
+        supplier_id: 4,
+        supplier_name: 'Cirúrgica BioVet Insumos & Descartáveis',
+        supplier_category: 'INSUMOS',
+        representative_name: 'Mariana Costa',
+        representative_phone: '(11) 98112-3344',
+        status: 'ENTREGUE',
+        urgency: 'NORMAL',
+        total_amount: 469.0,
+        payment_method: 'Boleto 28d',
+        received_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+        notes: 'Recebido na sede volante e conferido. Lotes conferidos e abastecidos.',
+        items: [
+          { name: 'Fio Cirúrgico Mononylon 3-0 com agulha', quantity: 24, unit: 'envelopes', unit_price: 8.5, total_price: 204.0 },
+          { name: 'Luvas Cirúrgicas Estéreis 7.5', quantity: 50, unit: 'pares', unit_price: 3.2, total_price: 160.0 },
+          { name: 'Cateter Intravenoso 22G', quantity: 50, unit: 'unidades', unit_price: 2.1, total_price: 105.0 },
+        ],
+        created_at: new Date(Date.now() - 86400000 * 4).toISOString(),
+      },
+      {
+        id: Date.now() - 86400000 * 9,
+        owner_id: user.id,
+        order_number: 'PED-1040',
+        supplier_id: 1,
+        supplier_name: 'Distribuidora VetPrime Farmacêutica & Hospitalar',
+        supplier_category: 'DISTRIBUIDORA',
+        representative_name: 'Carlos Henrique',
+        representative_phone: '(11) 98765-4321',
+        status: 'ENTREGUE',
+        urgency: 'NORMAL',
+        total_amount: 696.0,
+        payment_method: 'Boleto 28d',
+        received_at: new Date(Date.now() - 86400000 * 7).toISOString(),
+        notes: 'Insumos de anestesia inalatória recebidos com nota fiscal.',
+        items: [
+          { name: 'Isoflurano 100ml Frasco Anestésico', quantity: 2, unit: 'frascos', unit_price: 240.0, total_price: 480.0 },
+          { name: 'Meloxicam 0,2% Injetável 20ml', quantity: 3, unit: 'frascos', unit_price: 72.0, total_price: 216.0 },
+        ],
+        created_at: new Date(Date.now() - 86400000 * 9).toISOString(),
+      },
+    ];
+
+    (db as any).supplier_orders.push(...defaultOrders);
+    saveDB(db);
+    list = defaultOrders;
+  }
+
+  res.json(list);
+});
+
+app.post('/api/v1/supplier-orders', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  if (!Array.isArray((db as any).supplier_orders)) (db as any).supplier_orders = [];
+
+  const orderNumber = req.body.order_number || `PED-${Math.floor(1000 + Math.random() * 9000)}`;
+  const newOrder = {
+    ...req.body,
+    id: Date.now(),
+    owner_id: user.id,
+    order_number: orderNumber,
+    created_at: new Date().toISOString(),
+    status: req.body.status || 'PENDENTE',
+    urgency: req.body.urgency || 'NORMAL',
+  };
+
+  (db as any).supplier_orders.unshift(newOrder);
+  saveDB(db);
+  res.status(201).json(newOrder);
+});
+
+app.put('/api/v1/supplier-orders/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray((db as any).supplier_orders)) (db as any).supplier_orders = [];
+
+  const idx = (db as any).supplier_orders.findIndex((o: any) => o.id === id && o.owner_id === user.id);
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Pedido de fornecedor não encontrado.' });
+  }
+
+  const prev = (db as any).supplier_orders[idx];
+  const updated = {
+    ...prev,
+    ...req.body,
+    id,
+    owner_id: user.id,
+    updated_at: new Date().toISOString(),
+    received_at: req.body.status === 'ENTREGUE' && !prev.received_at ? new Date().toISOString() : (req.body.received_at || prev.received_at),
+  };
+
+  (db as any).supplier_orders[idx] = updated;
+  saveDB(db);
+  res.json(updated);
+});
+
+app.delete('/api/v1/supplier-orders/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray((db as any).supplier_orders)) (db as any).supplier_orders = [];
+  if (!Array.isArray((db as any).seeded_orders_users)) (db as any).seeded_orders_users = [];
+  if (!(db as any).seeded_orders_users.includes(user.id)) {
+    (db as any).seeded_orders_users.push(user.id);
+  }
+
+  (db as any).supplier_orders = (db as any).supplier_orders.filter(
+    (o: any) => !(Number(o.id) === id && (Number(o.owner_id) === Number(user.id) || !o.owner_id))
+  );
+  saveDB(db);
+  res.json({ message: 'Pedido excluído com sucesso.', id });
+});
+
+
+// -------------------------------------------------------------
 // ANESTHESIA RECORDS ENDPOINTS
 // -------------------------------------------------------------
 app.get('/api/v1/anesthesias', requireAuth, (req, res) => {

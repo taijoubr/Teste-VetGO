@@ -732,3 +732,44 @@ export interface Supplier {
   created_at: string;
   updated_at?: string;
 }
+
+export type SupplierOrderStatus = 
+  | 'PENDENTE'
+  | 'APROVADO'
+  | 'EM_TRANSITO'
+  | 'ENTREGUE'
+  | 'CANCELADO';
+
+export type SupplierOrderUrgency = 'NORMAL' | 'HOJE' | 'URGENTE';
+
+export interface SupplierOrderItem {
+  id?: string;
+  name: string;
+  quantity: number;
+  unit?: string;
+  unit_price?: number;
+  total_price?: number;
+}
+
+export interface SupplierOrder {
+  id: number;
+  owner_id: number;
+  order_number: string;
+  supplier_id: number;
+  supplier_name: string;
+  supplier_category: SupplierCategory;
+  representative_name?: string;
+  representative_phone?: string;
+  items: SupplierOrderItem[];
+  total_amount: number;
+  status: SupplierOrderStatus;
+  urgency: SupplierOrderUrgency;
+  expected_delivery_date?: string;
+  delivery_tracking_code?: string;
+  payment_method?: string;
+  notes?: string;
+  created_at: string;
+  updated_at?: string;
+  received_at?: string;
+}
+
