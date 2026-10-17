@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AppLogo } from './AppLogo';
+import { PWAInstallSidebarCard } from './PWAInstallButton';
 import {
   LayoutDashboard,
   Calendar,
@@ -213,6 +214,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 </NavLink>
               ))}
             </nav>
+          </div>
+
+          {/* Quick PWA Install Card on Mobile/Desktop */}
+          <div className="pt-2 px-1">
+            <PWAInstallSidebarCard />
           </div>
         </div>
 
