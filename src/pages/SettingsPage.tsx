@@ -31,9 +31,6 @@ import {
   AlertCircle,
   Smartphone,
   Download,
-  Share2,
-  MoreVertical,
-  PlusSquare,
   Zap,
   WifiOff
 } from 'lucide-react';
@@ -47,7 +44,6 @@ export const SettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'perfil';
 
-  const [pwaDeviceTab, setPwaDeviceTab] = useState<'android' | 'ios'>(isIOS ? 'ios' : 'android');
   const [pwaInstalledSuccess, setPwaInstalledSuccess] = useState(false);
 
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
@@ -1003,131 +999,32 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Seletor de Aparelho */}
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center gap-2">
+            {/* Ação Direta de Instalação */}
+            <div className="p-6 bg-gradient-to-br from-emerald-800 to-emerald-950 text-white rounded-2xl shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-sm font-bold text-white">Pronto para instalar no seu aparelho?</h4>
+                  <p className="text-xs text-emerald-100/90 mt-0.5">
+                    O Vetgo será fixado na sua tela inicial como um app nativo.
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setPwaDeviceTab('android')}
-                  className={`py-2 px-4 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                    pwaDeviceTab === 'android'
-                      ? 'bg-slate-900 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                  onClick={async () => {
+                    const ok = await install();
+                    if (ok) setPwaInstalledSuccess(true);
+                  }}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-white hover:bg-emerald-50 text-emerald-900 text-xs font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
                 >
-                  <span>🤖 No Android (Google Chrome)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPwaDeviceTab('ios')}
-                  className={`py-2 px-4 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                    pwaDeviceTab === 'ios'
-                      ? 'bg-slate-900 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <span>🍎 No iPhone / iPad (Safari)</span>
+                  <Download className="w-4 h-4 text-emerald-700" />
+                  <span>Instalar Aplicativo Agora</span>
                 </button>
               </div>
 
-              {pwaDeviceTab === 'android' && (
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3.5">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Passo a passo no Android:</h4>
-                  
-                  <div className="space-y-3 text-xs">
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
-                        1
-                      </span>
-                      <div>
-                        <strong className="text-slate-900">Abra o site no navegador Google Chrome</strong>
-                        <p className="text-slate-500 mt-0.5">Digite o link do seu Vetgo no Chrome do celular.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
-                        2
-                      </span>
-                      <div>
-                        <strong className="text-slate-900 flex items-center gap-1.5">
-                          Toque no menu de 3 pontinhos
-                          <span className="inline-flex p-0.5 bg-slate-200 text-slate-800 rounded">
-                            <MoreVertical className="w-3.5 h-3.5" />
-                          </span>
-                        </strong>
-                        <p className="text-slate-500 mt-0.5">Fica no canto superior direito do Google Chrome.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
-                        3
-                      </span>
-                      <div>
-                        <strong className="text-slate-900">Toque em "Instalar aplicativo" ou "Adicionar à tela inicial"</strong>
-                        <p className="text-slate-500 mt-0.5">Em seguida confirme clicando no botão <strong>"Instalar"</strong>.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {pwaDeviceTab === 'ios' && (
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3.5">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Passo a passo no iPhone / iPad:</h4>
-                  
-                  <div className="space-y-3 text-xs">
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
-                        1
-                      </span>
-                      <div>
-                        <strong className="text-slate-900">Abra no navegador Safari</strong>
-                        <p className="text-slate-500 mt-0.5">No iOS, o recurso de fixar aplicativo na tela funciona exclusivamente pelo Safari.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
-                        2
-                      </span>
-                      <div>
-                        <strong className="text-slate-900 flex items-center gap-1.5">
-                          Toque no botão Compartilhar
-                          <span className="inline-flex p-1 bg-slate-200 text-slate-800 rounded">
-                            <Share2 className="w-3.5 h-3.5" />
-                          </span>
-                        </strong>
-                        <p className="text-slate-500 mt-0.5">É o ícone quadrado com a seta para cima na barra inferior do Safari.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
-                        3
-                      </span>
-                      <div>
-                        <strong className="text-slate-900 flex items-center gap-1.5">
-                          Role as opções e toque em "Adicionar à Tela de Início"
-                          <span className="inline-flex p-1 bg-slate-200 text-slate-800 rounded">
-                            <PlusSquare className="w-3.5 h-3.5" />
-                          </span>
-                        </strong>
-                        <p className="text-slate-500 mt-0.5">O ícone oficial do Vetgo já virá pré-selecionado.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
-                        4
-                      </span>
-                      <div>
-                        <strong className="text-slate-900">Toque em "Adicionar" no canto superior direito</strong>
-                        <p className="text-slate-500 mt-0.5">Pronto! O Vetgo ficará na sua tela inicial como um app.</p>
-                      </div>
-                    </div>
-                  </div>
+              {isIOS && (
+                <div className="pt-3 border-t border-white/10 text-[11px] text-emerald-200 flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 shrink-0 text-emerald-300" />
+                  <span>No iPhone, toque no botão <strong>Compartilhar [↑]</strong> do Safari e selecione <strong>Adicionar à Tela de Início [+]</strong>.</span>
                 </div>
               )}
             </div>
