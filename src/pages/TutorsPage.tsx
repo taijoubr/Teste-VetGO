@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { Tutor } from '../types';
-import { Users, Search, Plus, Phone, MapPin, Mail, AlertCircle, CheckCircle2, PawPrint, X } from 'lucide-react';
+import { Users, Search, Plus, Phone, MapPin, Mail, AlertCircle, CheckCircle2, PawPrint, X, Edit3 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   formatCPF,
@@ -9,14 +9,17 @@ import {
   formatPhone,
   CPF_CNPJ_DISCLAIMER
 } from '../utils/validators';
+import { formatTutorCode } from '../utils/formatters';
 
 export const TutorsPage: React.FC = () => {
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingTutor, setEditingTutor] = useState<Tutor | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
   const [cpfWarning, setCpfWarning] = useState<string | null>(null);
+  const [feedbackToast, setFeedbackToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const [form, setForm] = useState({
     name: '',
@@ -33,6 +36,11 @@ export const TutorsPage: React.FC = () => {
     postal_code: '',
     notes: ''
   });
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setFeedbackToast({ text, type });
+    setTimeout(() => setFeedbackToast(null), 3500);
+  };
 
   useEffect(() => {
     loadTutors();
@@ -52,13 +60,59 @@ export const TutorsPage: React.FC = () => {
 
   const filteredTutors = tutors.filter((t) => {
     const q = search.toLowerCase();
+    const code = formatTutorCode(t).toLowerCase();
     return (
       t.name.toLowerCase().includes(q) ||
+      code.includes(q) ||
       (t.cpf && t.cpf.includes(q)) ||
       (t.phone && t.phone.includes(q)) ||
       (t.city && t.city.toLowerCase().includes(q))
     );
   });
+
+  const handleOpenCreate = () => {
+    setEditingTutor(null);
+    setModalError(null);
+    setCpfWarning(null);
+    setForm({
+      name: '',
+      cpf: '',
+      phone: '',
+      whatsapp: '',
+      email: '',
+      address: '',
+      address_number: '',
+      complement: '',
+      neighborhood: '',
+      city: 'São Paulo',
+      state: 'SP',
+      postal_code: '',
+      notes: ''
+    });
+    setShowModal(true);
+  };
+
+  const handleOpenEdit = (tutor: Tutor) => {
+    setEditingTutor(tutor);
+    setModalError(null);
+    setCpfWarning(null);
+    setForm({
+      name: tutor.name || '',
+      cpf: tutor.cpf || '',
+      phone: tutor.phone || '',
+      whatsapp: tutor.whatsapp || '',
+      email: tutor.email || '',
+      address: tutor.address || '',
+      address_number: tutor.address_number || '',
+      complement: tutor.complement || '',
+      neighborhood: tutor.neighborhood || '',
+      city: tutor.city || 'São Paulo',
+      state: tutor.state || 'SP',
+      postal_code: tutor.postal_code || '',
+      notes: tutor.notes || ''
+    });
+    setShowModal(true);
+  };
 
   const handleCpfChange = async (value: string) => {
     const formatted = formatCPF(value);
@@ -70,7 +124,7 @@ export const TutorsPage: React.FC = () => {
         setCpfWarning(valResult.error || 'Dígitos verificadores do CPF inválidos.');
       } else {
         // Verifica se já existe outro tutor cadastrado com este CPF
-        const duplicate = await api.checkTutorCpfDuplicate(formatted);
+        const duplicate = await api.checkTutorCpfDuplicate(formatted, editingTutor?.id);
         if (duplicate) {
           setCpfWarning(`Atenção: Este CPF já consta para o tutor "${duplicate.name}". Caso seja a mesma família ou homônimo, você pode prosseguir.`);
         } else {
@@ -82,7 +136,7 @@ export const TutorsPage: React.FC = () => {
     }
   };
 
-  const handleCreateTutor = async (e: React.FormEvent) => {
+  const handleSaveTutor = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
 
@@ -95,29 +149,22 @@ export const TutorsPage: React.FC = () => {
     }
 
     try {
-      await api.createTutor(form);
+      if (editingTutor) {
+        await api.updateTutor(editingTutor.id, form);
+        showToast(`Tutor "${form.name}" atualizado com sucesso!`);
+      } else {
+        await api.createTutor(form);
+        showToast(`Tutor "${form.name}" cadastrado com sucesso!`);
+      }
       setShowModal(false);
+      setEditingTutor(null);
       setCpfWarning(null);
-      setForm({
-        name: '',
-        cpf: '',
-        phone: '',
-        whatsapp: '',
-        email: '',
-        address: '',
-        address_number: '',
-        complement: '',
-        neighborhood: '',
-        city: 'São Paulo',
-        state: 'SP',
-        postal_code: '',
-        notes: ''
-      });
       loadTutors();
     } catch (err: any) {
-      setModalError(err.message || 'Erro ao cadastrar tutor.');
+      setModalError(err.message || 'Erro ao salvar informações do tutor.');
     }
   };
+
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -134,16 +181,29 @@ export const TutorsPage: React.FC = () => {
         </div>
 
         <button
-          onClick={() => {
-            setModalError(null);
-            setShowModal(true);
-          }}
+          onClick={handleOpenCreate}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>Cadastrar Tutor</span>
         </button>
       </div>
+
+      {/* Toast Feedback */}
+      {feedbackToast && (
+        <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 shadow-xs transition-all ${
+          feedbackToast.type === 'error'
+            ? 'bg-rose-50 border-rose-200 text-rose-800'
+            : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+        }`}>
+          {feedbackToast.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+          )}
+          <span>{feedbackToast.text}</span>
+        </div>
+      )}
 
       {/* Search & Filter Bar */}
       <div className="flex items-center gap-3">
@@ -170,8 +230,8 @@ export const TutorsPage: React.FC = () => {
             Cadastre seu primeiro tutor para vincular pacientes e agendamentos.
           </p>
           <button
-            onClick={() => setShowModal(true)}
-            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 text-white hover:bg-emerald-800 transition"
+            onClick={handleOpenCreate}
+            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 text-white hover:bg-emerald-800 transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             Cadastrar Tutor
@@ -186,11 +246,16 @@ export const TutorsPage: React.FC = () => {
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 leading-tight">
-                    {tutor.name}
-                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                      #{formatTutorCode(tutor)}
+                    </span>
+                    <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                      {tutor.name}
+                    </h3>
+                  </div>
                   {tutor.cpf && (
-                    <span className="text-[11px] text-slate-400 font-mono">
+                    <span className="text-[11px] text-slate-400 font-mono block mt-1">
                       CPF: {tutor.cpf}
                     </span>
                   )}
@@ -231,30 +296,46 @@ export const TutorsPage: React.FC = () => {
                 </div>
               )}
 
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
                 <Link
                   to={`/pacientes?tutor_id=${tutor.id}`}
                   className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline"
                 >
-                  <PawPrint className="w-3 h-3" />
+                  <PawPrint className="w-3.5 h-3.5" />
                   Ver pacientes
                 </Link>
-                <span className="text-[11px] text-slate-400">Ativo</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEdit(tutor)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+                    title="Editar informações do tutor"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Editar</span>
+                  </button>
+                  <span className="text-[11px] text-slate-400">Ativo</span>
+                </div>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* New Tutor Modal */}
+      {/* Tutor Modal (Create & Edit) */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 overflow-y-auto max-h-[90vh]">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">Novo Tutor</h3>
+              <h3 className="text-base font-bold text-slate-900">
+                {editingTutor ? 'Editar Dados do Tutor' : 'Novo Tutor'}
+              </h3>
               <button
-                onClick={() => setShowModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingTutor(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -267,7 +348,7 @@ export const TutorsPage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleCreateTutor} className="mt-4 space-y-3">
+            <form onSubmit={handleSaveTutor} className="mt-4 space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Nome Completo do Tutor *
@@ -387,8 +468,11 @@ export const TutorsPage: React.FC = () => {
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingTutor(null);
+                  }}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -396,7 +480,7 @@ export const TutorsPage: React.FC = () => {
                   type="submit"
                   className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition cursor-pointer"
                 >
-                  Salvar Tutor
+                  {editingTutor ? 'Salvar Alterações' : 'Cadastrar Tutor'}
                 </button>
               </div>
             </form>

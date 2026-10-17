@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { Patient } from '../types';
+import { formatPatientCode } from '../utils/formatters';
 import {
   QrCode,
   Share2,
@@ -88,6 +89,7 @@ export const PetCardModal: React.FC<PetCardModalProps> = ({
                 Carteirinha Digital do Pet
               </h3>
               <p className="text-emerald-100 text-xs mt-0.5">
+                <span className="font-mono font-bold bg-white/20 px-1 rounded mr-1">#{formatPatientCode(patient)}</span>
                 {patient.name} ({patient.species} • {patient.breed || 'SRD'})
               </p>
             </div>

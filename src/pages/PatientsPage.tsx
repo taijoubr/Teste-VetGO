@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { Patient, Tutor, Species, AnesthesiaRecord } from '../types';
-import { PawPrint, Search, Plus, User, AlertCircle, X, CheckCircle2, Activity, Calendar, ShieldCheck, QrCode } from 'lucide-react';
+import { PawPrint, Search, Plus, User, AlertCircle, X, CheckCircle2, Activity, Calendar, ShieldCheck, QrCode, Edit3 } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SPECIES_CONFIGS } from '../utils/speciesData';
 import { PetCardModal } from '../components/PetCardModal';
+import { formatPatientCode, formatTutorCode } from '../utils/formatters';
 
 const SPECIES_LIST: Species[] = [
   'Canina',
@@ -34,9 +35,11 @@ export const PatientsPage: React.FC = () => {
   const [speciesFilter, setSpeciesFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [selectedPetForCard, setSelectedPetForCard] = useState<Patient | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
   const [microchipWarning, setMicrochipWarning] = useState<string | null>(null);
+  const [feedbackToast, setFeedbackToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const [form, setForm] = useState({
     tutor_id: 1,
@@ -54,6 +57,11 @@ export const PatientsPage: React.FC = () => {
     microchip_date: '',
     notes: ''
   });
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setFeedbackToast({ text, type });
+    setTimeout(() => setFeedbackToast(null), 3500);
+  };
 
   // Inline Tutor Registration State
   const [tutorMode, setTutorMode] = useState<'EXISTING' | 'NEW'>('EXISTING');
@@ -75,7 +83,7 @@ export const PatientsPage: React.FC = () => {
     setForm((prev) => ({ ...prev, microchip: value }));
     const trimmed = value.trim();
     if (trimmed.length > 5) {
-      const duplicate = await api.checkMicrochipDuplicate(trimmed);
+      const duplicate = await api.checkMicrochipDuplicate(trimmed, editingPatient?.id);
       if (duplicate) {
         setMicrochipWarning(`Atenção: O microchip "${trimmed}" já está vinculado ao paciente "${duplicate.name}" (Tutor: ${duplicate.tutor_name}). Verifique a numeração.`);
       } else {
@@ -85,6 +93,7 @@ export const PatientsPage: React.FC = () => {
       setMicrochipWarning(null);
     }
   };
+
 
   useEffect(() => {
     loadData();
@@ -116,8 +125,11 @@ export const PatientsPage: React.FC = () => {
 
   const filteredPatients = patients.filter((p) => {
     const q = search.trim().toLowerCase();
+    const code = formatPatientCode(p).toLowerCase();
     const matchQuery =
       !q ||
+      code.includes(q) ||
+      (p.code && p.code.toLowerCase().includes(q)) ||
       (p.name && p.name.toLowerCase().includes(q)) ||
       (p.tutor_name && p.tutor_name.toLowerCase().includes(q)) ||
       (p.breed && p.breed.toLowerCase().includes(q)) ||
@@ -129,75 +141,104 @@ export const PatientsPage: React.FC = () => {
     return Boolean(matchQuery && matchSpecies && matchTutor);
   });
 
-  const handleCreatePatient = async (e: React.FormEvent) => {
+  const handleOpenCreate = () => {
+    setEditingPatient(null);
+    setModalError(null);
+    setMicrochipWarning(null);
+    setForm({
+      tutor_id: tutorFilterId ? parseInt(tutorFilterId) : (tutors.length > 0 ? tutors[0].id : 1),
+      name: '',
+      species: 'Canina',
+      custom_species: '',
+      scientific_name: '',
+      breed: '',
+      gender: 'Macho',
+      approximate_age: '',
+      weight_kg: 0,
+      coat_color: '',
+      is_neutered: true,
+      microchip: '',
+      microchip_date: '',
+      notes: ''
+    });
+    setTutorMode(tutors.length > 0 ? 'EXISTING' : 'NEW');
+    setShowModal(true);
+  };
+
+  const handleOpenEdit = (patient: Patient) => {
+    setEditingPatient(patient);
+    setModalError(null);
+    setMicrochipWarning(null);
+    setForm({
+      tutor_id: patient.tutor_id,
+      name: patient.name || '',
+      species: (patient.species as Species) || 'Canina',
+      custom_species: patient.custom_species || '',
+      scientific_name: patient.scientific_name || '',
+      breed: patient.breed || '',
+      gender: (patient.gender as any) || 'Macho',
+      approximate_age: patient.approximate_age || '',
+      weight_kg: patient.weight_kg || 0,
+      coat_color: patient.coat_color || '',
+      is_neutered: patient.is_neutered !== undefined ? patient.is_neutered : true,
+      microchip: patient.microchip || patient.microchip_number || '',
+      microchip_date: patient.microchip_date || '',
+      notes: patient.notes || ''
+    });
+    setTutorMode('EXISTING');
+    setShowModal(true);
+  };
+
+  const handleSavePatient = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
     try {
-      let finalTutorId = form.tutor_id;
-
-      if (tutorMode === 'NEW' || tutors.length === 0) {
-        if (!newTutor.name.trim()) {
-          throw new Error('Informe o nome do tutor responsável.');
-        }
-        if (!newTutor.phone.trim() && !newTutor.whatsapp.trim()) {
-          throw new Error('Informe ao menos um telefone ou WhatsApp para o novo tutor.');
-        }
-
-        const createdTutor = await api.createTutor({
-          name: newTutor.name.trim(),
-          phone: newTutor.phone.trim() || newTutor.whatsapp.trim(),
-          whatsapp: newTutor.whatsapp.trim() || newTutor.phone.trim(),
-          cpf: newTutor.cpf.trim() || undefined,
-          email: newTutor.email.trim() || undefined,
-          address: newTutor.address.trim() || undefined,
-          address_number: newTutor.address_number.trim() || undefined,
-          neighborhood: newTutor.neighborhood.trim() || undefined,
-          city: newTutor.city.trim() || 'São Paulo',
-          state: newTutor.state.trim() || 'SP',
-          notes: newTutor.notes.trim() || 'Cadastrado junto com o paciente.'
+      if (editingPatient) {
+        await api.updatePatient(editingPatient.id, {
+          ...form,
+          tutor_id: form.tutor_id
         });
+        showToast(`Paciente "${form.name}" atualizado com sucesso!`);
+      } else {
+        let finalTutorId = form.tutor_id;
 
-        finalTutorId = createdTutor.id;
+        if (tutorMode === 'NEW' || tutors.length === 0) {
+          if (!newTutor.name.trim()) {
+            throw new Error('Informe o nome do tutor responsável.');
+          }
+          if (!newTutor.phone.trim() && !newTutor.whatsapp.trim()) {
+            throw new Error('Informe ao menos um telefone ou WhatsApp para o novo tutor.');
+          }
+
+          const createdTutor = await api.createTutor({
+            name: newTutor.name.trim(),
+            phone: newTutor.phone.trim() || newTutor.whatsapp.trim(),
+            whatsapp: newTutor.whatsapp.trim() || newTutor.phone.trim(),
+            cpf: newTutor.cpf.trim() || undefined,
+            email: newTutor.email.trim() || undefined,
+            address: newTutor.address.trim() || undefined,
+            address_number: newTutor.address_number.trim() || undefined,
+            neighborhood: newTutor.neighborhood.trim() || undefined,
+            city: newTutor.city.trim() || 'São Paulo',
+            state: newTutor.state.trim() || 'SP',
+            notes: newTutor.notes.trim() || 'Cadastrado junto com o paciente.'
+          });
+
+          finalTutorId = createdTutor.id;
+        }
+
+        await api.createPatient({
+          ...form,
+          tutor_id: finalTutorId
+        });
+        showToast(`Paciente "${form.name}" cadastrado com sucesso!`);
       }
 
-      await api.createPatient({
-        ...form,
-        tutor_id: finalTutorId
-      });
-
       setShowModal(false);
-      setForm({
-        tutor_id: tutors.length > 0 ? tutors[0].id : 1,
-        name: '',
-        species: 'Canina',
-        custom_species: '',
-        scientific_name: '',
-        breed: '',
-        gender: 'Macho',
-        approximate_age: '',
-        weight_kg: 0,
-        coat_color: '',
-        is_neutered: true,
-        microchip: '',
-        microchip_date: '',
-        notes: ''
-      });
-      setNewTutor({
-        name: '',
-        phone: '',
-        whatsapp: '',
-        cpf: '',
-        email: '',
-        address: '',
-        address_number: '',
-        neighborhood: '',
-        city: 'São Paulo',
-        state: 'SP',
-        notes: ''
-      });
+      setEditingPatient(null);
       await loadData();
     } catch (err: any) {
-      setModalError(err.message || 'Erro ao cadastrar paciente.');
+      setModalError(err.message || 'Erro ao salvar informações do paciente.');
     }
   };
 
@@ -217,16 +258,30 @@ export const PatientsPage: React.FC = () => {
         </div>
 
         <button
-          onClick={() => {
-            setModalError(null);
-            setShowModal(true);
-          }}
+          onClick={handleOpenCreate}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>Cadastrar Paciente</span>
         </button>
       </div>
+
+      {/* Toast Feedback */}
+      {feedbackToast && (
+        <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 shadow-xs transition-all ${
+          feedbackToast.type === 'error'
+            ? 'bg-rose-50 border-rose-200 text-rose-800'
+            : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+        }`}>
+          {feedbackToast.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+          )}
+          <span>{feedbackToast.text}</span>
+        </div>
+      )}
+
 
       {/* Search & Filters */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -281,10 +336,15 @@ export const PatientsPage: React.FC = () => {
                     {patient.name.charAt(0)}
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900 leading-tight">
-                      {patient.name}
-                    </h3>
-                    <div className="text-xs text-slate-500">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        #{formatPatientCode(patient)}
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                        {patient.name}
+                      </h3>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">
                       {patient.species} • {patient.breed || 'SRD'}
                     </div>
                   </div>
@@ -323,7 +383,16 @@ export const PatientsPage: React.FC = () => {
                 >
                   Abrir Prontuário →
                 </Link>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEdit(patient)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                    title="Editar informações do paciente"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Editar</span>
+                  </button>
                   <Link
                     to={`/atendimentos?action=new_estimate&patient_id=${patient.id}`}
                     className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-bold transition cursor-pointer"
@@ -347,15 +416,20 @@ export const PatientsPage: React.FC = () => {
         </div>
       )}
 
-      {/* New Patient Modal */}
+      {/* Patient Modal (Create & Edit) */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 overflow-y-auto max-h-[90vh]">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">Novo Paciente</h3>
+              <h3 className="text-base font-bold text-slate-900">
+                {editingPatient ? 'Editar Cadastro do Paciente' : 'Novo Paciente'}
+              </h3>
               <button
-                onClick={() => setShowModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingPatient(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -368,14 +442,14 @@ export const PatientsPage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleCreatePatient} className="mt-4 space-y-4">
+            <form onSubmit={handleSavePatient} className="mt-4 space-y-4">
               {/* Seletor / Cadastro do Tutor */}
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
                     Tutor Responsável *
                   </label>
-                  {tutors.length > 0 && (
+                  {!editingPatient && tutors.length > 0 && (
                     <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
                       <button
                         type="button"
@@ -403,6 +477,7 @@ export const PatientsPage: React.FC = () => {
                   )}
                 </div>
 
+
                 {tutors.length === 0 && (
                   <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900">
                     💡 Nenhum tutor cadastrado ainda. Preencha os dados do tutor abaixo para cadastrá-lo junto com o paciente.
@@ -419,7 +494,7 @@ export const PatientsPage: React.FC = () => {
                     >
                       {tutors.map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.name} ({t.city || 'SP'}) {t.phone ? `• ${t.phone}` : ''}
+                          #{formatTutorCode(t)} - {t.name} ({t.city || 'SP'}) {t.phone ? `• ${t.phone}` : ''}
                         </option>
                       ))}
                     </select>
@@ -693,8 +768,11 @@ export const PatientsPage: React.FC = () => {
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingPatient(null);
+                  }}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -702,7 +780,7 @@ export const PatientsPage: React.FC = () => {
                   type="submit"
                   className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition cursor-pointer"
                 >
-                  Salvar Paciente
+                  {editingPatient ? 'Salvar Alterações' : 'Salvar Paciente'}
                 </button>
               </div>
             </form>

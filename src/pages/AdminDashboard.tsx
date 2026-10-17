@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { adminService } from '../services/adminService';
 import {
   AdminUser,
   AdminStats,
   AdminAuditLog,
   PlatformPlan,
-  GlobalAnnouncement
+  GlobalAnnouncement,
+  SystemDocumentTemplate,
+  TemplateCategory
 } from '../types';
 import { AdminLayout } from '../components/admin/AdminLayout';
 import {
@@ -41,10 +43,69 @@ import {
   RotateCcw,
   Send,
   Server,
-  ExternalLink
+  ExternalLink,
+  Bookmark,
+  Tag,
+  Edit3,
+  FileText
 } from 'lucide-react';
 import { api } from '../services/api';
 import { GoogleLogoSvg } from '../components/GoogleSignInButton';
+
+const ADMIN_TEMPLATE_VARIABLES = [
+  { tag: '{codigo_paciente}', label: 'Cód. Pet', desc: 'Ex: PAC-0001' },
+  { tag: '{nome_paciente}', label: 'Nome Pet', desc: 'Nome do animal' },
+  { tag: '{especie}', label: 'Espécie', desc: 'Canina, Felina, etc.' },
+  { tag: '{raca}', label: 'Raça', desc: 'Raça ou SRD' },
+  { tag: '{sexo}', label: 'Sexo', desc: 'Macho ou Fêmea' },
+  { tag: '{idade}', label: 'Idade', desc: 'Idade cadastrada' },
+  { tag: '{peso}', label: 'Peso', desc: 'Peso com kg' },
+  { tag: '{pelagem}', label: 'Pelagem', desc: 'Cor da pelagem' },
+  { tag: '{microchip}', label: 'Microchip', desc: 'Número do chip' },
+  { tag: '{codigo_tutor}', label: 'Cód. Tutor', desc: 'Ex: TUT-0001' },
+  { tag: '{nome_tutor}', label: 'Nome Tutor', desc: 'Nome completo do tutor' },
+  { tag: '{cpf_tutor}', label: 'CPF Tutor', desc: 'CPF cadastrado' },
+  { tag: '{telefone_tutor}', label: 'Telefone Tutor', desc: 'Telefone / WhatsApp' },
+  { tag: '{endereco_tutor}', label: 'Endereço Tutor', desc: 'Rua e número' },
+  { tag: '{cidade_tutor}', label: 'Cidade/UF', desc: 'Cidade e estado' },
+  { tag: '{nome_veterinario}', label: 'Nome Vet', desc: 'Dr(a). emitente' },
+  { tag: '{crmv_veterinario}', label: 'CRMV', desc: 'Número CRMV e UF' },
+  { tag: '{data_atual}', label: 'Data Hoje', desc: 'Data atual formatada' },
+  { tag: '{clinica}', label: 'Clínica/Serviço', desc: 'Clínica ou atendimento' },
+];
+
+const ADMIN_CATEGORY_BADGES: Record<TemplateCategory, { label: string; color: string }> = {
+  TERMO: { label: 'Termo / TCLE', color: 'bg-indigo-950/70 text-indigo-300 border-indigo-800/80' },
+  RECEITA: { label: 'Receita', color: 'bg-emerald-950/70 text-emerald-300 border-emerald-800/80' },
+  ATESTADO: { label: 'Atestado', color: 'bg-sky-950/70 text-sky-300 border-sky-800/80' },
+  ORIENTACOES: { label: 'Orientações', color: 'bg-amber-950/70 text-amber-300 border-amber-800/80' },
+  LAUDO: { label: 'Laudo', color: 'bg-purple-950/70 text-purple-300 border-purple-800/80' },
+  DECLARACAO: { label: 'Declaração', color: 'bg-teal-950/70 text-teal-300 border-teal-800/80' },
+  OUTRO: { label: 'Personalizado', color: 'bg-slate-800 text-slate-300 border-slate-700' },
+};
+
+const fillAdminSampleVariables = (content: string) => {
+  return (content || '')
+    .replace(/\{codigo_paciente\}/g, 'PAC-0001')
+    .replace(/\{codigo_tutor\}/g, 'TUT-0001')
+    .replace(/\{nome_paciente\}/g, 'Thor')
+    .replace(/\{especie\}/g, 'Canina')
+    .replace(/\{raca\}/g, 'Golden Retriever')
+    .replace(/\{sexo\}/g, 'Macho')
+    .replace(/\{idade\}/g, '3 anos')
+    .replace(/\{peso\}/g, '32.5 kg')
+    .replace(/\{pelagem\}/g, 'Dourada')
+    .replace(/\{microchip\}/g, '981098123456789')
+    .replace(/\{nome_tutor\}/g, 'Mariana Costa Silveira')
+    .replace(/\{cpf_tutor\}/g, '123.456.789-00')
+    .replace(/\{telefone_tutor\}/g, '(11) 98765-4321')
+    .replace(/\{endereco_tutor\}/g, 'Av. Paulista, 1578, Apto 42')
+    .replace(/\{cidade_tutor\}/g, 'São Paulo - SP')
+    .replace(/\{nome_veterinario\}/g, 'Dr. Carlos Eduardo')
+    .replace(/\{crmv_veterinario\}/g, 'CRMV-SP 45.123')
+    .replace(/\{data_atual\}/g, new Date().toLocaleDateString('pt-BR'))
+    .replace(/\{clinica\}/g, 'Vetgo Cuidados Veterinários');
+};
 
 export const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('overview');
@@ -264,12 +325,157 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  // System Document Templates State (Backoffice)
+  const [systemTemplates, setSystemTemplates] = useState<SystemDocumentTemplate[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [templateCategoryFilter, setTemplateCategoryFilter] = useState<string>('ALL');
+  const [showSystemTemplateModal, setShowSystemTemplateModal] = useState(false);
+  const [editingSystemTemplate, setEditingSystemTemplate] = useState<SystemDocumentTemplate | null>(null);
+  const [systemTemplateForm, setSystemTemplateForm] = useState({
+    code: '',
+    title: '',
+    category: 'TERMO' as TemplateCategory,
+    description: '',
+    content: ''
+  });
+  const [systemTemplateSaving, setSystemTemplateSaving] = useState(false);
+  const [systemTemplateModalError, setSystemTemplateModalError] = useState<string | null>(null);
+  const [systemTemplateToast, setSystemTemplateToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [showResetSystemTemplatesModal, setShowResetSystemTemplatesModal] = useState(false);
+  const [resettingSystemTemplates, setResettingSystemTemplates] = useState(false);
+  const [adminPreviewSample, setAdminPreviewSample] = useState(false);
+  const adminTemplateTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const showSystemTemplateToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setSystemTemplateToast({ text, type });
+    setTimeout(() => setSystemTemplateToast(null), 3500);
+  };
+
+  const loadAdminSystemTemplates = async () => {
+    try {
+      setLoadingTemplates(true);
+      const list = await adminService.getSystemTemplates();
+      setSystemTemplates(list);
+    } catch (e: any) {
+      console.error('Error loading admin system templates:', e);
+      showSystemTemplateToast(e.message || 'Erro ao carregar modelos do sistema.', 'error');
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleOpenCreateSystemTemplate = () => {
+    setEditingSystemTemplate(null);
+    setSystemTemplateForm({
+      code: '',
+      title: '',
+      category: 'TERMO',
+      description: '',
+      content: ''
+    });
+    setAdminPreviewSample(false);
+    setSystemTemplateModalError(null);
+    setShowSystemTemplateModal(true);
+  };
+
+  const handleOpenEditSystemTemplate = (tmpl: SystemDocumentTemplate) => {
+    setEditingSystemTemplate(tmpl);
+    setSystemTemplateForm({
+      code: tmpl.code || String(tmpl.id),
+      title: tmpl.title,
+      category: tmpl.category || 'TERMO',
+      description: tmpl.description || '',
+      content: tmpl.content
+    });
+    setAdminPreviewSample(false);
+    setSystemTemplateModalError(null);
+    setShowSystemTemplateModal(true);
+  };
+
+  const handleInsertAdminTag = (tag: string) => {
+    const textarea = adminTemplateTextareaRef.current;
+    if (!textarea) {
+      setSystemTemplateForm(prev => ({ ...prev, content: prev.content + ' ' + tag }));
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = systemTemplateForm.content;
+    const before = text.substring(0, start);
+    const after = text.substring(end, text.length);
+    setSystemTemplateForm(prev => ({ ...prev, content: before + tag + after }));
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length);
+    }, 50);
+  };
+
+  const handleSaveSystemTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSystemTemplateModalError(null);
+    if (!systemTemplateForm.title.trim()) {
+      setSystemTemplateModalError('O título do modelo é obrigatório.');
+      return;
+    }
+    if (!systemTemplateForm.content.trim()) {
+      setSystemTemplateModalError('O conteúdo padrão do modelo é obrigatório.');
+      return;
+    }
+
+    try {
+      setSystemTemplateSaving(true);
+      if (editingSystemTemplate) {
+        await adminService.updateSystemTemplate(editingSystemTemplate.id, systemTemplateForm);
+        showSystemTemplateToast(`Modelo padrão "${systemTemplateForm.title}" atualizado com sucesso!`);
+      } else {
+        await adminService.createSystemTemplate(systemTemplateForm);
+        showSystemTemplateToast(`Novo modelo global "${systemTemplateForm.title}" criado com sucesso!`);
+      }
+      setShowSystemTemplateModal(false);
+      setEditingSystemTemplate(null);
+      await loadAdminSystemTemplates();
+    } catch (err: any) {
+      setSystemTemplateModalError(err.message || 'Erro ao salvar modelo.');
+    } finally {
+      setSystemTemplateSaving(false);
+    }
+  };
+
+  const handleDeleteSystemTemplate = async (tmpl: SystemDocumentTemplate) => {
+    if (!window.confirm(`Deseja realmente remover o modelo "${tmpl.title}" do sistema?`)) return;
+    try {
+      await adminService.deleteSystemTemplate(tmpl.id);
+      showSystemTemplateToast(`Modelo "${tmpl.title}" removido com sucesso.`);
+      await loadAdminSystemTemplates();
+    } catch (err: any) {
+      showSystemTemplateToast(err.message || 'Erro ao remover modelo.', 'error');
+    }
+  };
+
+  const handleResetSystemTemplates = async () => {
+    try {
+      setResettingSystemTemplates(true);
+      const res = await adminService.resetSystemTemplates();
+      setShowResetSystemTemplatesModal(false);
+      showSystemTemplateToast(res.message || 'Modelos restaurados com sucesso!');
+      await loadAdminSystemTemplates();
+    } catch (err: any) {
+      showSystemTemplateToast(err.message || 'Erro ao restaurar modelos.', 'error');
+    } finally {
+      setResettingSystemTemplates(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'smtp') {
       if (!smtpLoaded) {
         loadAdminSmtpSettings();
       }
       loadGoogleSettings();
+    }
+    if (activeTab === 'system_templates') {
+      loadAdminSystemTemplates();
     }
   }, [activeTab, smtpLoaded]);
 
@@ -471,8 +677,46 @@ export const AdminDashboard: React.FC = () => {
     return matchQuery && matchPlan;
   });
 
+  const filteredSystemTemplates = systemTemplates.filter((tmpl) => {
+    const q = templateSearch.toLowerCase();
+    const matchQuery =
+      !templateSearch ||
+      tmpl.title.toLowerCase().includes(q) ||
+      (tmpl.description && tmpl.description.toLowerCase().includes(q)) ||
+      (tmpl.content && tmpl.content.toLowerCase().includes(q)) ||
+      (tmpl.code && tmpl.code.toLowerCase().includes(q));
+    const matchCategory =
+      templateCategoryFilter === 'ALL' || tmpl.category === templateCategoryFilter;
+    return matchQuery && matchCategory;
+  });
+
   return (
     <AdminLayout activeTab={activeTab} onSelectTab={(tab) => setActiveTab(tab)}>
+      {systemTemplateToast && (
+        <div
+          className={`mb-4 p-3.5 rounded-xl text-xs font-semibold flex items-center justify-between border shadow-lg animate-in fade-in ${
+            systemTemplateToast.type === 'success'
+              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
+              : 'bg-rose-950/80 text-rose-300 border-rose-500/50'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {systemTemplateToast.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>{systemTemplateToast.text}</span>
+          </div>
+          <button
+            onClick={() => setSystemTemplateToast(null)}
+            className="text-slate-400 hover:text-white p-1 rounded-lg"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Tab Content 1: OVERVIEW & SAAS METRICS */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
@@ -1946,6 +2190,158 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Tab Content: SYSTEM DEFAULT TEMPLATES (MODELOS & TEXTOS PADRÃO) */}
+      {activeTab === 'system_templates' && (
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+                <FileText className="w-7 h-7 text-blue-500" />
+                Modelos & Textos Padrão do Sistema
+              </h1>
+              <p className="text-xs text-slate-400 mt-1">
+                Gerencie os modelos globais de receitas, atestados, termos de consentimento e orientações disponibilizados para todos os veterinários na plataforma.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowResetSystemTemplatesModal(true)}
+                className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition flex items-center gap-1.5 border border-slate-700 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Restaurar Padrões</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenCreateSystemTemplate}
+                className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-blue-500/20 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Novo Modelo Global</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Category Filter */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={templateSearch}
+                  onChange={(e) => setTemplateSearch(e.target.value)}
+                  placeholder="Buscar modelo por título, código ou palavra-chave..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs">
+                {(['ALL', 'TERMO', 'RECEITA', 'ATESTADO', 'ORIENTACOES', 'LAUDO', 'DECLARACAO', 'OUTRO'] as const).map(
+                  (cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setTemplateCategoryFilter(cat)}
+                      className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition cursor-pointer text-xs ${
+                        templateCategoryFilter === cat
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      {cat === 'ALL' ? 'Todos' : ADMIN_CATEGORY_BADGES[cat as TemplateCategory]?.label || cat}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                Tags dinâmicas como <code className="text-blue-300 font-mono">{"{nome_paciente}"}</code> e <code className="text-blue-300 font-mono">{"{nome_tutor}"}</code> são auto-completadas automaticamente para o veterinário.
+              </span>
+              <span>{filteredSystemTemplates.length} modelo(s) encontrado(s)</span>
+            </div>
+          </div>
+
+          {/* Templates Grid */}
+          {loadingTemplates ? (
+            <div className="py-12 text-center text-slate-400 text-xs">Carregando modelos do sistema...</div>
+          ) : filteredSystemTemplates.length === 0 ? (
+            <div className="py-12 text-center bg-slate-900 border border-slate-800 rounded-xl p-8 space-y-3">
+              <FileText className="w-10 h-10 text-slate-600 mx-auto" />
+              <div className="text-sm font-bold text-white">Nenhum modelo encontrado</div>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                Não há modelos que correspondam à sua busca ou categoria selecionada.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredSystemTemplates.map((tmpl) => {
+                const badge = ADMIN_CATEGORY_BADGES[tmpl.category] || ADMIN_CATEGORY_BADGES.OUTRO;
+                return (
+                  <div
+                    key={String(tmpl.id)}
+                    className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between hover:border-slate-700 transition space-y-4"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${badge.color}`}>
+                          {badge.label}
+                        </span>
+                        {tmpl.code && (
+                          <span className="font-mono text-[10px] text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                            #{tmpl.code}
+                          </span>
+                        )}
+                      </div>
+
+                      <h3 className="text-sm font-bold text-white line-clamp-1">{tmpl.title}</h3>
+                      {tmpl.description && (
+                        <p className="text-xs text-slate-400 line-clamp-2">{tmpl.description}</p>
+                      )}
+
+                      {/* Content Preview */}
+                      <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-lg text-[11px] font-mono text-slate-300 line-clamp-4 whitespace-pre-wrap leading-relaxed">
+                        {tmpl.content}
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                      <span className="text-[10px] text-slate-500">
+                        {tmpl.is_system_default ? '★ Padrão do Sistema' : 'Personalizado Admin'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditSystemTemplate(tmpl)}
+                          className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Editar</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSystemTemplate(tmpl)}
+                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/30 rounded-lg transition cursor-pointer"
+                          title="Excluir modelo"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Edit Subscription Modal */}
       {selectedUser && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
@@ -2616,6 +3012,211 @@ export const AdminDashboard: React.FC = () => {
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>{resettingDb ? 'Limpando Base...' : 'Confirmar Limpeza Total'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Criar / Editar Modelo Global do Sistema */}
+      {showSystemTemplateModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-500" />
+                {editingSystemTemplate ? 'Editar Modelo Global do Sistema' : 'Novo Modelo Global do Sistema'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowSystemTemplateModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {systemTemplateModalError && (
+              <div className="p-3 bg-rose-950/60 border border-rose-500/40 rounded-xl text-xs text-rose-300 flex items-center gap-2 shrink-0">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{systemTemplateModalError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSystemTemplate} className="space-y-4 overflow-y-auto pr-1 flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Título do Modelo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={systemTemplateForm.title}
+                    onChange={(e) => setSystemTemplateForm({ ...systemTemplateForm, title: e.target.value })}
+                    placeholder="Ex: Termo de Autorização Cirúrgica Geral"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Categoria *
+                  </label>
+                  <select
+                    value={systemTemplateForm.category}
+                    onChange={(e) =>
+                      setSystemTemplateForm({
+                        ...systemTemplateForm,
+                        category: e.target.value as TemplateCategory
+                      })
+                    }
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:border-blue-500 outline-none"
+                  >
+                    <option value="TERMO">Termo / TCLE</option>
+                    <option value="RECEITA">Receita</option>
+                    <option value="ATESTADO">Atestado</option>
+                    <option value="ORIENTACOES">Orientações</option>
+                    <option value="LAUDO">Laudo</option>
+                    <option value="DECLARACAO">Declaração</option>
+                    <option value="OUTRO">Personalizado</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Descrição Curta ou Finalidade
+                </label>
+                <input
+                  type="text"
+                  value={systemTemplateForm.description}
+                  onChange={(e) => setSystemTemplateForm({ ...systemTemplateForm, description: e.target.value })}
+                  placeholder="Ex: Utilizado para autorização de procedimentos cirúrgicos e anestésicos."
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              {/* Tag inserter */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-blue-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Tags de Auto-completar (Clique para Inserir no Texto)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAdminPreviewSample(!adminPreviewSample)}
+                    className="text-[11px] text-blue-400 underline hover:text-blue-300 cursor-pointer"
+                  >
+                    {adminPreviewSample ? 'Voltar para Edição' : 'Ver Prévia com Dados Reais'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+                  {ADMIN_TEMPLATE_VARIABLES.map((v) => (
+                    <button
+                      key={v.tag}
+                      type="button"
+                      onClick={() => handleInsertAdminTag(v.tag)}
+                      title={v.desc}
+                      className="px-2 py-1 rounded bg-slate-900 hover:bg-blue-600 hover:text-white border border-slate-800 text-[11px] font-mono text-slate-300 transition cursor-pointer"
+                    >
+                      {v.tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Text content or Sample Preview */}
+              {adminPreviewSample ? (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-emerald-400">
+                    Prévia do Documento Formatado (Simulação com Thor / Mariana Costa):
+                  </label>
+                  <div className="p-4 bg-slate-950 border border-emerald-500/40 rounded-xl text-xs text-slate-200 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto font-sans">
+                    {fillAdminSampleVariables(systemTemplateForm.content)}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Conteúdo Padrão do Documento *
+                  </label>
+                  <textarea
+                    ref={adminTemplateTextareaRef}
+                    required
+                    rows={10}
+                    value={systemTemplateForm.content}
+                    onChange={(e) => setSystemTemplateForm({ ...systemTemplateForm, content: e.target.value })}
+                    placeholder="Digite o texto oficial do documento. Utilize as tags acima para preenchimento dinâmico..."
+                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none font-mono leading-relaxed resize-y"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowSystemTemplateModal(false)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={systemTemplateSaving}
+                  className="px-4 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {systemTemplateSaving ? (
+                    'Salvando...'
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{editingSystemTemplate ? 'Salvar Alterações' : 'Criar Modelo'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirmar Restauração de Modelos Padrão */}
+      {showResetSystemTemplatesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                <RotateCcw className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-white">
+                  Restaurar Modelos Padrão Globais
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Isso irá restaurar os modelos oficiais da plataforma (Termo Cirúrgico, Eutanásia, Atestado de Saúde, etc.) para os textos padrão recomendados pelo CRMV.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowResetSystemTemplatesModal(false)}
+                disabled={resettingSystemTemplates}
+                className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleResetSystemTemplates}
+                disabled={resettingSystemTemplates}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition cursor-pointer flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{resettingSystemTemplates ? 'Restaurando...' : 'Confirmar Restauração'}</span>
               </button>
             </div>
           </div>

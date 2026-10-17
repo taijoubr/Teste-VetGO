@@ -8,7 +8,8 @@ import {
   Megaphone,
   X,
   Server,
-  Mail
+  Mail,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppLogo } from '../AppLogo';
@@ -46,6 +47,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       name: 'Planos & Precificação',
       icon: CreditCard,
       badge: 'R$ 18/mês'
+    },
+    {
+      id: 'system_templates',
+      name: 'Modelos & Textos Padrão',
+      icon: FileText,
+      badge: 'Sistema'
     },
     {
       id: 'announcements',

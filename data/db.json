@@ -90,7 +90,7 @@
       "gender": "Macho",
       "birth_date": null,
       "approximate_age": "3",
-      "weight_kg": 22.5,
+      "weight_kg": 23,
       "coat_color": null,
       "is_neutered": true,
       "microchip": null,
@@ -103,7 +103,7 @@
       "notes": null,
       "is_active": true,
       "created_at": "2026-10-03T21:58:21.834Z",
-      "updated_at": "2026-10-03T21:58:21.834Z"
+      "updated_at": "2026-10-17T06:43:47.294Z"
     }
   ],
   "appointments": [],
@@ -589,6 +589,47 @@
     }
   ],
   "seeded_orders_users": [
+    2
+  ],
+  "document_templates": [
+    {
+      "id": 1792219419359,
+      "owner_id": 2,
+      "title": "Termo de Retirada sem Alta Médica (Evasão / Alta a Pedido)",
+      "category": "TERMO",
+      "description": "Termo de responsabilidade quando o tutor opta por retirar o paciente contra recomendação médica.",
+      "content": "TERMO DE RESPONSABILIDADE E RETIRADA DE PACIENTE SEM ALTA MÉDICA\n\nEu, {nome_tutor}, portador(a) do CPF nº {cpf_tutor}, residente em {endereco_tutor}, {cidade_tutor}, telefone {telefone_tutor}, na qualidade de responsável legal pelo animal {nome_paciente} ({especie}, {raca}, {sexo}, {peso}, microchip: {microchip}), declaro que decidi, por minha livre e espontânea vontade, retirar o referido paciente das dependências do atendimento sob responsabilidade do(a) Dr(a). {nome_veterinario} (CRMV-{crmv_veterinario}), CONTRARIANDO FORMALMENTE A RECOMENDAÇÃO MÉDICA VETERINÁRIA.\n\nDeclaro estar plenamente ciente dos riscos decorrentes da interrupção do tratamento, exames diagnósticos, estabilização e observação clínica, assumindo integral responsabilidade civil e sanitária sobre eventuais agravamentos no quadro clínico do animal, sequelas ou óbito.\n\nLocal e Data: {cidade_tutor}, {data_atual}.\n\n_____________________________________________\nAssinatura do Tutor Responsável\n\n_____________________________________________\nDr(a). {nome_veterinario} - CRMV {crmv_veterinario}",
+      "created_at": "2026-10-17T06:43:39.358Z"
+    },
+    {
+      "id": 1792219419360,
+      "owner_id": 2,
+      "title": "Orientações e Cuidados Pós-Operatórios Padrão",
+      "category": "ORIENTACOES",
+      "description": "Instruções de repouso, higiene de curativo, medicação e retorno pós-cirurgia.",
+      "content": "RECOMENDAÇÕES E CUIDADOS PÓS-OPERATÓRIOS\n\nPaciente: {nome_paciente} | Espécie: {especie} | Raça: {raca}\nTutor Responsável: {nome_tutor} ({telefone_tutor})\nData do Procedimento: {data_atual}\nMédico(a) Veterinário(a): Dr(a). {nome_veterinario} - CRMV: {crmv_veterinario}\n\n1. REPOUSO:\nManter o paciente em ambiente limpo, seco, protegido do frio e calor excessivo. Evitar corridas, subidas em sofás, escadas ou brincadeiras bruscas por pelo menos 10 dias.\n\n2. PROTEÇÃO DA FERIDA CIRÚRGICA:\nUso rigoroso e contínuo de colar elizabetano ou roupa cirúrgica até a cicatrização e retirada dos pontos. O animal NÃO PODE lamber ou coçar a incisão.\n\n3. LIMPEZA DO CURATIVO / INCISÃO:\nHigienizar a incisão 2 vezes ao dia com gaze estéril embebida em soro fisiológico ou antisséptico veterinário prescrito, secando delicadamente sem atrito.\n\n4. MEDICAÇÕES:\nAdministrar analgésicos, anti-inflamatórios e antibióticos estritamente nos horários e dosagens descritos no receituário médico.\n\n5. RETORNO PARA AVALIAÇÃO:\nRetorno previsto para 10 a 14 dias para avaliação cicatricial e remoção de pontos.\n\nEm caso de secreção anormal, inchaço excessivo, sangramento, apatia severa ou vômitos recorrentes, favor entrar em contato imediatamente.",
+      "created_at": "2026-10-17T06:43:39.358Z"
+    },
+    {
+      "id": 1792219419361,
+      "owner_id": 2,
+      "title": "Termo de Autorização Cirúrgica e Anestésica para Castração",
+      "category": "TERMO",
+      "description": "Autorização específica para cirurgia de esterilização eletiva (Osh / Orquiectomia).",
+      "content": "AUTORIZAÇÃO PARA PROCEDIMENTO CIRÚRGICO DE ESTERILIZAÇÃO (CASTRAÇÃO)\n\nPACIENTE: {nome_paciente} | Espécie: {especie} | Raça: {raca} | Sexo: {sexo} | Peso: {peso} | Idade: {idade}\nTUTOR: {nome_tutor} | CPF: {cpf_tutor} | Contato: {telefone_tutor}\nENDEREÇO: {endereco_tutor}, {cidade_tutor}\n\nEu, acima qualificado(a) como tutor(a) e responsável legal pelo animal, autorizo o(a) Dr(a). {nome_veterinario} (CRMV-{crmv_veterinario}) e equipe a realizarem o procedimento cirúrgico de castração e respectiva anestesia/analgesia.\n\nDeclaro que:\n1. Cumpri o período de jejum pré-operatório orientado (hídrico e alimentar);\n2. Fui esclarecido(a) sobre a técnica cirúrgica, riscos anestésicos inerentes e condutas emergenciais se necessárias;\n3. Comprometo-me a seguir todos os cuidados pós-operatórios e medicações indicadas.\n\nData: {data_atual}.\n\n_____________________________________________\nAssinatura do Tutor Responsável",
+      "created_at": "2026-10-17T06:43:39.358Z"
+    },
+    {
+      "id": 1792219419362,
+      "owner_id": 2,
+      "title": "Declaração de Atestado Sanitário para Viagem e Trânsito Animal",
+      "category": "ATESTADO",
+      "description": "Atestado de higidez clínica e vacinação para viagens aéreas ou interestaduais.",
+      "content": "ATESTADO DE SAÚDE E HIGIDEZ CLÍNICA PARA TRANSPORTE ANIMAL\n\nAtesto para os devidos fins que examinei clinicamente nesta data o animal {nome_paciente}, espécie {especie}, raça {raca}, pelagem {pelagem}, sexo {sexo}, pesando {peso}, microchip {microchip}, de propriedade de {nome_tutor} (CPF: {cpf_tutor}, residente em {endereco_tutor}, {cidade_tutor}).\n\nDeclaro que o paciente encontra-se em bom estado geral de saúde, livre de ectoparasitas aparentes, sem sinais de moléstias infectocontagiosas ou zoonoses, encontrando-se apto para viagem terrestre ou aérea.\n\nData do exame: {data_atual}\nValidade do atestado: 10 (dez) dias corridos.\n\n_____________________________________________\nDr(a). {nome_veterinario}\nCRMV-{crmv_veterinario}",
+      "created_at": "2026-10-17T06:43:39.358Z"
+    }
+  ],
+  "seeded_templates_users": [
     2
   ]
 }

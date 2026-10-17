@@ -3,7 +3,8 @@ import {
   AdminAuditLog,
   AdminStats,
   PlatformPlan,
-  GlobalAnnouncement
+  GlobalAnnouncement,
+  SystemDocumentTemplate
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
@@ -291,5 +292,71 @@ export const adminService = {
       if (local) return JSON.parse(local);
       return [];
     }
+  },
+
+  // -------------------------------------------------------------
+  // SYSTEM DEFAULT TEMPLATES MANAGEMENT (BACKOFFICE)
+  // -------------------------------------------------------------
+  async getSystemTemplates(): Promise<SystemDocumentTemplate[]> {
+    try {
+      const list = await adminRequest<SystemDocumentTemplate[]>('/admin/system-templates');
+      if (Array.isArray(list)) {
+        localStorage.setItem('vetgo_admin_system_templates', JSON.stringify(list));
+        return list;
+      }
+    } catch (e) {
+      console.warn('Backend getSystemTemplates error, using local fallback:', e);
+    }
+    const local = localStorage.getItem('vetgo_admin_system_templates');
+    if (local) {
+      try {
+        return JSON.parse(local);
+      } catch {}
+    }
+    return [];
+  },
+
+  async createSystemTemplate(data: Partial<SystemDocumentTemplate>): Promise<SystemDocumentTemplate> {
+    const created = await adminRequest<SystemDocumentTemplate>('/admin/system-templates', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+    const list = await this.getSystemTemplates();
+    list.push(created);
+    localStorage.setItem('vetgo_admin_system_templates', JSON.stringify(list));
+    return created;
+  },
+
+  async updateSystemTemplate(id: string | number, updates: Partial<SystemDocumentTemplate>): Promise<SystemDocumentTemplate> {
+    const updated = await adminRequest<SystemDocumentTemplate>(`/admin/system-templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+    const list = await this.getSystemTemplates();
+    const idx = list.findIndex(t => String(t.id) === String(id) || String(t.code) === String(id));
+    if (idx >= 0) list[idx] = updated;
+    localStorage.setItem('vetgo_admin_system_templates', JSON.stringify(list));
+    return updated;
+  },
+
+  async deleteSystemTemplate(id: string | number): Promise<{ message: string }> {
+    const res = await adminRequest<{ message: string }>(`/admin/system-templates/${id}`, {
+      method: 'DELETE'
+    });
+    const list = await this.getSystemTemplates();
+    const filtered = list.filter(t => String(t.id) !== String(id) && String(t.code) !== String(id));
+    localStorage.setItem('vetgo_admin_system_templates', JSON.stringify(filtered));
+    return res;
+  },
+
+  async resetSystemTemplates(): Promise<{ message: string; templates: SystemDocumentTemplate[] }> {
+    const res = await adminRequest<{ message: string; templates: SystemDocumentTemplate[] }>('/admin/system-templates/reset', {
+      method: 'POST'
+    });
+    if (res?.templates) {
+      localStorage.setItem('vetgo_admin_system_templates', JSON.stringify(res.templates));
+    }
+    return res;
   }
 };
+

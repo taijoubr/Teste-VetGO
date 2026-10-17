@@ -1020,6 +1020,8 @@ app.get('/api/v1/tutors', requireAuth, (req, res) => {
     list = list.filter(
       (t) =>
         (t.name && t.name.toLowerCase().includes(s)) ||
+        (t.code && t.code.toLowerCase().includes(s)) ||
+        (`tut-${String(t.id).padStart(4, '0')}`.includes(s)) ||
         (t.cpf && t.cpf.includes(s)) ||
         (t.phone && t.phone.includes(s)) ||
         (t.email && t.email.toLowerCase().includes(s)) ||
@@ -1030,9 +1032,10 @@ app.get('/api/v1/tutors', requireAuth, (req, res) => {
   // Sort newest first
   list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-  // Attach patients count
+  // Attach patients count and formatted code
   const results = list.map((t) => ({
     ...t,
+    code: t.code || `TUT-${String(t.id).padStart(4, '0')}`,
     is_active: Boolean(t.is_active),
     patients_count: db.patients.filter((p) => p.owner_id === user.id && p.tutor_id === t.id).length,
   }));
@@ -1057,8 +1060,10 @@ app.post('/api/v1/tutors', requireAuth, (req, res) => {
   }
 
   const nextId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => t.id)) + 1 : 1;
+  const code = `TUT-${String(nextId).padStart(4, '0')}`;
   const newTutor = {
     id: nextId,
+    code,
     owner_id: user.id,
     name: data.name.trim(),
     cpf: data.cpf || null,
@@ -1178,6 +1183,8 @@ app.get('/api/v1/patients', requireAuth, (req, res) => {
     list = list.filter(
       (p) =>
         (p.name && p.name.toLowerCase().includes(s)) ||
+        (p.code && p.code.toLowerCase().includes(s)) ||
+        (`pac-${String(p.id).padStart(4, '0')}`.includes(s)) ||
         (p.breed && p.breed.toLowerCase().includes(s)) ||
         (p.microchip && p.microchip.toLowerCase().includes(s)) ||
         (p.microchip_number && p.microchip_number.toLowerCase().includes(s))
@@ -1190,6 +1197,7 @@ app.get('/api/v1/patients', requireAuth, (req, res) => {
     const tutor = db.tutors.find((t) => t.id === p.tutor_id);
     return {
       ...p,
+      code: p.code || `PAC-${String(p.id).padStart(4, '0')}`,
       tutor_name: tutor?.name || 'Tutor não identificado',
       is_active: Boolean(p.is_active),
       is_neutered: Boolean(p.is_neutered),
@@ -1223,8 +1231,10 @@ app.post('/api/v1/patients', requireAuth, (req, res) => {
   }
 
   const nextId = db.patients.length > 0 ? Math.max(...db.patients.map((p) => p.id)) + 1 : 1;
+  const code = `PAC-${String(nextId).padStart(4, '0')}`;
   const newPatient = {
     id: nextId,
+    code,
     owner_id: user.id,
     tutor_id: Number(data.tutor_id),
     name: data.name.trim(),
@@ -2198,6 +2208,395 @@ app.post('/api/v1/documents', requireAuth, (req, res) => {
   saveDB(db);
   res.status(201).json(newDoc);
 });
+
+app.delete('/api/v1/documents/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray(db.documents)) db.documents = [];
+  db.documents = db.documents.filter((d: any) => !(d.id === id && d.owner_id === user.id));
+  saveDB(db);
+  res.json({ message: 'Documento excluído com sucesso.' });
+});
+
+// -------------------------------------------------------------
+// DOCUMENT TEMPLATES (Textos Padrão / Modelos Customizáveis)
+// -------------------------------------------------------------
+app.get('/api/v1/document-templates', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  if (!Array.isArray((db as any).document_templates)) (db as any).document_templates = [];
+  if (!Array.isArray((db as any).seeded_templates_users)) (db as any).seeded_templates_users = [];
+
+  // Seed default customizable templates if not seeded for this user
+  if (!(db as any).seeded_templates_users.includes(user.id)) {
+    const userTemplates = (db as any).document_templates.filter((t: any) => t.owner_id === user.id);
+    if (userTemplates.length === 0) {
+      const defaultTemplates = [
+        {
+          id: Date.now() + 1,
+          owner_id: user.id,
+          title: 'Termo de Retirada sem Alta Médica (Evasão / Alta a Pedido)',
+          category: 'TERMO',
+          description: 'Termo de responsabilidade quando o tutor opta por retirar o paciente contra recomendação médica.',
+          content: 'TERMO DE RESPONSABILIDADE E RETIRADA DE PACIENTE SEM ALTA MÉDICA\n\nEu, {nome_tutor}, portador(a) do CPF nº {cpf_tutor}, residente em {endereco_tutor}, {cidade_tutor}, telefone {telefone_tutor}, na qualidade de responsável legal pelo animal {nome_paciente} ({especie}, {raca}, {sexo}, {peso}, microchip: {microchip}), declaro que decidi, por minha livre e espontânea vontade, retirar o referido paciente das dependências do atendimento sob responsabilidade do(a) Dr(a). {nome_veterinario} (CRMV-{crmv_veterinario}), CONTRARIANDO FORMALMENTE A RECOMENDAÇÃO MÉDICA VETERINÁRIA.\n\nDeclaro estar plenamente ciente dos riscos decorrentes da interrupção do tratamento, exames diagnósticos, estabilização e observação clínica, assumindo integral responsabilidade civil e sanitária sobre eventuais agravamentos no quadro clínico do animal, sequelas ou óbito.\n\nLocal e Data: {cidade_tutor}, {data_atual}.\n\n_____________________________________________\nAssinatura do Tutor Responsável\n\n_____________________________________________\nDr(a). {nome_veterinario} - CRMV {crmv_veterinario}',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: Date.now() + 2,
+          owner_id: user.id,
+          title: 'Orientações e Cuidados Pós-Operatórios Padrão',
+          category: 'ORIENTACOES',
+          description: 'Instruções de repouso, higiene de curativo, medicação e retorno pós-cirurgia.',
+          content: 'RECOMENDAÇÕES E CUIDADOS PÓS-OPERATÓRIOS\n\nPaciente: {nome_paciente} | Espécie: {especie} | Raça: {raca}\nTutor Responsável: {nome_tutor} ({telefone_tutor})\nData do Procedimento: {data_atual}\nMédico(a) Veterinário(a): Dr(a). {nome_veterinario} - CRMV: {crmv_veterinario}\n\n1. REPOUSO:\nManter o paciente em ambiente limpo, seco, protegido do frio e calor excessivo. Evitar corridas, subidas em sofás, escadas ou brincadeiras bruscas por pelo menos 10 dias.\n\n2. PROTEÇÃO DA FERIDA CIRÚRGICA:\nUso rigoroso e contínuo de colar elizabetano ou roupa cirúrgica até a cicatrização e retirada dos pontos. O animal NÃO PODE lamber ou coçar a incisão.\n\n3. LIMPEZA DO CURATIVO / INCISÃO:\nHigienizar a incisão 2 vezes ao dia com gaze estéril embebida em soro fisiológico ou antisséptico veterinário prescrito, secando delicadamente sem atrito.\n\n4. MEDICAÇÕES:\nAdministrar analgésicos, anti-inflamatórios e antibióticos estritamente nos horários e dosagens descritos no receituário médico.\n\n5. RETORNO PARA AVALIAÇÃO:\nRetorno previsto para 10 a 14 dias para avaliação cicatricial e remoção de pontos.\n\nEm caso de secreção anormal, inchaço excessivo, sangramento, apatia severa ou vômitos recorrentes, favor entrar em contato imediatamente.',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: Date.now() + 3,
+          owner_id: user.id,
+          title: 'Termo de Autorização Cirúrgica e Anestésica para Castração',
+          category: 'TERMO',
+          description: 'Autorização específica para cirurgia de esterilização eletiva (Osh / Orquiectomia).',
+          content: 'AUTORIZAÇÃO PARA PROCEDIMENTO CIRÚRGICO DE ESTERILIZAÇÃO (CASTRAÇÃO)\n\nPACIENTE: {nome_paciente} | Espécie: {especie} | Raça: {raca} | Sexo: {sexo} | Peso: {peso} | Idade: {idade}\nTUTOR: {nome_tutor} | CPF: {cpf_tutor} | Contato: {telefone_tutor}\nENDEREÇO: {endereco_tutor}, {cidade_tutor}\n\nEu, acima qualificado(a) como tutor(a) e responsável legal pelo animal, autorizo o(a) Dr(a). {nome_veterinario} (CRMV-{crmv_veterinario}) e equipe a realizarem o procedimento cirúrgico de castração e respectiva anestesia/analgesia.\n\nDeclaro que:\n1. Cumpri o período de jejum pré-operatório orientado (hídrico e alimentar);\n2. Fui esclarecido(a) sobre a técnica cirúrgica, riscos anestésicos inerentes e condutas emergenciais se necessárias;\n3. Comprometo-me a seguir todos os cuidados pós-operatórios e medicações indicadas.\n\nData: {data_atual}.\n\n_____________________________________________\nAssinatura do Tutor Responsável',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: Date.now() + 4,
+          owner_id: user.id,
+          title: 'Declaração de Atestado Sanitário para Viagem e Trânsito Animal',
+          category: 'ATESTADO',
+          description: 'Atestado de higidez clínica e vacinação para viagens aéreas ou interestaduais.',
+          content: 'ATESTADO DE SAÚDE E HIGIDEZ CLÍNICA PARA TRANSPORTE ANIMAL\n\nAtesto para os devidos fins que examinei clinicamente nesta data o animal {nome_paciente}, espécie {especie}, raça {raca}, pelagem {pelagem}, sexo {sexo}, pesando {peso}, microchip {microchip}, de propriedade de {nome_tutor} (CPF: {cpf_tutor}, residente em {endereco_tutor}, {cidade_tutor}).\n\nDeclaro que o paciente encontra-se em bom estado geral de saúde, livre de ectoparasitas aparentes, sem sinais de moléstias infectocontagiosas ou zoonoses, encontrando-se apto para viagem terrestre ou aérea.\n\nData do exame: {data_atual}\nValidade do atestado: 10 (dez) dias corridos.\n\n_____________________________________________\nDr(a). {nome_veterinario}\nCRMV-{crmv_veterinario}',
+          created_at: new Date().toISOString(),
+        }
+      ];
+      (db as any).document_templates.push(...defaultTemplates);
+      (db as any).seeded_templates_users.push(user.id);
+      saveDB(db);
+    }
+  }
+
+  const list = (db as any).document_templates.filter((t: any) => t.owner_id === user.id);
+  res.json(list);
+});
+
+app.post('/api/v1/document-templates', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  if (!Array.isArray((db as any).document_templates)) (db as any).document_templates = [];
+  const { title, category, description, content } = req.body;
+  if (!title || !content) {
+    return res.status(400).json({ detail: 'Título e conteúdo são obrigatórios.' });
+  }
+
+  const newTemplate = {
+    id: Date.now(),
+    owner_id: user.id,
+    title: String(title).trim(),
+    category: category || 'OUTRO',
+    description: description ? String(description).trim() : '',
+    content: String(content),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  (db as any).document_templates.push(newTemplate);
+  saveDB(db);
+  res.status(201).json(newTemplate);
+});
+
+app.put('/api/v1/document-templates/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray((db as any).document_templates)) (db as any).document_templates = [];
+  const idx = (db as any).document_templates.findIndex((t: any) => t.id === id && t.owner_id === user.id);
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Modelo de documento não encontrado.' });
+  }
+
+  const { title, category, description, content } = req.body;
+  if (title !== undefined) (db as any).document_templates[idx].title = String(title).trim();
+  if (category !== undefined) (db as any).document_templates[idx].category = category;
+  if (description !== undefined) (db as any).document_templates[idx].description = String(description).trim();
+  if (content !== undefined) (db as any).document_templates[idx].content = String(content);
+  (db as any).document_templates[idx].updated_at = new Date().toISOString();
+
+  saveDB(db);
+  res.json((db as any).document_templates[idx]);
+});
+
+app.delete('/api/v1/document-templates/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray((db as any).document_templates)) (db as any).document_templates = [];
+  (db as any).document_templates = (db as any).document_templates.filter(
+    (t: any) => !(t.id === id && t.owner_id === user.id)
+  );
+  saveDB(db);
+  res.json({ message: 'Modelo excluído com sucesso.' });
+});
+
+// -------------------------------------------------------------
+// SYSTEM DEFAULT TEMPLATES (PADRÕES GLOBAIS DO SISTEMA - BACKOFFICE)
+// -------------------------------------------------------------
+function getDefaultSystemTemplates() {
+  return [
+    {
+      id: 'RECEITA_SIMPLES',
+      code: 'RECEITA_SIMPLES',
+      title: 'Receita Médica Veterinária Simples',
+      category: 'RECEITA',
+      description: 'Prescrição ambulatorial padrão para medicações de uso contínuo, sintomáticos e antibióticos.',
+      is_system_default: true,
+      content: 'PRESCRIÇÃO VETERINÁRIA\n\nPaciente: {nome_paciente} ({especie}, {raca}, {peso})\nTutor(a): {nome_tutor}\nData: {data_atual}\n\nUSO ORAL:\n1) Dipirona Gotas 500mg/mL ----------------- 1 frasco\nAdministrar 1 gota por kg de peso corporal a cada 8 horas se dor ou febre, por 3 dias.\n\n2) Probiótico Pet Pasta -------------------- 1 bisnaga\nAdministrar 2g por via oral uma vez ao dia por 7 dias.\n\nRecomendações: Oferecer água fresca à vontade e manter o animal em repouso.',
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'RECEITA_CONTROLE_ESPECIAL',
+      code: 'RECEITA_CONTROLE_ESPECIAL',
+      title: 'Receituário de Controle Especial (MAPA / Notificação)',
+      category: 'RECEITA',
+      description: 'Prescrição em duas vias para fármacos controlados (Portaria 344/98 e Instruções Normativas MAPA).',
+      is_system_default: true,
+      content: 'RECEITUÁRIO DE CONTROLE ESPECIAL (EM DUAS VIAS)\n(Portaria SVS/MS nº 344/98 e Instruções Normativas MAPA)\n\n1ª VIA: Retenção da Farmácia / Drogaria\n2ª VIA: Orientação ao Paciente / Tutor\n\nEMITENTE:\nDr(a). {nome_veterinario} • CRMV-{crmv_veterinario}\n\nPACIENTE: {nome_paciente} ({especie}, {raca}, {peso})\nTUTOR: {nome_tutor} (Endereço: {endereco_tutor}, {cidade_tutor})\n\nPRESCRIÇÃO:\n1) Tramadol 50mg ---------------------------- 1 caixa com 20 cápsulas\nAdministrar 1 cápsula por via oral a cada 8 horas, por 5 dias consecutivos.\n\nFinalidade: Analgesia e controle álgico pós-procedimento ambulatorial.',
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'REQUISICAO_EXAMES',
+      code: 'REQUISICAO_EXAMES',
+      title: 'Requisição de Exames Complementares (Laboratório & Imagem)',
+      category: 'LAUDO',
+      description: 'Solicitação formal de exames hematológicos, bioquímicos, citológicos e diagnóstico por imagem.',
+      is_system_default: true,
+      content: 'REQUISIÇÃO DE EXAMES COMPLEMENTARES\n\nPACIENTE: {nome_paciente} ({especie}, {raca}, {peso})\nTUTOR: {nome_tutor}\nDATA: {data_atual}\n\nSOLICITAÇÃO DE EXAMES:\n[ ] Hemograma Completo com Pesquisa de Hemoparasitas\n[ ] Perfil Bioquímico Renal: Ureia e Creatinina\n[ ] Perfil Hepático: ALT e Fosfatase Alcalina (FA)\n[ ] Glicemia em Jejum\n[ ] Urinálise (Urina Tipo I / Sedimento)\n[ ] Ultrassonografia Abdominal Total\n[ ] Radiografia Torácica (Projeções Laterolateral e Ventrodorsal)\n\nHIPÓTESE DIAGNÓSTICA / JUSTIFICATIVA:\nInvestigação e acompanhamento clínico ambulatorial.\n\nRECOMENDAÇÕES AO TUTOR:\n- Jejum alimentar de 8 a 12 horas prévio à coleta de sangue/ultrassom.\n- Água à vontade (não suspender água).\n- Para ultrassom abdominal, manter bexiga moderadamente repleta.',
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'ATESTADO_SAUDE',
+      code: 'ATESTADO_SAUDE',
+      title: 'Atestado de Saúde Animal e Aptidão Sanitária',
+      category: 'ATESTADO',
+      description: 'Atestado de higidez clínica para trânsito nacional, viagens e hospedagens.',
+      is_system_default: true,
+      content: 'ATESTADO DE SAÚDE ANIMAL\n\nAtesto, sob as penas da lei e para os devidos fins a pedido do tutor, que examinei nesta data o paciente {nome_paciente}, espécie {especie}, raça {raca}, pelagem {pelagem}, sexo {sexo}, pesando {peso}, microchip {microchip}, encontrando-se clinicamente hígido, livre de ectoparasitas e de sinais compatíveis com doenças infectocontagiosas.\n\nO paciente encontra-se apto para viagens aéreas/terrestres em território nacional e hospedagem em estabelecimentos especializados.\n\nValidade deste atestado: 10 (dez) dias a contar da data de emissão ({data_atual}).',
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'ATESTADO_VACINACAO',
+      code: 'ATESTADO_VACINACAO',
+      title: 'Atestado e Declaração de Vacinação Atualizada',
+      category: 'ATESTADO',
+      description: 'Comprovante sanitário de vacinação polivalente e antirrábica.',
+      is_system_default: true,
+      content: 'DECLARAÇÃO DE VACINAÇÃO\n\nAtesto que o animal {nome_paciente} ({especie}, {raca}), de propriedade de {nome_tutor}, recebeu sob minha supervisão profissional os seguintes imunobiológicos:\n\n- Vacina Polivalente (V10/V5) - Lote: NV-2026-X8 - Próximo reforço: 1 ano\n- Vacina Antirrábica - Lote: DEF-8821 - Próximo reforço: 1 ano\n\nAnimal apto e imunizado conforme protocolo sanitário vigente.\nData: {data_atual}.',
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'TERMO_CONSENTIMENTO_LIVRE',
+      code: 'TERMO_CONSENTIMENTO_LIVRE',
+      title: 'Termo de Consentimento Livre e Esclarecido (TCLE)',
+      category: 'TERMO',
+      description: 'Autorização clínica do tutor com esclarecimento de riscos, benefícios e condutas.',
+      is_system_default: true,
+      content: 'TERMO DE CONSENTIMENTO LIVRE E ESCLARECIDO (TCLE)\n\nEu, {nome_tutor}, portador(a) do CPF nº {cpf_tutor}, residente em {endereco_tutor}, {cidade_tutor}, telefone {telefone_tutor}, na qualidade de responsável legal pelo paciente {nome_paciente} ({especie}, {raca}, {sexo}, {peso}), declaro ter sido devidamente informado(a) pelo(a) médico(a) veterinário(a) Dr(a). {nome_veterinario} (CRMV-{crmv_veterinario}) sobre o estado de saúde do animal, os procedimentos clínicos e diagnósticos recomendados, bem como os riscos e benefícios inerentes.\n\nAutorizo a realização das condutas propostas no ambiente de atendimento.\nData: {data_atual}.',
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'AUTORIZACAO_SEDACAO',
+      code: 'AUTORIZACAO_SEDACAO',
+      title: 'Autorização de Sedação e Procedimento Anestésico',
+      category: 'TERMO',
+      description: 'Termo de consentimento para contenção química, sedação e anestesia ambulatorial/cirúrgica.',
+      is_system_default: true,
+      content: 'AUTORIZAÇÃO DE PROCEDIMENTO ANESTÉSICO / SEDAÇÃO\n\nEu, {nome_tutor}, portador(a) do CPF nº {cpf_tutor}, autorizo o(a) médico(a) veterinário(a) Dr(a). {nome_veterinario} a submeter o paciente {nome_paciente} ({especie}, {raca}, {peso}) ao procedimento de sedação e analgesia para fins de contenção, exames e procedimentos necessários.\n\nDeclaro estar ciente dos riscos anestésicos mesmo com todos os cuidados e monitorização aplicados.\nData: {data_atual}.',
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'TERMO_EUTANASIA',
+      code: 'TERMO_EUTANASIA',
+      title: 'Termo de Autorização de Eutanásia e Laudo Justificativo (CFMV 1000/2012)',
+      category: 'TERMO',
+      description: 'Documento legal para eutanásia humanitária conforme Resolução CFMV 1000/2012.',
+      is_system_default: true,
+      content: 'TERMO DE AUTORIZAÇÃO DE EUTANÁSIA E LAUDO TÉCNICO JUSTIFICATIVO\n(Conforme Resolução CFMV nº 1000/2012)\n\nEu, {nome_tutor}, portador(a) do CPF nº {cpf_tutor}, autorizo formalmente a prática de eutanásia humanitária no paciente {nome_paciente} ({especie}, {raca}, {peso}), em razão de sofrimento irreversível, ausência de resposta terapêutica e término das possibilidades de suporte à vida.\n\nO ato será realizado utilizando métodos científicos que asseguram a ausência de dor, síncope rápida e cessação indolor das funções vitais.\nData: {data_atual}.',
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'TERMO_RETIRADA_SEM_ALTA',
+      code: 'TERMO_RETIRADA_SEM_ALTA',
+      title: 'Termo de Retirada sem Alta Médica (Evasão / Alta a Pedido)',
+      category: 'TERMO',
+      description: 'Termo de responsabilidade quando o tutor opta por retirar o paciente contra recomendação médica.',
+      is_system_default: true,
+      content: 'TERMO DE RESPONSABILIDADE E RETIRADA DE PACIENTE SEM ALTA MÉDICA\n\nEu, {nome_tutor}, portador(a) do CPF nº {cpf_tutor}, residente em {endereco_tutor}, {cidade_tutor}, telefone {telefone_tutor}, na qualidade de responsável legal pelo animal {nome_paciente} ({especie}, {raca}, {sexo}, {peso}, microchip: {microchip}), declaro que decidi, por minha livre e espontânea vontade, retirar o referido paciente das dependências do atendimento sob responsabilidade do(a) Dr(a). {nome_veterinario} (CRMV-{crmv_veterinario}), CONTRARIANDO FORMALMENTE A RECOMENDAÇÃO MÉDICA VETERINÁRIA.\n\nDeclaro estar plenamente ciente dos riscos decorrentes da interrupção do tratamento, exames diagnósticos, estabilização e observação clínica, assumindo integral responsabilidade civil e sanitária sobre eventuais agravamentos no quadro clínico do animal, sequelas ou óbito.\n\nLocal e Data: {cidade_tutor}, {data_atual}.',
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'ORIENTACOES_POS_OP',
+      code: 'ORIENTACOES_POS_OP',
+      title: 'Orientações e Cuidados Pós-Operatórios Padrão',
+      category: 'ORIENTACOES',
+      description: 'Instruções de repouso, higiene de curativo, medicação e retorno pós-cirurgia.',
+      is_system_default: true,
+      content: 'RECOMENDAÇÕES E CUIDADOS PÓS-OPERATÓRIOS\n\nPaciente: {nome_paciente} | Espécie: {especie} | Raça: {raca}\nTutor Responsável: {nome_tutor} ({telefone_tutor})\nData do Procedimento: {data_atual}\nMédico(a) Veterinário(a): Dr(a). {nome_veterinario} - CRMV: {crmv_veterinario}\n\n1. REPOUSO:\nManter o paciente em ambiente limpo, seco, protegido do frio e calor excessivo. Evitar corridas, subidas em sofás, escadas ou brincadeiras bruscas por pelo menos 10 dias.\n\n2. PROTEÇÃO DA FERIDA CIRÚRGICA:\nUso rigoroso e contínuo de colar elizabetano ou roupa cirúrgica até a cicatrização e retirada dos pontos. O animal NÃO PODE lamber ou coçar a incisão.\n\n3. LIMPEZA DO CURATIVO / INCISÃO:\nHigienizar a incisão 2 vezes ao dia com gaze estéril embebida em soro fisiológico ou antisséptico veterinário prescrito, secando delicadamente sem atrito.\n\n4. MEDICAÇÕES:\nAdministrar analgésicos, anti-inflamatórios e antibióticos estritamente nos horários e dosagens descritos no receituário médico.\n\n5. RETORNO PARA AVALIAÇÃO:\nRetorno previsto para 10 a 14 dias para avaliação cicatricial e remoção de pontos.\n\nEm caso de secreção anormal, inchaço excessivo, sangramento, apatia severa ou vômitos recorrentes, favor entrar em contato imediatamente.',
+      updated_at: new Date().toISOString()
+    }
+  ];
+}
+
+// Endpoint para buscar os modelos padrão do sistema (Acesso para veterinários e admins)
+app.get('/api/v1/system-templates', (req, res) => {
+  if (!Array.isArray((db as any).system_document_templates) || (db as any).system_document_templates.length === 0) {
+    (db as any).system_document_templates = getDefaultSystemTemplates();
+    saveDB(db);
+  }
+  res.json((db as any).system_document_templates);
+});
+
+// Admin: Obter modelos do sistema para gestão
+app.get('/api/v1/admin/system-templates', requireAdmin, (_req, res) => {
+  if (!Array.isArray((db as any).system_document_templates) || (db as any).system_document_templates.length === 0) {
+    (db as any).system_document_templates = getDefaultSystemTemplates();
+    saveDB(db);
+  }
+  res.json((db as any).system_document_templates);
+});
+
+// Admin: Criar novo modelo padrão global do sistema
+app.post('/api/v1/admin/system-templates', requireAdmin, (req, res) => {
+  const admin = (req as any).user;
+  if (!Array.isArray((db as any).system_document_templates)) {
+    (db as any).system_document_templates = getDefaultSystemTemplates();
+  }
+
+  const { title, category, description, content, code } = req.body;
+  if (!title || !content) {
+    return res.status(400).json({ detail: 'Título e conteúdo são obrigatórios.' });
+  }
+
+  const newId = code ? String(code).trim().toUpperCase() : `CUSTOM_SYS_${Date.now()}`;
+  const newTemplate = {
+    id: newId,
+    code: newId,
+    title: String(title).trim(),
+    category: category || 'OUTRO',
+    description: description ? String(description).trim() : '',
+    content: String(content),
+    is_system_default: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  (db as any).system_document_templates.push(newTemplate);
+  saveDB(db);
+
+  if (Array.isArray(db.audit_logs)) {
+    db.audit_logs.unshift({
+      id: Date.now(),
+      user_id: admin.id,
+      user_name: `${admin.first_name} ${admin.last_name}`,
+      action: 'SYSTEM_TEMPLATE_CREATE',
+      details: `Novo modelo global criado: "${newTemplate.title}"`,
+      ip: req.ip,
+      created_at: new Date().toISOString()
+    });
+    saveDB(db);
+  }
+
+  res.status(201).json(newTemplate);
+});
+
+// Admin: Alterar/Editar modelo padrão do sistema
+app.put('/api/v1/admin/system-templates/:id', requireAdmin, (req, res) => {
+  const admin = (req as any).user;
+  const id = req.params.id;
+  if (!Array.isArray((db as any).system_document_templates)) {
+    (db as any).system_document_templates = getDefaultSystemTemplates();
+  }
+
+  const idx = (db as any).system_document_templates.findIndex((t: any) => String(t.id) === String(id) || String(t.code) === String(id));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Modelo padrão do sistema não encontrado.' });
+  }
+
+  const { title, category, description, content } = req.body;
+  if (title !== undefined) (db as any).system_document_templates[idx].title = String(title).trim();
+  if (category !== undefined) (db as any).system_document_templates[idx].category = category;
+  if (description !== undefined) (db as any).system_document_templates[idx].description = String(description).trim();
+  if (content !== undefined) (db as any).system_document_templates[idx].content = String(content);
+  (db as any).system_document_templates[idx].updated_at = new Date().toISOString();
+
+  saveDB(db);
+
+  if (Array.isArray(db.audit_logs)) {
+    db.audit_logs.unshift({
+      id: Date.now(),
+      user_id: admin.id,
+      user_name: `${admin.first_name} ${admin.last_name}`,
+      action: 'SYSTEM_TEMPLATE_UPDATE',
+      details: `Modelo padrão do sistema atualizado: "${(db as any).system_document_templates[idx].title}"`,
+      ip: req.ip,
+      created_at: new Date().toISOString()
+    });
+    saveDB(db);
+  }
+
+  res.json((db as any).system_document_templates[idx]);
+});
+
+// Admin: Excluir modelo do sistema
+app.delete('/api/v1/admin/system-templates/:id', requireAdmin, (req, res) => {
+  const admin = (req as any).user;
+  const id = req.params.id;
+  if (!Array.isArray((db as any).system_document_templates)) {
+    (db as any).system_document_templates = getDefaultSystemTemplates();
+  }
+
+  const target = (db as any).system_document_templates.find((t: any) => String(t.id) === String(id));
+  (db as any).system_document_templates = (db as any).system_document_templates.filter(
+    (t: any) => String(t.id) !== String(id)
+  );
+  saveDB(db);
+
+  if (Array.isArray(db.audit_logs)) {
+    db.audit_logs.unshift({
+      id: Date.now(),
+      user_id: admin.id,
+      user_name: `${admin.first_name} ${admin.last_name}`,
+      action: 'SYSTEM_TEMPLATE_DELETE',
+      details: `Modelo do sistema excluído: "${target?.title || id}"`,
+      ip: req.ip,
+      created_at: new Date().toISOString()
+    });
+    saveDB(db);
+  }
+
+  res.json({ message: 'Modelo padrão do sistema excluído com sucesso.' });
+});
+
+// Admin: Restaurar todos os modelos padrão de fábrica
+app.post('/api/v1/admin/system-templates/reset', requireAdmin, (req, res) => {
+  const admin = (req as any).user;
+  (db as any).system_document_templates = getDefaultSystemTemplates();
+  saveDB(db);
+
+  if (Array.isArray(db.audit_logs)) {
+    db.audit_logs.unshift({
+      id: Date.now(),
+      user_id: admin.id,
+      user_name: `${admin.first_name} ${admin.last_name}`,
+      action: 'SYSTEM_TEMPLATE_RESET_ALL',
+      details: 'Todos os modelos e textos padrão do sistema foram restaurados para o padrão de fábrica.',
+      ip: req.ip,
+      created_at: new Date().toISOString()
+    });
+    saveDB(db);
+  }
+
+  res.json({
+    message: 'Modelos padrão do sistema restaurados com sucesso para os originais de fábrica.',
+    templates: (db as any).system_document_templates
+  });
+});
+
+
 
 app.get('/api/v1/services', (req, res) => {
   const user = authenticate(req);

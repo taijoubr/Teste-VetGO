@@ -18,6 +18,7 @@ import { Footer } from '../components/Footer';
 
 interface PublicCardData {
   id: number;
+  code?: string;
   name: string;
   species: string;
   breed: string;
@@ -148,7 +149,12 @@ export const PublicPetCardPage: React.FC = () => {
                   <ShieldCheck className="w-3 h-3 text-emerald-300" />
                   Documento Autêntico Verificado
                 </span>
-                <h1 className="text-2xl font-black tracking-tight">{data.name}</h1>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-emerald-950/40 text-emerald-200 border border-emerald-400/30">
+                    #{data.code || `PAC-${String(data.id).padStart(4, '0')}`}
+                  </span>
+                  <h1 className="text-2xl font-black tracking-tight">{data.name}</h1>
+                </div>
                 <p className="text-emerald-100 text-xs">
                   {data.species} • {data.breed} {data.gender ? `• ${data.gender}` : ''}
                 </p>

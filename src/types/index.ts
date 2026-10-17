@@ -44,6 +44,7 @@ export interface PlanUsage {
 
 export interface Tutor {
   id: number;
+  code?: string;
   owner_id: number;
   name: string;
   cpf?: string;
@@ -84,6 +85,7 @@ export type MicrochipOption = 'NAO' | 'SIM' | 'NAO_INFORMADO';
 
 export interface Patient {
   id: number;
+  code?: string;
   owner_id: number;
   tutor_id: number;
   tutor_name?: string;
@@ -611,6 +613,33 @@ export interface DocumentRecord {
   metadata_json?: any;
   created_at: string;
 }
+
+export type TemplateCategory = 'RECEITA' | 'LAUDO' | 'TERMO' | 'ATESTADO' | 'ORIENTACOES' | 'DECLARACAO' | 'OUTRO';
+
+export interface DocumentTemplate {
+  id: number;
+  owner_id: number;
+  title: string;
+  category: TemplateCategory;
+  description?: string;
+  content: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface SystemDocumentTemplate {
+  id: string | number;
+  code?: string;
+  title: string;
+  category: TemplateCategory;
+  description?: string;
+  content: string;
+  is_system_default?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+
 
 export interface FinancialSummary {
   total_receitas_mes: number;

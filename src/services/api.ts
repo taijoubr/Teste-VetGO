@@ -23,6 +23,8 @@ import {
   InventoryBatchEntry,
   StockLocation,
   DocumentRecord,
+  DocumentTemplate,
+  SystemDocumentTemplate,
   ClinicalServiceItem,
   Supplier,
   SupplierOrder
@@ -1615,11 +1617,28 @@ export const api = {
   },
 
   async createDocument(data: Partial<DocumentRecord>): Promise<DocumentRecord> {
+    try {
+      const serverDoc = await this.request<DocumentRecord>('/documents', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      if (serverDoc) {
+        const docs = await this.getDocuments();
+        const existingIdx = docs.findIndex(d => d.id === serverDoc.id);
+        if (existingIdx >= 0) docs[existingIdx] = serverDoc;
+        else docs.unshift(serverDoc);
+        localStorage.setItem('vetgo_documents', JSON.stringify(docs));
+        return serverDoc;
+      }
+    } catch (e) {
+      console.warn('Backend createDocument error, using local fallback:', e);
+    }
+
     const docs = await this.getDocuments();
     const newDoc: DocumentRecord = {
       id: Date.now(),
       owner_id: 2,
-      doc_type: data.doc_type || 'FICHA_ANESTESICA',
+      doc_type: data.doc_type || 'RECEITA_SIMPLES',
       title: data.title || 'Documento Veterinário',
       patient_id: data.patient_id,
       patient_name: data.patient_name,
@@ -1635,6 +1654,136 @@ export const api = {
     localStorage.setItem('vetgo_documents', JSON.stringify(docs));
     return newDoc;
   },
+
+  async deleteDocument(id: number): Promise<{ message: string }> {
+    try {
+      await this.request(`/documents/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Backend deleteDocument error, proceeding with local update:', e);
+    }
+    const docs = await this.getDocuments();
+    const filtered = docs.filter(d => Number(d.id) !== Number(id));
+    localStorage.setItem('vetgo_documents', JSON.stringify(filtered));
+    return { message: 'Documento excluído com sucesso.' };
+  },
+
+  // Document Templates (Textos Padrão / Modelos Customizáveis com Variáveis)
+  async getDocumentTemplates(): Promise<DocumentTemplate[]> {
+    try {
+      const serverList = await this.request<DocumentTemplate[]>('/document-templates');
+      if (Array.isArray(serverList)) {
+        localStorage.setItem('vetgo_document_templates', JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch (e) {
+      console.warn('Backend getDocumentTemplates error, falling back to local cache:', e);
+    }
+
+    const local = localStorage.getItem('vetgo_document_templates');
+    if (local) {
+      try {
+        return JSON.parse(local);
+      } catch {}
+    }
+    return [];
+  },
+
+  async createDocumentTemplate(data: {
+    title: string;
+    category?: string;
+    description?: string;
+    content: string;
+  }): Promise<DocumentTemplate> {
+    try {
+      const serverTemplate = await this.request<DocumentTemplate>('/document-templates', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      if (serverTemplate) {
+        const templates = await this.getDocumentTemplates();
+        templates.unshift(serverTemplate);
+        localStorage.setItem('vetgo_document_templates', JSON.stringify(templates));
+        return serverTemplate;
+      }
+    } catch (e) {
+      console.warn('Backend createDocumentTemplate error, saving locally:', e);
+    }
+
+    const templates = await this.getDocumentTemplates();
+    const newTemplate: DocumentTemplate = {
+      id: Date.now(),
+      owner_id: 2,
+      title: data.title,
+      category: (data.category as any) || 'OUTRO',
+      description: data.description || '',
+      content: data.content,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    templates.unshift(newTemplate);
+    localStorage.setItem('vetgo_document_templates', JSON.stringify(templates));
+    return newTemplate;
+  },
+
+  async updateDocumentTemplate(
+    id: number,
+    updates: Partial<DocumentTemplate>
+  ): Promise<DocumentTemplate> {
+    try {
+      const updated = await this.request<DocumentTemplate>(`/document-templates/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+      if (updated) {
+        const templates = await this.getDocumentTemplates();
+        const idx = templates.findIndex(t => Number(t.id) === Number(id));
+        if (idx >= 0) templates[idx] = updated;
+        localStorage.setItem('vetgo_document_templates', JSON.stringify(templates));
+        return updated;
+      }
+    } catch (e) {
+      console.warn('Backend updateDocumentTemplate error, saving locally:', e);
+    }
+
+    const templates = await this.getDocumentTemplates();
+    const idx = templates.findIndex(t => Number(t.id) === Number(id));
+    if (idx >= 0) {
+      templates[idx] = { ...templates[idx], ...updates, updated_at: new Date().toISOString() };
+      localStorage.setItem('vetgo_document_templates', JSON.stringify(templates));
+      return templates[idx];
+    }
+    throw new Error('Modelo não encontrado.');
+  },
+
+  async deleteDocumentTemplate(id: number): Promise<{ message: string }> {
+    try {
+      await this.request(`/document-templates/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Backend deleteDocumentTemplate error, proceeding locally:', e);
+    }
+    const templates = await this.getDocumentTemplates();
+    const filtered = templates.filter(t => Number(t.id) !== Number(id));
+    localStorage.setItem('vetgo_document_templates', JSON.stringify(filtered));
+    return { message: 'Modelo excluído com sucesso.' };
+  },
+
+  async getSystemTemplates(): Promise<SystemDocumentTemplate[]> {
+    try {
+      const serverList = await this.request<SystemDocumentTemplate[]>('/system-templates');
+      if (Array.isArray(serverList)) {
+        localStorage.setItem('vetgo_system_document_templates', JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch (e) {
+      console.warn('Backend getSystemTemplates error, using local cache:', e);
+    }
+    const local = localStorage.getItem('vetgo_system_document_templates');
+    if (local) {
+      try { return JSON.parse(local); } catch {}
+    }
+    return [];
+  },
+
 
   // Delegated admin service methods
   async getAdminStats() {
