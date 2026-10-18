@@ -422,6 +422,12 @@ export const api = {
     });
   },
 
+  async sendAppointmentTestPushNotification(): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/notifications/send-appointment-test', {
+      method: 'POST'
+    });
+  },
+
   async structureConsultation(raw_text: string, patient_context?: any): Promise<{
     success: boolean;
     data: {
@@ -480,8 +486,19 @@ export const api = {
       };
       localStorage.setItem('vetgo_current_user', JSON.stringify(finalUser));
       return finalUser;
-    } catch {
-      this.removeToken();
+    } catch (err: any) {
+      // Se for erro explícito de 401/Sessão expirada, remove credenciais
+      if (err?.message?.includes('Sessão expirada') || err?.message?.includes('401')) {
+        this.removeToken();
+        return null;
+      }
+      // Se for falha de rede/offline, retorna o usuário em cache para permitir uso sem internet
+      const cached = localStorage.getItem('vetgo_current_user');
+      if (cached) {
+        try {
+          return JSON.parse(cached) as User;
+        } catch {}
+      }
       return null;
     }
   },

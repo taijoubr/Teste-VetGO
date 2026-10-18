@@ -24,6 +24,7 @@ export const PushNotificationManager: React.FC = () => {
     subscribe,
     unsubscribe,
     sendTestNotification,
+    sendAppointmentTestNotification,
   } = usePushNotifications();
 
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -52,6 +53,18 @@ export const PushNotificationManager: React.FC = () => {
       setTimeout(() => setTestResult(null), 6000);
     } catch (e: any) {
       setActionError(e.message || 'Erro ao enviar notificação de teste.');
+    }
+  };
+
+  const handleAppointmentTest = async () => {
+    setActionError(null);
+    setTestResult(null);
+    try {
+      const res = await sendAppointmentTestNotification();
+      setTestResult(res.message || 'Alerta de agendamento enviado! O Service Worker notificará o dispositivo mesmo com o app fechado.');
+      setTimeout(() => setTestResult(null), 6000);
+    } catch (e: any) {
+      setActionError(e.message || 'Erro ao simular alerta de agendamento.');
     }
   };
 
@@ -109,17 +122,29 @@ export const PushNotificationManager: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
+          <div className="flex items-center gap-2 shrink-0 self-start sm:self-center flex-wrap">
             {isSubscribed && (
-              <button
-                type="button"
-                onClick={handleTest}
-                disabled={loading}
-                className="px-3 py-2 text-xs font-bold rounded-xl bg-white border border-emerald-300 hover:bg-emerald-50 text-emerald-800 shadow-2xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Testar Notificação</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleAppointmentTest}
+                  disabled={loading}
+                  title="Simula a notificação push de um novo agendamento mesmo com o app fechado"
+                  className="px-3 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Simular Agendamento</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTest}
+                  disabled={loading}
+                  className="px-3 py-2 text-xs font-bold rounded-xl bg-white border border-emerald-300 hover:bg-emerald-50 text-emerald-800 shadow-2xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Teste Rápido</span>
+                </button>
+              </>
             )}
 
             <button

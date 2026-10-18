@@ -1485,12 +1485,40 @@ app.post('/api/v1/appointments', requireAuth, (req, res) => {
   const tutor = db.tutors.find((t) => t.id === newAppt.tutor_id);
   const patient = db.patients.find((p) => p.id === newAppt.patient_id);
 
-  res.status(201).json({
+  const apptResult = {
     ...newAppt,
     tutor_name: tutor?.name || 'Tutor',
     patient_name: patient?.name || 'Paciente',
     patient_species: patient?.species || 'Canina',
-  });
+  };
+
+  // Dispara notificação push para o dispositivo do veterinário mesmo com o app fechado
+  try {
+    const formattedDate = new Date(newAppt.date_time).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const typeLabel = newAppt.appointment_type === 'DOMICILIAR' ? 'Atendimento Domiciliar' : 'Atendimento Clínico';
+    sendPushNotificationToUser(user.id, {
+      title: `🐾 Novo Agendamento: ${patient?.name || 'Paciente'}`,
+      body: `${tutor?.name || 'Tutor'} • ${formattedDate} (${typeLabel})`,
+      icon: '/logo.png',
+      badge: '/logo.png',
+      tag: `appt-${newAppt.id}`,
+      url: `/atendimentos?appointment_id=${newAppt.id}`,
+      appointment_id: newAppt.id,
+      type: 'NEW_APPOINTMENT',
+      appointment: apptResult,
+    }).catch((err) => {
+      console.warn('Aviso: falha ao disparar push de agendamento:', err?.message || err);
+    });
+  } catch (pushErr) {
+    console.warn('Erro ao montar push de agendamento:', pushErr);
+  }
+
+  res.status(201).json(apptResult);
 });
 
 app.put('/api/v1/appointments/:id', requireAuth, (req, res) => {
@@ -3085,8 +3113,68 @@ app.get('/api/v1/admin/audit-logs', requireAdmin, (_req, res) => {
 });
 
 // -------------------------------------------------------------
-// WEB PUSH NOTIFICATIONS ENDPOINTS
+// WEB PUSH NOTIFICATIONS ENDPOINTS & DISPATCHER
 // -------------------------------------------------------------
+async function sendPushNotificationToUser(
+  userId: number,
+  notificationData: {
+    title: string;
+    body: string;
+    icon?: string;
+    badge?: string;
+    tag?: string;
+    url?: string;
+    appointment_id?: number;
+    type?: string;
+    appointment?: any;
+  }
+) {
+  const userSubs = (db.subscriptions || []).filter((s) => s.user_id === userId);
+  if (userSubs.length === 0) return 0;
+
+  const payload = JSON.stringify({
+    title: notificationData.title,
+    body: notificationData.body,
+    icon: notificationData.icon || '/logo.png',
+    badge: notificationData.badge || '/logo.png',
+    tag: notificationData.tag || 'vetgo-notification',
+    url: notificationData.url || '/',
+    appointment_id: notificationData.appointment_id,
+    type: notificationData.type || 'INFO',
+    appointment: notificationData.appointment,
+    timestamp: Date.now(),
+  });
+
+  const deadEndpoints: string[] = [];
+  let sentCount = 0;
+
+  for (const sub of userSubs) {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: sub.endpoint,
+          keys: sub.keys,
+        },
+        payload
+      );
+      sentCount++;
+    } catch (err: any) {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        deadEndpoints.push(sub.endpoint);
+      } else {
+        console.error('Falha ao enviar push notification:', err.message || err);
+      }
+    }
+  }
+
+  if (deadEndpoints.length > 0) {
+    db.subscriptions = db.subscriptions.filter((s) => !deadEndpoints.includes(s.endpoint));
+    saveDB(db);
+  }
+
+  return sentCount;
+}
+
 app.get('/api/v1/notifications/vapid-public-key', (_req, res) => {
   res.json({ publicKey: VAPID_PUBLIC_KEY });
 });
@@ -3207,6 +3295,51 @@ app.post('/api/v1/notifications/send-test', requireAuth, async (req, res) => {
     success: true,
     sent_count: sentCount,
     message: `Notificação push de teste enviada com sucesso para ${sentCount} dispositivo(s)!`,
+  });
+});
+
+app.post('/api/v1/notifications/send-appointment-test', requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const userSubs = (db.subscriptions || []).filter((s) => s.user_id === user.id);
+
+  if (userSubs.length === 0) {
+    return res.status(400).json({
+      detail: 'Nenhum dispositivo registrado para este usuário. Ative as notificações push primeiro.',
+    });
+  }
+
+  const samplePet = db.patients.find((p) => p.owner_id === user.id) || { name: 'Thor', species: 'Canina' };
+  const sampleTutor = db.tutors.find((t) => t.owner_id === user.id) || { name: 'Mariana Costa' };
+  const sampleDate = new Date(Date.now() + 86400000).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const count = await sendPushNotificationToUser(user.id, {
+    title: `🐾 Novo Agendamento: ${samplePet.name}`,
+    body: `${sampleTutor.name} • Amanhã às ${sampleDate.split(' ')[1] || '14:30'} (Atendimento Domiciliar)`,
+    icon: '/logo.png',
+    badge: '/logo.png',
+    tag: `appt-test-${Date.now()}`,
+    url: '/atendimentos',
+    appointment_id: 9999,
+    type: 'NEW_APPOINTMENT',
+    appointment: {
+      id: 9999,
+      patient_name: samplePet.name,
+      tutor_name: sampleTutor.name,
+      date_time: new Date(Date.now() + 86400000).toISOString(),
+      appointment_type: 'DOMICILIAR',
+      status: 'AGENDADO',
+    },
+  });
+
+  res.json({
+    success: true,
+    sent_count: count,
+    message: `Notificação de agendamento enviada com sucesso para ${count} dispositivo(s)!`,
   });
 });
 

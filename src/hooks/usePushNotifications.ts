@@ -107,7 +107,7 @@ export function usePushNotifications() {
     }
   }, []);
 
-  // Enviar teste de notificação
+  // Enviar teste de notificação geral
   const sendTestNotification = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -116,6 +116,22 @@ export function usePushNotifications() {
       return res;
     } catch (err: any) {
       const msg = err.message || 'Erro ao disparar notificação de teste.';
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Simular notificação de novo agendamento com app fechado
+  const sendAppointmentTestNotification = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.sendAppointmentTestPushNotification();
+      return res;
+    } catch (err: any) {
+      const msg = err.message || 'Erro ao disparar alerta de novo agendamento.';
       setError(msg);
       throw new Error(msg);
     } finally {
@@ -132,5 +148,6 @@ export function usePushNotifications() {
     subscribe,
     unsubscribe,
     sendTestNotification,
+    sendAppointmentTestNotification,
   };
 }
