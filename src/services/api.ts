@@ -126,6 +126,21 @@ export const api = {
       // Salva resposta GET no cache isolado do veterinário logado
       if (isGet && cachedUser?.id) {
         offlineStorage.saveData(cachedUser.id, endpoint, data);
+      } else if (!isGet && cachedUser?.id) {
+        // Invalida cache após mutações bem-sucedidas para garantir dados frescos
+        if (endpoint.includes('tutor')) {
+          offlineStorage.removeData(cachedUser.id, 'tutor');
+          offlineStorage.removeData(cachedUser.id, 'dashboard');
+        } else if (endpoint.includes('patient')) {
+          offlineStorage.removeData(cachedUser.id, 'patient');
+          offlineStorage.removeData(cachedUser.id, 'dashboard');
+        } else if (endpoint.includes('appointment')) {
+          offlineStorage.removeData(cachedUser.id, 'appointment');
+          offlineStorage.removeData(cachedUser.id, 'dashboard');
+        } else if (endpoint.includes('consultation')) {
+          offlineStorage.removeData(cachedUser.id, 'consultation');
+          offlineStorage.removeData(cachedUser.id, 'dashboard');
+        }
       }
 
       return data;
@@ -750,6 +765,10 @@ export const api = {
     } catch {
       return null;
     }
+  },
+
+  async getFullMedicalRecord(patientId: number): Promise<any> {
+    return this.request<any>(`/patients/${patientId}/medical-record`);
   },
 
   // -----------------------------------------------------------------

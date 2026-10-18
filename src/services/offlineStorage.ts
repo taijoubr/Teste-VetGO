@@ -46,6 +46,22 @@ export const offlineStorage = {
     }
   },
 
+  // Invalida dados em cache quando houver mutação
+  removeData(userId: number, keyPrefix: string): void {
+    if (!userId) return;
+    try {
+      const prefix = `${CACHE_PREFIX}${userId}_`;
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(prefix) && k.includes(keyPrefix)) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch {}
+  },
+
   // Adiciona uma operação pendente à fila de sincronização offline
   queueMutation(
     userId: number,

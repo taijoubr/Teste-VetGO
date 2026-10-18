@@ -1412,6 +1412,73 @@ app.get('/api/v1/public/patients/:id/card', (req, res) => {
 });
 
 // -------------------------------------------------------------
+// UNIFIED FULL MEDICAL RECORD ENDPOINT (PRONTUÁRIO COMPLETO EM PDF)
+// -------------------------------------------------------------
+app.get('/api/v1/patients/:id/medical-record', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+
+  const patient = (db.patients || []).find((p) => p.id === id && p.owner_id === user.id);
+  if (!patient) {
+    return res.status(404).json({ detail: 'Paciente não encontrado.' });
+  }
+
+  const tutor = (db.tutors || []).find((t) => t.id === patient.tutor_id && t.owner_id === user.id);
+
+  // Consultas e atendimentos clínicos
+  const consultations = (db.consultations || [])
+    .filter((c: any) => c.patient_id === id && c.owner_id === user.id)
+    .sort((a: any, b: any) => new Date(b.date_time || b.created_at).getTime() - new Date(a.date_time || a.created_at).getTime());
+
+  // Vacinas aplicadas (extraídas das consultas ou registros clínicos)
+  const vaccines: any[] = [];
+  for (const c of consultations) {
+    if (Array.isArray(c.vaccines)) {
+      vaccines.push(...c.vaccines);
+    }
+  }
+
+  // Fichas cirúrgicas / anestésicas
+  const anesthesia_records = (db.anesthesia_records || [])
+    .filter((a: any) => a.patient_id === id && a.owner_id === user.id)
+    .sort((a: any, b: any) => new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime());
+
+  // Documentos e termos emitidos
+  const documents = (db.documents || [])
+    .filter((d: any) => d.patient_id === id && d.owner_id === user.id)
+    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  res.json({
+    patient: {
+      ...patient,
+      code: patient.code || `PAC-${String(patient.id).padStart(4, '0')}`,
+    },
+    tutor: tutor
+      ? {
+          ...tutor,
+          code: tutor.code || `TUT-${String(tutor.id).padStart(4, '0')}`,
+        }
+      : null,
+    vet: {
+      first_name: user.first_name,
+      last_name: user.last_name,
+      crmv: user.crmv,
+      crmv_uf: user.crmv_uf,
+      clinic_name: user.clinic_name || 'Atendimento Médico-Veterinário Volante',
+      phone: user.phone,
+      whatsapp: user.whatsapp,
+      email: user.email,
+      logo_url: user.logo_url,
+    },
+    consultations,
+    vaccines,
+    anesthesia_records,
+    documents,
+    emitted_at: new Date().toISOString(),
+  });
+});
+
+// -------------------------------------------------------------
 // APPOINTMENTS ENDPOINTS
 // -------------------------------------------------------------
 app.get('/api/v1/appointments', requireAuth, (req, res) => {

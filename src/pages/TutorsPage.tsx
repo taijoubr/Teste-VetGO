@@ -46,26 +46,32 @@ export const TutorsPage: React.FC = () => {
     loadTutors();
   }, []);
 
-  const loadTutors = async () => {
+  const loadTutors = async (showLoadingSpinner = true) => {
     try {
-      setLoading(true);
+      if (showLoadingSpinner) setLoading(true);
       const data = await api.getTutors();
-      setTutors(data);
+      if (Array.isArray(data)) {
+        setTutors(data);
+      }
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao carregar tutores:', e);
     } finally {
-      setLoading(false);
+      if (showLoadingSpinner) setLoading(false);
     }
   };
 
   const filteredTutors = tutors.filter((t) => {
-    const q = search.toLowerCase();
+    if (!t) return false;
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
     const code = formatTutorCode(t).toLowerCase();
     return (
-      t.name.toLowerCase().includes(q) ||
+      (t.name && t.name.toLowerCase().includes(q)) ||
       code.includes(q) ||
-      (t.cpf && t.cpf.includes(q)) ||
-      (t.phone && t.phone.includes(q)) ||
+      (t.cpf && t.cpf.toLowerCase().includes(q)) ||
+      (t.phone && t.phone.toLowerCase().includes(q)) ||
+      (t.whatsapp && t.whatsapp.toLowerCase().includes(q)) ||
+      (t.email && t.email.toLowerCase().includes(q)) ||
       (t.city && t.city.toLowerCase().includes(q))
     );
   });
@@ -150,16 +156,29 @@ export const TutorsPage: React.FC = () => {
 
     try {
       if (editingTutor) {
-        await api.updateTutor(editingTutor.id, form);
+        const updated = await api.updateTutor(editingTutor.id, form);
+        setTutors((prev) =>
+          prev.map((t) => (t.id === editingTutor.id ? { ...t, ...updated, ...form } : t))
+        );
         showToast(`Tutor "${form.name}" atualizado com sucesso!`);
       } else {
-        await api.createTutor(form);
+        const created = await api.createTutor(form);
+        if (created && created.id) {
+          setTutors((prev) => [
+            {
+              ...created,
+              code: created.code || `TUT-${String(created.id).padStart(4, '0')}`,
+              patients_count: 0,
+            },
+            ...prev.filter((t) => t.id !== created.id),
+          ]);
+        }
         showToast(`Tutor "${form.name}" cadastrado com sucesso!`);
       }
       setShowModal(false);
       setEditingTutor(null);
       setCpfWarning(null);
-      loadTutors();
+      await loadTutors(false);
     } catch (err: any) {
       setModalError(err.message || 'Erro ao salvar informações do tutor.');
     }

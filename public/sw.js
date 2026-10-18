@@ -3,7 +3,7 @@
 // Permite carregamento total do Dashboard, Pacientes, Tutores e Prontuários sem sinal de internet
 // ==============================================================================
 
-const VERSION = 'vetgo-v4';
+const VERSION = 'vetgo-v5';
 const STATIC_CACHE = `vetgo-static-${VERSION}`;
 const DYNAMIC_CACHE = `vetgo-dynamic-${VERSION}`;
 const API_CACHE = `vetgo-api-${VERSION}`;
@@ -76,69 +76,74 @@ self.addEventListener('fetch', (event) => {
   // -------------------------------------------------------------
   if (url.pathname.startsWith('/api/')) {
     // Para métodos de mutação (POST, PUT, DELETE, PATCH):
-    // Deixa passar direto para a rede. Se falhar por estar offline, o cliente
-    // (api.ts e offlineStorage) captura e enfileira para sincronização posterior.
     if (request.method !== 'GET') {
+      event.respondWith(
+        fetch(request)
+          .then(async (networkResponse) => {
+            if (networkResponse && networkResponse.ok) {
+              try {
+                // Invalida os caches GET correspondentes para garantir que o cliente receba listas sempre atualizadas
+                const cache = await caches.open(API_CACHE);
+                const keys = await cache.keys();
+                for (const key of keys) {
+                  const keyPath = new URL(key.url).pathname;
+                  if (url.pathname.includes('/tutors') && (keyPath.includes('/tutors') || keyPath.includes('/dashboard'))) {
+                    await cache.delete(key);
+                  } else if (url.pathname.includes('/patients') && (keyPath.includes('/patients') || keyPath.includes('/dashboard'))) {
+                    await cache.delete(key);
+                  } else if (url.pathname.includes('/appointments') && (keyPath.includes('/appointments') || keyPath.includes('/dashboard'))) {
+                    await cache.delete(key);
+                  } else if (url.pathname.includes('/consultations') && (keyPath.includes('/consultations') || keyPath.includes('/dashboard'))) {
+                    await cache.delete(key);
+                  }
+                }
+              } catch (e) {}
+            }
+            return networkResponse;
+          })
+          .catch((err) => {
+            throw err;
+          })
+      );
       return;
     }
 
     // Para requisições GET (Dashboard, Pacientes, Tutores, Prontuários):
-    // Estratégia: Network-First com Timeout rápido e Fallback Total para Cache API
+    // Prioriza SEMPRE a rede quando o usuário estiver online; usa o cache somente quando offline.
     event.respondWith(
       (async () => {
         const cache = await caches.open(API_CACHE);
 
-        try {
-          // Tenta buscar da rede com timeout de 2.5s (não trava o veterinário em local com sinal fraco)
-          const networkResponse = await fetchWithTimeout(request.clone(), 2500);
-
-          // Se a rede respondeu com sucesso, clona e atualiza o cache local
-          if (networkResponse && networkResponse.ok) {
-            cache.put(request, networkResponse.clone()).catch(() => {});
-            return networkResponse;
-          }
-
-          // Se o servidor respondeu erro (exceto 401), tenta retornar o cache existente
-          if (networkResponse && networkResponse.status !== 401) {
-            const cached = await cache.match(request);
-            if (cached) {
-              const headers = new Headers(cached.headers);
-              headers.set('X-Vetgo-From-Cache', 'true');
-              headers.set('X-Vetgo-Offline', 'true');
-              return new Response(cached.body, {
-                status: 200,
-                statusText: 'OK (From Offline Cache)',
-                headers,
-              });
+        // Se o navegador estiver online, busca os dados mais frescos diretamente da rede
+        if (navigator.onLine) {
+          try {
+            const networkResponse = await fetch(request.clone());
+            if (networkResponse && networkResponse.ok) {
+              cache.put(request, networkResponse.clone()).catch(() => {});
+              return networkResponse;
             }
+          } catch (netErr) {
+            // Se a busca falhou mesmo online (ex: queda repentina), continua para o fallback de cache
           }
+        }
 
-          return networkResponse;
+        // Se offline ou falha de conexão: recupera do Cache API
+        const cachedResponse = await cache.match(request);
+        if (cachedResponse) {
+          const headers = new Headers(cachedResponse.headers);
+          headers.set('X-Vetgo-From-Cache', 'true');
+          headers.set('X-Vetgo-Offline', 'true');
+          return new Response(cachedResponse.body, {
+            status: 200,
+            statusText: 'OK (From Offline Cache)',
+            headers,
+          });
+        }
+
+        // Se estiver online mas ainda não possui em cache, tenta a rede diretamente
+        try {
+          return await fetch(request);
         } catch (fetchErr) {
-          // Em caso de falha de conexão ou timeout: recupera do Cache API
-          const cachedResponse = await cache.match(request);
-          if (cachedResponse) {
-            const headers = new Headers(cachedResponse.headers);
-            headers.set('X-Vetgo-From-Cache', 'true');
-            headers.set('X-Vetgo-Offline', 'true');
-            return new Response(cachedResponse.body, {
-              status: 200,
-              statusText: 'OK (From Offline Cache)',
-              headers,
-            });
-          }
-
-          // Se não encontrou o endpoint exato no cache, verifica se é lista de pacientes ou tutores
-          if (url.pathname.includes('/patients')) {
-            const fallbackList = await cache.match('/api/v1/patients');
-            if (fallbackList) return fallbackList;
-          }
-          if (url.pathname.includes('/tutors')) {
-            const fallbackList = await cache.match('/api/v1/tutors');
-            if (fallbackList) return fallbackList;
-          }
-
-          // Resposta JSON segura para que a interface não trave
           return new Response(
             JSON.stringify({
               detail: 'Modo Offline: Dados indisponíveis no momento.',

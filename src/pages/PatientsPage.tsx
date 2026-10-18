@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { Patient, Tutor, Species, AnesthesiaRecord } from '../types';
-import { PawPrint, Search, Plus, User, AlertCircle, X, CheckCircle2, Activity, Calendar, ShieldCheck, QrCode, Edit3 } from 'lucide-react';
+import { PawPrint, Search, Plus, User, AlertCircle, X, CheckCircle2, Activity, Calendar, ShieldCheck, QrCode, Edit3, FileText } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SPECIES_CONFIGS } from '../utils/speciesData';
 import { PetCardModal } from '../components/PetCardModal';
+import { FullMedicalRecordModal } from '../components/FullMedicalRecordModal';
 import { formatPatientCode, formatTutorCode } from '../utils/formatters';
 
 const SPECIES_LIST: Species[] = [
@@ -37,6 +38,7 @@ export const PatientsPage: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [selectedPetForCard, setSelectedPetForCard] = useState<Patient | null>(null);
+  const [selectedPetForMedicalRecord, setSelectedPetForMedicalRecord] = useState<Patient | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
   const [microchipWarning, setMicrochipWarning] = useState<string | null>(null);
   const [feedbackToast, setFeedbackToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -99,16 +101,16 @@ export const PatientsPage: React.FC = () => {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (showLoadingSpinner = true) => {
     try {
-      setLoading(true);
+      if (showLoadingSpinner) setLoading(true);
       const [pts, tuts] = await Promise.all([api.getPatients(), api.getTutors()]);
-      setPatients(pts);
-      setTutors(tuts);
-      if (tuts.length > 0) {
+      if (Array.isArray(pts)) setPatients(pts);
+      if (Array.isArray(tuts)) setTutors(tuts);
+      if (tuts && tuts.length > 0) {
         setForm((prev) => ({
           ...prev,
-          tutor_id: tutorFilterId ? parseInt(tutorFilterId) : tuts[0].id
+          tutor_id: tutorFilterId ? parseInt(tutorFilterId) : (prev.tutor_id || tuts[0].id)
         }));
         if (!tutorFilterId) {
           setTutorMode('EXISTING');
@@ -119,7 +121,7 @@ export const PatientsPage: React.FC = () => {
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (showLoadingSpinner) setLoading(false);
     }
   };
 
@@ -236,7 +238,7 @@ export const PatientsPage: React.FC = () => {
 
       setShowModal(false);
       setEditingPatient(null);
-      await loadData();
+      await loadData(false);
     } catch (err: any) {
       setModalError(err.message || 'Erro ao salvar informações do paciente.');
     }
@@ -384,6 +386,15 @@ export const PatientsPage: React.FC = () => {
                   Abrir Prontuário →
                 </Link>
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPetForMedicalRecord(patient)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
+                    title="Exportar Prontuário Completo e Histórico Clínico em PDF (A4)"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Prontuário PDF</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(patient)}
@@ -801,6 +812,13 @@ export const PatientsPage: React.FC = () => {
           tutors.find((t) => t.id === selectedPetForCard?.tutor_id)?.phone ||
           tutors.find((t) => t.id === selectedPetForCard?.tutor_id)?.whatsapp
         }
+      />
+
+      {/* Modal de Prontuário Completo Unificado (A4 / PDF) */}
+      <FullMedicalRecordModal
+        isOpen={!!selectedPetForMedicalRecord}
+        onClose={() => setSelectedPetForMedicalRecord(null)}
+        patientId={selectedPetForMedicalRecord?.id || null}
       />
     </div>
   );
