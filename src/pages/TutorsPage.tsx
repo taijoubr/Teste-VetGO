@@ -158,7 +158,7 @@ export const TutorsPage: React.FC = () => {
       if (editingTutor) {
         const updated = await api.updateTutor(editingTutor.id, form);
         setTutors((prev) =>
-          prev.map((t) => (t.id === editingTutor.id ? { ...t, ...updated, ...form } : t))
+          prev.map((t) => (Number(t.id) === Number(editingTutor.id) ? { ...t, ...updated, ...form } : t))
         );
         showToast(`Tutor "${form.name}" atualizado com sucesso!`);
       } else {
@@ -170,7 +170,7 @@ export const TutorsPage: React.FC = () => {
               code: created.code || `TUT-${String(created.id).padStart(4, '0')}`,
               patients_count: 0,
             },
-            ...prev.filter((t) => t.id !== created.id),
+            ...prev.filter((t) => Number(t.id) !== Number(created.id)),
           ]);
         }
         showToast(`Tutor "${form.name}" cadastrado com sucesso!`);

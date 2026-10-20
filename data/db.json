@@ -57,6 +57,27 @@
   ],
   "tutors": [
     {
+      "id": 3,
+      "code": "TUT-0003",
+      "owner_id": 2,
+      "name": "Tutor Persist Teste",
+      "cpf": null,
+      "phone": "11999999999",
+      "whatsapp": "11999999999",
+      "email": null,
+      "address": null,
+      "address_number": null,
+      "complement": null,
+      "neighborhood": null,
+      "city": "São Paulo",
+      "state": "SP",
+      "postal_code": null,
+      "notes": null,
+      "is_active": true,
+      "created_at": "2026-10-18T07:48:52.021Z",
+      "updated_at": "2026-10-18T07:48:52.021Z"
+    },
+    {
       "id": 2,
       "code": "TUT-0002",
       "owner_id": 2,

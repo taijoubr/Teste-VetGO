@@ -3,10 +3,9 @@
 // Permite carregamento total do Dashboard, Pacientes, Tutores e Prontuários sem sinal de internet
 // ==============================================================================
 
-const VERSION = 'vetgo-v5';
+const VERSION = 'vetgo-v7';
 const STATIC_CACHE = `vetgo-static-${VERSION}`;
 const DYNAMIC_CACHE = `vetgo-dynamic-${VERSION}`;
-const API_CACHE = `vetgo-api-${VERSION}`;
 
 // Recursos estáticos fundamentais pré-cacheados na instalação
 const CORE_STATIC_ASSETS = [
@@ -38,7 +37,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== STATIC_CACHE && key !== DYNAMIC_CACHE && key !== API_CACHE) {
+          if (key !== STATIC_CACHE && key !== DYNAMIC_CACHE) {
             return caches.delete(key);
           }
         })
@@ -74,93 +73,10 @@ self.addEventListener('fetch', (event) => {
   // -------------------------------------------------------------
   // 1. REQUISIÇÕES DE API (/api/v1/...)
   // -------------------------------------------------------------
+  // As requisições de API passam diretamente para o backend via rede.
+  // O suporte offline com isolamento multi-tenant por ID do veterinário
+  // é garantido diretamente pelo offlineStorage no cliente (src/services/offlineStorage.ts).
   if (url.pathname.startsWith('/api/')) {
-    // Para métodos de mutação (POST, PUT, DELETE, PATCH):
-    if (request.method !== 'GET') {
-      event.respondWith(
-        fetch(request)
-          .then(async (networkResponse) => {
-            if (networkResponse && networkResponse.ok) {
-              try {
-                // Invalida os caches GET correspondentes para garantir que o cliente receba listas sempre atualizadas
-                const cache = await caches.open(API_CACHE);
-                const keys = await cache.keys();
-                for (const key of keys) {
-                  const keyPath = new URL(key.url).pathname;
-                  if (url.pathname.includes('/tutors') && (keyPath.includes('/tutors') || keyPath.includes('/dashboard'))) {
-                    await cache.delete(key);
-                  } else if (url.pathname.includes('/patients') && (keyPath.includes('/patients') || keyPath.includes('/dashboard'))) {
-                    await cache.delete(key);
-                  } else if (url.pathname.includes('/appointments') && (keyPath.includes('/appointments') || keyPath.includes('/dashboard'))) {
-                    await cache.delete(key);
-                  } else if (url.pathname.includes('/consultations') && (keyPath.includes('/consultations') || keyPath.includes('/dashboard'))) {
-                    await cache.delete(key);
-                  }
-                }
-              } catch (e) {}
-            }
-            return networkResponse;
-          })
-          .catch((err) => {
-            throw err;
-          })
-      );
-      return;
-    }
-
-    // Para requisições GET (Dashboard, Pacientes, Tutores, Prontuários):
-    // Prioriza SEMPRE a rede quando o usuário estiver online; usa o cache somente quando offline.
-    event.respondWith(
-      (async () => {
-        const cache = await caches.open(API_CACHE);
-
-        // Se o navegador estiver online, busca os dados mais frescos diretamente da rede
-        if (navigator.onLine) {
-          try {
-            const networkResponse = await fetch(request.clone());
-            if (networkResponse && networkResponse.ok) {
-              cache.put(request, networkResponse.clone()).catch(() => {});
-              return networkResponse;
-            }
-          } catch (netErr) {
-            // Se a busca falhou mesmo online (ex: queda repentina), continua para o fallback de cache
-          }
-        }
-
-        // Se offline ou falha de conexão: recupera do Cache API
-        const cachedResponse = await cache.match(request);
-        if (cachedResponse) {
-          const headers = new Headers(cachedResponse.headers);
-          headers.set('X-Vetgo-From-Cache', 'true');
-          headers.set('X-Vetgo-Offline', 'true');
-          return new Response(cachedResponse.body, {
-            status: 200,
-            statusText: 'OK (From Offline Cache)',
-            headers,
-          });
-        }
-
-        // Se estiver online mas ainda não possui em cache, tenta a rede diretamente
-        try {
-          return await fetch(request);
-        } catch (fetchErr) {
-          return new Response(
-            JSON.stringify({
-              detail: 'Modo Offline: Dados indisponíveis no momento.',
-              is_offline: true,
-              data: [],
-            }),
-            {
-              status: 200,
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Vetgo-Offline': 'true',
-              },
-            }
-          );
-        }
-      })()
-    );
     return;
   }
 
@@ -246,22 +162,7 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
 
-  // Mensagem para pré-aquecer o cache de endpoints críticos logo após login
-  if (event.data && event.data.type === 'WARMUP_API_CACHE' && Array.isArray(event.data.urls)) {
-    const token = event.data.token;
-    caches.open(API_CACHE).then((cache) => {
-      event.data.urls.forEach(async (endpoint) => {
-        try {
-          const headers = { 'Content-Type': 'application/json' };
-          if (token) headers['Authorization'] = `Bearer ${token}`;
-          const res = await fetch(endpoint, { headers });
-          if (res && res.ok) {
-            await cache.put(endpoint, res.clone());
-          }
-        } catch {}
-      });
-    });
-  }
+  // Handlers de ciclo de vida
 });
 
 // =============================================================
@@ -315,34 +216,8 @@ self.addEventListener('push', (event) => {
         ],
   };
 
-  // Atualização em background do cache de agendamentos no Service Worker
-  // Se veio payload com o agendamento, pré-popula o cache offline mesmo antes de abrir o app!
-  const backgroundWork = (async () => {
-    try {
-      if (data.appointment) {
-        const cache = await caches.open(API_CACHE);
-        const cachedApptsRes = await cache.match('/api/v1/appointments');
-        if (cachedApptsRes) {
-          try {
-            const list = await cachedApptsRes.json();
-            if (Array.isArray(list)) {
-              const updatedList = [data.appointment, ...list.filter((a) => a.id !== data.appointment.id)];
-              const newRes = new Response(JSON.stringify(updatedList), {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' },
-              });
-              await cache.put('/api/v1/appointments', newRes);
-            }
-          } catch {}
-        }
-      }
-    } catch {}
-
-    // Exibe a notificação no dispositivo mesmo se o app estiver totalmente fechado
-    return self.registration.showNotification(title, options);
-  })();
-
-  event.waitUntil(backgroundWork);
+  // Exibe a notificação no dispositivo mesmo se o app estiver totalmente fechado
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 // =============================================================

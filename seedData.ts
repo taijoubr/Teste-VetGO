@@ -1130,6 +1130,8 @@ export function getVetSeedData(userId: number = 2, offset: number = 0) {
 }
 
 export function getFreshDatabaseData() {
+  const vetSeed = getVetSeedData(2, 0);
+
   return {
     users: [
       {
@@ -1184,15 +1186,15 @@ export function getFreshDatabaseData() {
         email_verified: true,
       },
     ],
-    tutors: [],
-    patients: [],
-    appointments: [],
-    consultations: [],
-    inventory_items: [],
-    financial_entries: [],
-    clinics: [],
-    surgeons: [],
-    anesthesia_records: [],
+    tutors: vetSeed.tutors || [],
+    patients: vetSeed.patients || [],
+    appointments: vetSeed.appointments || [],
+    consultations: vetSeed.consultations || [],
+    inventory_items: vetSeed.inventory_items || [],
+    financial_entries: vetSeed.financial_entries || [],
+    clinics: vetSeed.clinics || [],
+    surgeons: vetSeed.surgeons || [],
+    anesthesia_records: vetSeed.anesthesia_records || [],
     services: [
       { id: 1, name: 'Consulta Clínica Volante Domiciliar', category: 'CONSULTA', price: 180, description: 'Atendimento clínico geral em domicílio com anamnese, exame físico e orientação', is_active: true },
       { id: 2, name: 'Retorno Clínico Volante (até 15 dias)', category: 'CONSULTA', price: 90, description: 'Reavaliação clínica e evolução do paciente', is_active: true },

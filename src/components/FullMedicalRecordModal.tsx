@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { printElement } from '../utils/printHelper';
 import {
   Printer,
   Share2,
@@ -18,7 +19,8 @@ import {
   Phone,
   Mail,
   MapPin,
-  CheckCircle2
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 
 interface FullMedicalRecordModalProps {
@@ -58,7 +60,10 @@ export const FullMedicalRecordModal: React.FC<FullMedicalRecordModalProps> = ({
   };
 
   const handlePrint = () => {
-    window.print();
+    printElement(
+      'printable-medical-record-modal-document',
+      `Prontuario_${data?.patient?.name || 'Paciente'}`
+    );
   };
 
   const handleShareWhatsApp = () => {
@@ -85,8 +90,8 @@ export const FullMedicalRecordModal: React.FC<FullMedicalRecordModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:overflow-visible">
-      <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-4 sm:my-8 flex flex-col max-h-[92vh] print:max-h-none print:shadow-none print:border-none print:my-0 print:rounded-none">
+    <div className="printable-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:overflow-visible">
+      <div className="printable-modal-box bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-4 sm:my-8 flex flex-col max-h-[92vh] print:max-h-none print:shadow-none print:border-none print:my-0 print:rounded-none">
         
         {/* Top Control Bar (Hidden on Print) */}
         <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between gap-3 shrink-0 print:hidden">
@@ -105,6 +110,19 @@ export const FullMedicalRecordModal: React.FC<FullMedicalRecordModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {patientId && (
+              <a
+                href={`/prontuario/${patientId}/print?auto=true`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition flex items-center gap-1.5 cursor-pointer"
+                title="Abrir em tela cheia / nova aba para impressão dedicada"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Tela Cheia</span>
+              </a>
+            )}
+
             <button
               type="button"
               onClick={handleShareWhatsApp}
@@ -138,7 +156,7 @@ export const FullMedicalRecordModal: React.FC<FullMedicalRecordModalProps> = ({
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 print:overflow-visible print:p-0">
+        <div className="printable-modal-body flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 print:overflow-visible print:p-0">
           {loading ? (
             <div className="py-20 text-center space-y-3">
               <div className="w-9 h-9 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -160,7 +178,10 @@ export const FullMedicalRecordModal: React.FC<FullMedicalRecordModalProps> = ({
             </div>
           ) : data ? (
             /* OFFICIAL A4 PRINTABLE DOCUMENT */
-            <div className="max-w-[780px] mx-auto bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-10 shadow-sm print:border-none print:p-0 print:shadow-none space-y-6 text-slate-800 print:text-black">
+            <div
+              id="printable-medical-record-modal-document"
+              className="printable-document max-w-[780px] mx-auto bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-10 shadow-sm print:border-none print:p-0 print:shadow-none space-y-6 text-slate-800 print:text-black"
+            >
               
               {/* DOCUMENT HEADER / TIMBRADO */}
               <div className="border-b-2 border-emerald-800 pb-5 flex items-start justify-between gap-4">

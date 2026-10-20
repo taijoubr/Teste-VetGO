@@ -25,6 +25,7 @@ import { ServicesPage } from './pages/ServicesPage';
 import { SuppliersPage } from './pages/SuppliersPage';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PublicPetCardPage } from './pages/PublicPetCardPage';
+import { PrintableMedicalRecordPage } from './pages/PrintableMedicalRecordPage';
 import { Footer } from './components/Footer';
 import { CompleteProfileModal } from './components/CompleteProfileModal';
 
@@ -33,34 +34,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isAdmin, isLoading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Pré-aquece o cache do Service Worker com dados do Dashboard e Pacientes para acesso offline imediato
-  useEffect(() => {
-    if (isAuthenticated && !isAdmin && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      const token = api.getToken();
-      const sendWarmup = () => {
-        if (navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({
-            type: 'WARMUP_API_CACHE',
-            token,
-            urls: [
-              '/api/v1/auth/me',
-              '/api/v1/dashboard/stats',
-              '/api/v1/patients',
-              '/api/v1/tutors',
-              '/api/v1/appointments',
-              '/api/v1/financial/summary',
-            ],
-          });
-        }
-      };
-
-      if (navigator.serviceWorker.controller) {
-        sendWarmup();
-      } else {
-        navigator.serviceWorker.ready.then(() => sendWarmup()).catch(() => {});
-      }
-    }
-  }, [isAuthenticated, isAdmin]);
 
   if (isLoading) {
     return (
@@ -149,6 +122,7 @@ export function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/cadastro" element={<Register />} />
           <Route path="/carteirinha/:patientId" element={<PublicPetCardPage />} />
+          <Route path="/prontuario/:patientId/print" element={<PrintableMedicalRecordPage />} />
 
           {/* Protected Routes */}
           <Route

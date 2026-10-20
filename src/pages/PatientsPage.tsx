@@ -196,14 +196,16 @@ export const PatientsPage: React.FC = () => {
     setModalError(null);
     try {
       if (editingPatient) {
-        await api.updatePatient(editingPatient.id, {
+        const updated = await api.updatePatient(editingPatient.id, {
           ...form,
           tutor_id: form.tutor_id
         });
+        setPatients((prev) =>
+          prev.map((p) => (p.id === editingPatient.id ? { ...p, ...updated, ...form } : p))
+        );
         showToast(`Paciente "${form.name}" atualizado com sucesso!`);
       } else {
         let finalTutorId = form.tutor_id;
-
         if (tutorMode === 'NEW' || tutors.length === 0) {
           if (!newTutor.name.trim()) {
             throw new Error('Informe o nome do tutor responsável.');
@@ -227,12 +229,30 @@ export const PatientsPage: React.FC = () => {
           });
 
           finalTutorId = createdTutor.id;
+          setTutors((prev) => [createdTutor, ...prev.filter((t) => t.id !== createdTutor.id)]);
+        } else {
+          const tutorExists = tutors.find((t) => t.id === Number(form.tutor_id));
+          if (!tutorExists) {
+            throw new Error('Selecione um tutor válido ou cadastre um novo tutor.');
+          }
+          finalTutorId = tutorExists.id;
         }
 
-        await api.createPatient({
+        const created = await api.createPatient({
           ...form,
           tutor_id: finalTutorId
         });
+        if (created) {
+          const tutorObj = tutors.find((t) => t.id === finalTutorId) || newTutor;
+          setPatients((prev) => [
+            {
+              ...created,
+              code: created.code || `PAC-${String(created.id).padStart(4, '0')}`,
+              tutor_name: tutorObj?.name || 'Tutor',
+            },
+            ...prev.filter((p) => p.id !== created.id),
+          ]);
+        }
         showToast(`Paciente "${form.name}" cadastrado com sucesso!`);
       }
 

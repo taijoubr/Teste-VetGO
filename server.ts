@@ -69,7 +69,13 @@ function loadDB(): DatabaseData {
 
 function saveDB(data: DatabaseData) {
   try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const tmpPath = `${DB_PATH}.tmp.${Date.now()}`;
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, DB_PATH);
   } catch (e) {
     console.error('Error saving db.json:', e);
   }
@@ -120,6 +126,15 @@ db.patients.forEach((p) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Anti-cache headers for all API routes to ensure freshly persisted data
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
+
 // Helper to authenticate user from Bearer token
 function authenticate(req: Request): any | null {
   const authHeader = req.headers.authorization;
@@ -138,17 +153,10 @@ function authenticate(req: Request): any | null {
     userId = Number(token);
   }
 
-  let user: any = null;
-  if (userId) {
-    user = db.users.find((u) => u.id === userId && u.is_active);
-  }
+  if (!userId) return null;
 
-  // Fallback: check if vet user exists or first user
-  if (!user) {
-    user = db.users.find((u) => u.role === 'VET') || db.users[0] || null;
-  }
-
-  return user;
+  const user = db.users.find((u) => Number(u.id) === Number(userId) && u.is_active);
+  return user || null;
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -882,12 +890,15 @@ app.put('/api/v1/users/password', requireAuth, (req, res) => {
 // DASHBOARD & PLAN USAGE
 // -------------------------------------------------------------
 function buildPlanUsage(user: any) {
-  const userTutors = db.tutors.filter((t) => t.owner_id === user.id);
-  const userPatients = db.patients.filter((p) => p.owner_id === user.id);
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  if (!Array.isArray(db.patients)) db.patients = [];
 
-  const isPro = user.plan === 'PRO' || user.is_lifetime;
-  const tutorsLimit = isPro ? null : 15;
-  const patientsLimit = isPro ? null : 30;
+  const userTutors = db.tutors.filter((t) => Number(t.owner_id) === Number(user.id));
+  const userPatients = db.patients.filter((p) => Number(p.owner_id) === Number(user.id));
+
+  const isPro = user.plan === 'PRO' || Boolean(user.is_lifetime) || user.role === 'ADMIN';
+  const tutorsLimit = isPro ? null : 50;
+  const patientsLimit = isPro ? null : 100;
 
   return {
     plan: user.plan,
@@ -895,14 +906,14 @@ function buildPlanUsage(user: any) {
     is_expired: user.subscription_status === 'EXPIRED',
     tutors_count: userTutors.length,
     tutors_limit: tutorsLimit,
-    tutors_limit_reached: !isPro && userTutors.length >= (tutorsLimit || 15),
+    tutors_limit_reached: !isPro && userTutors.length >= (tutorsLimit || 50),
     patients_count: userPatients.length,
     patients_limit: patientsLimit,
-    patients_limit_reached: !isPro && userPatients.length >= (patientsLimit || 30),
+    patients_limit_reached: !isPro && userPatients.length >= (patientsLimit || 100),
     appointments_this_month: 3,
-    appointments_monthly_limit: isPro ? null : 20,
-    can_add_tutor: isPro || userTutors.length < (tutorsLimit || 15),
-    can_add_patient: isPro || userPatients.length < (patientsLimit || 30),
+    appointments_monthly_limit: isPro ? null : 50,
+    can_add_tutor: isPro || userTutors.length < (tutorsLimit || 50),
+    can_add_patient: isPro || userPatients.length < (patientsLimit || 100),
     can_add_appointment: true,
     has_financial_access: true,
     has_advanced_reports: isPro,
@@ -922,9 +933,19 @@ app.get('/api/v1/users/plan-usage', requireAuth, (req, res) => {
 app.get('/api/v1/dashboard/stats', requireAuth, (req, res) => {
   const user = (req as any).user;
 
-  const userTutors = db.tutors.filter((t) => t.owner_id === user.id);
-  const userPatients = db.patients.filter((p) => p.owner_id === user.id);
-  const userAppts = db.appointments.filter((a) => a.owner_id === user.id);
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  if (!Array.isArray(db.patients)) db.patients = [];
+  if (!Array.isArray(db.appointments)) db.appointments = [];
+
+  const userTutors = user.role === 'ADMIN'
+    ? [...db.tutors]
+    : db.tutors.filter((t) => Number(t.owner_id) === Number(user.id) || !t.owner_id);
+  const userPatients = user.role === 'ADMIN'
+    ? [...db.patients]
+    : db.patients.filter((p) => Number(p.owner_id) === Number(user.id) || !p.owner_id);
+  const userAppts = user.role === 'ADMIN'
+    ? [...db.appointments]
+    : db.appointments.filter((a) => Number(a.owner_id) === Number(user.id) || !a.owner_id);
 
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
@@ -932,8 +953,8 @@ app.get('/api/v1/dashboard/stats', requireAuth, (req, res) => {
   const todayAppointments = userAppts
     .filter((a) => a.date_time && a.date_time.startsWith(todayStr))
     .map((a) => {
-      const tutor = db.tutors.find((t) => t.id === a.tutor_id);
-      const patient = db.patients.find((p) => p.id === a.patient_id);
+      const tutor = db.tutors.find((t) => Number(t.id) === Number(a.tutor_id));
+      const patient = db.patients.find((p) => Number(p.id) === Number(a.patient_id));
       return {
         ...a,
         tutor_name: tutor?.name || 'Tutor',
@@ -946,7 +967,7 @@ app.get('/api/v1/dashboard/stats', requireAuth, (req, res) => {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 5)
     .map((p) => {
-      const tutor = db.tutors.find((t) => t.id === p.tutor_id);
+      const tutor = db.tutors.find((t) => Number(t.id) === Number(p.tutor_id));
       return {
         ...p,
         tutor_name: tutor?.name || 'Tutor',
@@ -958,13 +979,21 @@ app.get('/api/v1/dashboard/stats', requireAuth, (req, res) => {
     .slice(0, 5)
     .map((t) => ({
       ...t,
-      patients_count: db.patients.filter((p) => p.tutor_id === t.id).length,
+      patients_count: db.patients.filter((p) => Number(p.tutor_id) === Number(t.id)).length,
     }));
 
-  const userFinancial = (db.financial_entries || []).filter((f) => f.owner_id === user.id);
-  const userClinics = (db.clinics || []).filter((c) => c.owner_id === user.id);
-  const userAnesthesias = (db.anesthesia_records || []).filter((a) => a.owner_id === user.id);
-  const userInventory = (db.inventory_items || []).filter((i) => i.owner_id === user.id);
+  const userFinancial = user.role === 'ADMIN'
+    ? [...(db.financial_entries || [])]
+    : (db.financial_entries || []).filter((f) => Number(f.owner_id) === Number(user.id) || !f.owner_id);
+  const userClinics = user.role === 'ADMIN'
+    ? [...(db.clinics || [])]
+    : (db.clinics || []).filter((c) => Number(c.owner_id) === Number(user.id) || !c.owner_id);
+  const userAnesthesias = user.role === 'ADMIN'
+    ? [...(db.anesthesia_records || [])]
+    : (db.anesthesia_records || []).filter((a) => Number(a.owner_id) === Number(user.id) || !a.owner_id);
+  const userInventory = user.role === 'ADMIN'
+    ? [...(db.inventory_items || [])]
+    : (db.inventory_items || []).filter((i) => Number(i.owner_id) === Number(user.id) || !i.owner_id);
 
   const receitasMes = userFinancial
     .filter((f) => f.entry_type === 'RECEITA' && f.status === 'PAGO')
@@ -1007,7 +1036,12 @@ app.get('/api/v1/tutors', requireAuth, (req, res) => {
   const user = (req as any).user;
   const { search, status_filter } = req.query;
 
-  let list = db.tutors.filter((t) => t.owner_id === user.id);
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  if (!Array.isArray(db.patients)) db.patients = [];
+
+  let list = user.role === 'ADMIN'
+    ? [...db.tutors]
+    : db.tutors.filter((t) => Number(t.owner_id) === Number(user.id) || !t.owner_id);
 
   if (status_filter === 'active') {
     list = list.filter((t) => t.is_active);
@@ -1037,7 +1071,7 @@ app.get('/api/v1/tutors', requireAuth, (req, res) => {
     ...t,
     code: t.code || `TUT-${String(t.id).padStart(4, '0')}`,
     is_active: Boolean(t.is_active),
-    patients_count: db.patients.filter((p) => p.owner_id === user.id && p.tutor_id === t.id).length,
+    patients_count: db.patients.filter((p) => Number(p.tutor_id) === Number(t.id)).length,
   }));
 
   res.json(results);
@@ -1051,20 +1085,22 @@ app.post('/api/v1/tutors', requireAuth, (req, res) => {
     return res.status(400).json({ detail: 'O nome do tutor é obrigatório.' });
   }
 
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+
   // Check plan limits
   const planUsage = buildPlanUsage(user);
   if (!planUsage.can_add_tutor) {
     return res.status(403).json({
-      detail: 'Você atingiu o limite de tutores do plano gratuito. Faça upgrade para o Plano Pro para cadastros ilimitados.',
+      detail: 'Você atingiu o limite de tutores do plano. Faça upgrade para cadastros ilimitados.',
     });
   }
 
-  const nextId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => t.id)) + 1 : 1;
+  const nextId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => Number(t.id) || 0)) + 1 : 1;
   const code = `TUT-${String(nextId).padStart(4, '0')}`;
   const newTutor = {
     id: nextId,
     code,
-    owner_id: user.id,
+    owner_id: Number(user.id),
     name: data.name.trim(),
     cpf: data.cpf || null,
     phone: data.phone || null,
@@ -1097,9 +1133,14 @@ app.put('/api/v1/tutors/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   const updates = req.body;
 
-  const idx = db.tutors.findIndex((t) => t.id === id && t.owner_id === user.id);
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  const idx = db.tutors.findIndex((t) => Number(t.id) === id && (Number(t.owner_id) === Number(user.id) || !t.owner_id || user.role === 'ADMIN'));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Tutor não encontrado.' });
+  }
+
+  if (!db.tutors[idx].owner_id) {
+    db.tutors[idx].owner_id = Number(user.id);
   }
 
   const fields = [
@@ -1128,9 +1169,10 @@ app.put('/api/v1/tutors/:id', requireAuth, (req, res) => {
   db.tutors[idx].updated_at = new Date().toISOString();
   saveDB(db);
 
-  const count = db.patients.filter((p) => p.owner_id === user.id && p.tutor_id === id).length;
+  const count = (db.patients || []).filter((p) => Number(p.tutor_id) === id).length;
   res.json({
     ...db.tutors[idx],
+    code: db.tutors[idx].code || `TUT-${String(db.tutors[idx].id).padStart(4, '0')}`,
     is_active: Boolean(db.tutors[idx].is_active),
     patients_count: count,
   });
@@ -1140,7 +1182,8 @@ app.patch('/api/v1/tutors/:id/toggle-status', requireAuth, (req, res) => {
   const user = (req as any).user;
   const id = Number(req.params.id);
 
-  const idx = db.tutors.findIndex((t) => t.id === id && t.owner_id === user.id);
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  const idx = db.tutors.findIndex((t) => Number(t.id) === id && (Number(t.owner_id) === Number(user.id) || !t.owner_id || user.role === 'ADMIN'));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Tutor não encontrado.' });
   }
@@ -1155,6 +1198,22 @@ app.patch('/api/v1/tutors/:id/toggle-status', requireAuth, (req, res) => {
   });
 });
 
+app.delete('/api/v1/tutors/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  const idx = db.tutors.findIndex((t) => Number(t.id) === id && (Number(t.owner_id) === Number(user.id) || !t.owner_id || user.role === 'ADMIN'));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Tutor não encontrado.' });
+  }
+
+  db.tutors.splice(idx, 1);
+  saveDB(db);
+
+  res.json({ message: 'Tutor removido com sucesso.' });
+});
+
 // -------------------------------------------------------------
 // PATIENTS ENDPOINTS
 // -------------------------------------------------------------
@@ -1162,14 +1221,19 @@ app.get('/api/v1/patients', requireAuth, (req, res) => {
   const user = (req as any).user;
   const { tutor_id, species, status_filter, search } = req.query;
 
-  let list = db.patients.filter((p) => p.owner_id === user.id);
+  if (!Array.isArray(db.patients)) db.patients = [];
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+
+  let list = user.role === 'ADMIN'
+    ? [...db.patients]
+    : db.patients.filter((p) => Number(p.owner_id) === Number(user.id) || !p.owner_id);
 
   if (tutor_id) {
-    list = list.filter((p) => p.tutor_id === Number(tutor_id));
+    list = list.filter((p) => Number(p.tutor_id) === Number(tutor_id));
   }
 
-  if (species) {
-    list = list.filter((p) => p.species === species);
+  if (species && species !== 'ALL') {
+    list = list.filter((p) => String(p.species).toLowerCase() === String(species).toLowerCase());
   }
 
   if (status_filter === 'active') {
@@ -1186,15 +1250,15 @@ app.get('/api/v1/patients', requireAuth, (req, res) => {
         (p.code && p.code.toLowerCase().includes(s)) ||
         (`pac-${String(p.id).padStart(4, '0')}`.includes(s)) ||
         (p.breed && p.breed.toLowerCase().includes(s)) ||
-        (p.microchip && p.microchip.toLowerCase().includes(s)) ||
-        (p.microchip_number && p.microchip_number.toLowerCase().includes(s))
+        (p.microchip && String(p.microchip).toLowerCase().includes(s)) ||
+        (p.microchip_number && String(p.microchip_number).toLowerCase().includes(s))
     );
   }
 
-  list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
   const results = list.map((p) => {
-    const tutor = db.tutors.find((t) => t.id === p.tutor_id);
+    const tutor = db.tutors.find((t) => Number(t.id) === Number(p.tutor_id));
     return {
       ...p,
       code: p.code || `PAC-${String(p.id).padStart(4, '0')}`,
@@ -1218,24 +1282,27 @@ app.post('/api/v1/patients', requireAuth, (req, res) => {
     return res.status(400).json({ detail: 'Selecione o tutor responsável.' });
   }
 
+  if (!Array.isArray(db.patients)) db.patients = [];
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+
   const planUsage = buildPlanUsage(user);
   if (!planUsage.can_add_patient) {
     return res.status(403).json({
-      detail: 'Você atingiu o limite de pacientes do plano gratuito. Faça upgrade para cadastros ilimitados.',
+      detail: 'Você atingiu o limite de pacientes do plano. Faça upgrade para cadastros ilimitados.',
     });
   }
 
-  const tutor = db.tutors.find((t) => t.id === Number(data.tutor_id) && t.owner_id === user.id);
+  const tutor = db.tutors.find((t) => Number(t.id) === Number(data.tutor_id));
   if (!tutor) {
     return res.status(404).json({ detail: 'Tutor informado não encontrado.' });
   }
 
-  const nextId = db.patients.length > 0 ? Math.max(...db.patients.map((p) => p.id)) + 1 : 1;
+  const nextId = db.patients.length > 0 ? Math.max(...db.patients.map((p) => Number(p.id) || 0)) + 1 : 1;
   const code = `PAC-${String(nextId).padStart(4, '0')}`;
   const newPatient = {
     id: nextId,
     code,
-    owner_id: user.id,
+    owner_id: Number(user.id),
     tutor_id: Number(data.tutor_id),
     name: data.name.trim(),
     species: data.species || 'Canina',
@@ -1275,9 +1342,16 @@ app.put('/api/v1/patients/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   const updates = req.body;
 
-  const idx = db.patients.findIndex((p) => p.id === id && p.owner_id === user.id);
+  if (!Array.isArray(db.patients)) db.patients = [];
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+
+  const idx = db.patients.findIndex((p) => Number(p.id) === id && (Number(p.owner_id) === Number(user.id) || !p.owner_id || user.role === 'ADMIN'));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Paciente não encontrado.' });
+  }
+
+  if (!db.patients[idx].owner_id) {
+    db.patients[idx].owner_id = Number(user.id);
   }
 
   const fields = [
@@ -1306,16 +1380,25 @@ app.put('/api/v1/patients/:id', requireAuth, (req, res) => {
 
   for (const f of fields) {
     if (updates[f] !== undefined) {
-      db.patients[idx][f] = updates[f];
+      if (f === 'tutor_id') {
+        db.patients[idx].tutor_id = Number(updates[f]);
+      } else if (f === 'weight_kg') {
+        db.patients[idx].weight_kg = updates[f] ? Number(updates[f]) : null;
+      } else if (f === 'is_neutered' || f === 'is_active') {
+        db.patients[idx][f] = Boolean(updates[f]);
+      } else {
+        db.patients[idx][f] = updates[f];
+      }
     }
   }
 
   db.patients[idx].updated_at = new Date().toISOString();
   saveDB(db);
 
-  const tutor = db.tutors.find((t) => t.id === db.patients[idx].tutor_id);
+  const tutor = db.tutors.find((t) => Number(t.id) === Number(db.patients[idx].tutor_id));
   res.json({
     ...db.patients[idx],
+    code: db.patients[idx].code || `PAC-${String(db.patients[idx].id).padStart(4, '0')}`,
     tutor_name: tutor?.name || 'Tutor',
     is_active: Boolean(db.patients[idx].is_active),
     is_neutered: Boolean(db.patients[idx].is_neutered),
@@ -1326,7 +1409,8 @@ app.patch('/api/v1/patients/:id/toggle-status', requireAuth, (req, res) => {
   const user = (req as any).user;
   const id = Number(req.params.id);
 
-  const idx = db.patients.findIndex((p) => p.id === id && p.owner_id === user.id);
+  if (!Array.isArray(db.patients)) db.patients = [];
+  const idx = db.patients.findIndex((p) => Number(p.id) === id && (Number(p.owner_id) === Number(user.id) || !p.owner_id || user.role === 'ADMIN'));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Paciente não encontrado.' });
   }
@@ -1339,6 +1423,22 @@ app.patch('/api/v1/patients/:id/toggle-status', requireAuth, (req, res) => {
     message: db.patients[idx].is_active ? 'Paciente reativado.' : 'Paciente inativado.',
     is_active: db.patients[idx].is_active,
   });
+});
+
+app.delete('/api/v1/patients/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+
+  if (!Array.isArray(db.patients)) db.patients = [];
+  const idx = db.patients.findIndex((p) => Number(p.id) === id && (Number(p.owner_id) === Number(user.id) || !p.owner_id || user.role === 'ADMIN'));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Paciente não encontrado.' });
+  }
+
+  db.patients.splice(idx, 1);
+  saveDB(db);
+
+  res.json({ message: 'Paciente removido com sucesso.' });
 });
 
 // -------------------------------------------------------------
@@ -1485,16 +1585,22 @@ app.get('/api/v1/appointments', requireAuth, (req, res) => {
   const user = (req as any).user;
   const { start_date, end_date, status_filter, tutor_id, patient_id } = req.query;
 
-  let list = db.appointments.filter((a) => a.owner_id === user.id);
+  if (!Array.isArray(db.appointments)) db.appointments = [];
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  if (!Array.isArray(db.patients)) db.patients = [];
+
+  let list = user.role === 'ADMIN'
+    ? [...db.appointments]
+    : db.appointments.filter((a) => Number(a.owner_id) === Number(user.id) || !a.owner_id);
 
   if (status_filter) {
     list = list.filter((a) => a.status === status_filter);
   }
   if (tutor_id) {
-    list = list.filter((a) => a.tutor_id === Number(tutor_id));
+    list = list.filter((a) => Number(a.tutor_id) === Number(tutor_id));
   }
   if (patient_id) {
-    list = list.filter((a) => a.patient_id === Number(patient_id));
+    list = list.filter((a) => Number(a.patient_id) === Number(patient_id));
   }
   if (start_date) {
     list = list.filter((a) => a.date_time && a.date_time >= String(start_date));
@@ -1506,8 +1612,8 @@ app.get('/api/v1/appointments', requireAuth, (req, res) => {
   list.sort((a, b) => new Date(a.date_time).getTime() - new Date(b.date_time).getTime());
 
   const results = list.map((a) => {
-    const tutor = db.tutors.find((t) => t.id === a.tutor_id);
-    const patient = db.patients.find((p) => p.id === a.patient_id);
+    const tutor = db.tutors.find((t) => Number(t.id) === Number(a.tutor_id));
+    const patient = db.patients.find((p) => Number(p.id) === Number(a.patient_id));
     return {
       ...a,
       tutor_name: tutor?.name || 'Tutor',
@@ -1527,10 +1633,14 @@ app.post('/api/v1/appointments', requireAuth, (req, res) => {
     return res.status(400).json({ detail: 'Preencha tutor, paciente e data/hora.' });
   }
 
-  const nextId = db.appointments.length > 0 ? Math.max(...db.appointments.map((a) => a.id)) + 1 : 1;
+  if (!Array.isArray(db.appointments)) db.appointments = [];
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  if (!Array.isArray(db.patients)) db.patients = [];
+
+  const nextId = db.appointments.length > 0 ? Math.max(...db.appointments.map((a) => Number(a.id) || 0)) + 1 : 1;
   const newAppt = {
     id: nextId,
-    owner_id: user.id,
+    owner_id: Number(user.id),
     tutor_id: Number(data.tutor_id),
     patient_id: Number(data.patient_id),
     clinic_id: data.clinic_id ? Number(data.clinic_id) : null,
@@ -1549,8 +1659,8 @@ app.post('/api/v1/appointments', requireAuth, (req, res) => {
   db.appointments.push(newAppt);
   saveDB(db);
 
-  const tutor = db.tutors.find((t) => t.id === newAppt.tutor_id);
-  const patient = db.patients.find((p) => p.id === newAppt.patient_id);
+  const tutor = db.tutors.find((t) => Number(t.id) === Number(newAppt.tutor_id));
+  const patient = db.patients.find((p) => Number(p.id) === Number(newAppt.patient_id));
 
   const apptResult = {
     ...newAppt,
@@ -1593,7 +1703,8 @@ app.put('/api/v1/appointments/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   const updates = req.body;
 
-  const idx = db.appointments.findIndex((a) => a.id === id && a.owner_id === user.id);
+  if (!Array.isArray(db.appointments)) db.appointments = [];
+  const idx = db.appointments.findIndex((a) => Number(a.id) === id && (Number(a.owner_id) === Number(user.id) || user.role === 'ADMIN'));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Agendamento não encontrado.' });
   }
@@ -1614,15 +1725,19 @@ app.put('/api/v1/appointments/:id', requireAuth, (req, res) => {
 
   for (const f of fields) {
     if (updates[f] !== undefined) {
-      db.appointments[idx][f] = updates[f];
+      if (f === 'tutor_id' || f === 'patient_id' || f === 'clinic_id' || f === 'duration_minutes') {
+        db.appointments[idx][f] = updates[f] ? Number(updates[f]) : null;
+      } else {
+        db.appointments[idx][f] = updates[f];
+      }
     }
   }
 
   db.appointments[idx].updated_at = new Date().toISOString();
   saveDB(db);
 
-  const tutor = db.tutors.find((t) => t.id === db.appointments[idx].tutor_id);
-  const patient = db.patients.find((p) => p.id === db.appointments[idx].patient_id);
+  const tutor = (db.tutors || []).find((t) => Number(t.id) === Number(db.appointments[idx].tutor_id));
+  const patient = (db.patients || []).find((p) => Number(p.id) === Number(db.appointments[idx].patient_id));
 
   res.json({
     ...db.appointments[idx],
@@ -1655,13 +1770,15 @@ app.get('/api/v1/consultations', requireAuth, (req, res) => {
   const { patient_id } = req.query;
 
   if (!Array.isArray(db.consultations)) db.consultations = [];
-  let list = db.consultations.filter((c) => c.owner_id === user.id);
+  let list = user.role === 'ADMIN'
+    ? [...db.consultations]
+    : db.consultations.filter((c) => Number(c.owner_id) === Number(user.id) || !c.owner_id);
 
   if (patient_id) {
-    list = list.filter((c) => c.patient_id === Number(patient_id));
+    list = list.filter((c) => Number(c.patient_id) === Number(patient_id));
   }
 
-  list.sort((a, b) => new Date(b.date_time || b.created_at).getTime() - new Date(a.date_time || a.created_at).getTime());
+  list.sort((a, b) => new Date(b.date_time || b.created_at || 0).getTime() - new Date(a.date_time || a.created_at || 0).getTime());
   res.json(list);
 });
 
@@ -1669,7 +1786,7 @@ function deductConsultationStock(ownerId: number, billingItems: any[]) {
   if (!Array.isArray(db.inventory_items) || !Array.isArray(billingItems)) return;
   for (const item of billingItems) {
     if (item.deduct_from_stock && item.inventory_item_id) {
-      const invIdx = db.inventory_items.findIndex((inv) => Number(inv.id) === Number(item.inventory_item_id) && (inv.owner_id === ownerId || !inv.owner_id));
+      const invIdx = db.inventory_items.findIndex((inv) => Number(inv.id) === Number(item.inventory_item_id) && (Number(inv.owner_id) === Number(ownerId) || !inv.owner_id));
       if (invIdx !== -1) {
         const qty = Number(item.quantity) || 1;
         const currentKit = Number(db.inventory_items[invIdx].quantity_in_kit) || 0;
@@ -1691,17 +1808,19 @@ app.post('/api/v1/consultations', requireAuth, (req, res) => {
   const data = req.body;
 
   if (!Array.isArray(db.consultations)) db.consultations = [];
+  if (!Array.isArray(db.patients)) db.patients = [];
+  if (!Array.isArray(db.tutors)) db.tutors = [];
 
-  const patient = db.patients.find((p) => p.id === data.patient_id);
-  const tutor = patient ? db.tutors.find((t) => t.id === patient.tutor_id) : undefined;
+  const patient = db.patients.find((p) => Number(p.id) === Number(data.patient_id));
+  const tutor = patient ? db.tutors.find((t) => Number(t.id) === Number(patient.tutor_id)) : undefined;
 
   const newConsultation = {
     ...data,
     id: Date.now(),
-    owner_id: user.id,
-    patient_id: data.patient_id || (patient ? patient.id : 1),
+    owner_id: Number(user.id),
+    patient_id: data.patient_id ? Number(data.patient_id) : (patient ? patient.id : 1),
     patient_name: data.patient_name || (patient ? patient.name : 'Paciente'),
-    tutor_id: data.tutor_id || (tutor ? tutor.id : 1),
+    tutor_id: data.tutor_id ? Number(data.tutor_id) : (tutor ? tutor.id : 1),
     tutor_name: data.tutor_name || (tutor ? tutor.name : 'Tutor'),
     created_at: new Date().toISOString(),
     status: data.status || (data.is_estimate ? 'ORCAMENTO' : 'FINALIZADO'),
@@ -1723,7 +1842,7 @@ app.put('/api/v1/consultations/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
 
   if (!Array.isArray(db.consultations)) db.consultations = [];
-  const idx = db.consultations.findIndex((c) => c.id === id && c.owner_id === user.id);
+  const idx = db.consultations.findIndex((c) => Number(c.id) === id && (Number(c.owner_id) === Number(user.id) || user.role === 'ADMIN'));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Atendimento não encontrado.' });
   }
@@ -1747,7 +1866,7 @@ app.delete('/api/v1/consultations/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
 
   if (!Array.isArray(db.consultations)) db.consultations = [];
-  const idx = db.consultations.findIndex((c) => c.id === id && c.owner_id === user.id);
+  const idx = db.consultations.findIndex((c) => Number(c.id) === id && (Number(c.owner_id) === Number(user.id) || user.role === 'ADMIN'));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Atendimento não encontrado.' });
   }
@@ -1764,7 +1883,9 @@ app.delete('/api/v1/consultations/:id', requireAuth, (req, res) => {
 app.get('/api/v1/inventory', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.inventory_items)) db.inventory_items = [];
-  const list = db.inventory_items.filter((i) => i.owner_id === user.id);
+  const list = user.role === 'ADMIN'
+    ? [...db.inventory_items]
+    : db.inventory_items.filter((i) => Number(i.owner_id) === Number(user.id) || !i.owner_id);
   res.json(list);
 });
 
@@ -1827,7 +1948,9 @@ app.delete('/api/v1/inventory/:id', requireAuth, (req, res) => {
 app.get('/api/v1/financial', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.financial_entries)) db.financial_entries = [];
-  const list = db.financial_entries.filter((f) => f.owner_id === user.id);
+  const list = user.role === 'ADMIN'
+    ? [...db.financial_entries]
+    : db.financial_entries.filter((f) => Number(f.owner_id) === Number(user.id) || !f.owner_id);
   list.sort((a, b) => new Date(b.date || b.created_at).getTime() - new Date(a.date || a.created_at).getTime());
   res.json(list);
 });
@@ -1856,7 +1979,7 @@ app.delete('/api/v1/financial/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   if (!Array.isArray(db.financial_entries)) db.financial_entries = [];
 
-  const idx = db.financial_entries.findIndex((f) => f.id === id && f.owner_id === user.id);
+  const idx = db.financial_entries.findIndex((f) => Number(f.id) === id && (Number(f.owner_id) === Number(user.id) || user.role === 'ADMIN'));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Lançamento financeiro não encontrado.' });
   }
@@ -1872,7 +1995,9 @@ app.delete('/api/v1/financial/:id', requireAuth, (req, res) => {
 app.get('/api/v1/clinics', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.clinics)) db.clinics = [];
-  const list = db.clinics.filter((c) => c.owner_id === user.id);
+  const list = user.role === 'ADMIN'
+    ? [...db.clinics]
+    : db.clinics.filter((c) => Number(c.owner_id) === Number(user.id) || !c.owner_id);
   res.json(list);
 });
 
@@ -1883,9 +2008,10 @@ app.post('/api/v1/clinics', requireAuth, (req, res) => {
   const newClinic = {
     ...req.body,
     id: Date.now(),
-    owner_id: user.id,
+    owner_id: Number(user.id),
     created_at: new Date().toISOString(),
-    is_active: true,
+    updated_at: new Date().toISOString(),
+    is_active: req.body.is_active !== false,
   };
 
   db.clinics.unshift(newClinic);
@@ -1893,10 +2019,43 @@ app.post('/api/v1/clinics', requireAuth, (req, res) => {
   res.status(201).json(newClinic);
 });
 
+app.put('/api/v1/clinics/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray(db.clinics)) db.clinics = [];
+
+  const idx = db.clinics.findIndex((c) => Number(c.id) === id && (Number(c.owner_id) === Number(user.id) || !c.owner_id || user.role === 'ADMIN'));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Clínica não encontrada.' });
+  }
+
+  db.clinics[idx] = { ...db.clinics[idx], ...req.body, updated_at: new Date().toISOString() };
+  if (!db.clinics[idx].owner_id) db.clinics[idx].owner_id = Number(user.id);
+  saveDB(db);
+  res.json(db.clinics[idx]);
+});
+
+app.delete('/api/v1/clinics/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray(db.clinics)) db.clinics = [];
+
+  const idx = db.clinics.findIndex((c) => Number(c.id) === id && (Number(c.owner_id) === Number(user.id) || !c.owner_id || user.role === 'ADMIN'));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Clínica não encontrada.' });
+  }
+
+  db.clinics.splice(idx, 1);
+  saveDB(db);
+  res.json({ message: 'Clínica removida com sucesso.' });
+});
+
 app.get('/api/v1/surgeons', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.surgeons)) db.surgeons = [];
-  const list = db.surgeons.filter((s) => s.owner_id === user.id);
+  const list = user.role === 'ADMIN'
+    ? [...db.surgeons]
+    : db.surgeons.filter((s) => Number(s.owner_id) === Number(user.id) || !s.owner_id);
   res.json(list);
 });
 
@@ -1907,14 +2066,46 @@ app.post('/api/v1/surgeons', requireAuth, (req, res) => {
   const newSurgeon = {
     ...req.body,
     id: Date.now(),
-    owner_id: user.id,
+    owner_id: Number(user.id),
     created_at: new Date().toISOString(),
-    is_active: true,
+    updated_at: new Date().toISOString(),
+    is_active: req.body.is_active !== false,
   };
 
   db.surgeons.unshift(newSurgeon);
   saveDB(db);
   res.status(201).json(newSurgeon);
+});
+
+app.put('/api/v1/surgeons/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray(db.surgeons)) db.surgeons = [];
+
+  const idx = db.surgeons.findIndex((s) => Number(s.id) === id && (Number(s.owner_id) === Number(user.id) || !s.owner_id || user.role === 'ADMIN'));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Cirurgião não encontrado.' });
+  }
+
+  db.surgeons[idx] = { ...db.surgeons[idx], ...req.body, updated_at: new Date().toISOString() };
+  if (!db.surgeons[idx].owner_id) db.surgeons[idx].owner_id = Number(user.id);
+  saveDB(db);
+  res.json(db.surgeons[idx]);
+});
+
+app.delete('/api/v1/surgeons/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray(db.surgeons)) db.surgeons = [];
+
+  const idx = db.surgeons.findIndex((s) => Number(s.id) === id && (Number(s.owner_id) === Number(user.id) || !s.owner_id || user.role === 'ADMIN'));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Cirurgião não encontrado.' });
+  }
+
+  db.surgeons.splice(idx, 1);
+  saveDB(db);
+  res.json({ message: 'Cirurgião removido com sucesso.' });
 });
 
 // -------------------------------------------------------------
@@ -2258,7 +2449,9 @@ app.delete('/api/v1/supplier-orders/:id', requireAuth, (req, res) => {
 app.get('/api/v1/anesthesias', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.anesthesia_records)) db.anesthesia_records = [];
-  const list = db.anesthesia_records.filter((a) => a.owner_id === user.id);
+  const list = user.role === 'ADMIN'
+    ? [...db.anesthesia_records]
+    : db.anesthesia_records.filter((a) => Number(a.owner_id) === Number(user.id) || !a.owner_id);
   res.json(list);
 });
 
@@ -2269,13 +2462,53 @@ app.post('/api/v1/anesthesias', requireAuth, (req, res) => {
   const newRecord = {
     ...req.body,
     id: Date.now(),
-    owner_id: user.id,
+    owner_id: Number(user.id),
     created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 
   db.anesthesia_records.unshift(newRecord);
   saveDB(db);
   res.status(201).json(newRecord);
+});
+
+app.put('/api/v1/anesthesias/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray(db.anesthesia_records)) db.anesthesia_records = [];
+
+  const idx = db.anesthesia_records.findIndex(
+    (a) => Number(a.id) === id && (Number(a.owner_id) === Number(user.id) || !a.owner_id || user.role === 'ADMIN')
+  );
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Ficha anestésica não encontrada.' });
+  }
+
+  db.anesthesia_records[idx] = {
+    ...db.anesthesia_records[idx],
+    ...req.body,
+    updated_at: new Date().toISOString(),
+  };
+  if (!db.anesthesia_records[idx].owner_id) db.anesthesia_records[idx].owner_id = Number(user.id);
+  saveDB(db);
+  res.json(db.anesthesia_records[idx]);
+});
+
+app.delete('/api/v1/anesthesias/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray(db.anesthesia_records)) db.anesthesia_records = [];
+
+  const idx = db.anesthesia_records.findIndex(
+    (a) => Number(a.id) === id && (Number(a.owner_id) === Number(user.id) || !a.owner_id || user.role === 'ADMIN')
+  );
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Ficha anestésica não encontrada.' });
+  }
+
+  db.anesthesia_records.splice(idx, 1);
+  saveDB(db);
+  res.json({ message: 'Ficha anestésica removida com sucesso.' });
 });
 
 // -------------------------------------------------------------
@@ -2284,7 +2517,9 @@ app.post('/api/v1/anesthesias', requireAuth, (req, res) => {
 app.get('/api/v1/documents', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.documents)) db.documents = [];
-  const list = db.documents.filter((d) => d.owner_id === user.id);
+  const list = user.role === 'ADMIN'
+    ? [...db.documents]
+    : db.documents.filter((d) => Number(d.owner_id) === Number(user.id) || !d.owner_id);
   res.json(list);
 });
 
@@ -2297,6 +2532,7 @@ app.post('/api/v1/documents', requireAuth, (req, res) => {
     id: Date.now(),
     owner_id: user.id,
     created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 
   db.documents.unshift(newDoc);
@@ -2308,7 +2544,7 @@ app.delete('/api/v1/documents/:id', requireAuth, (req, res) => {
   const user = (req as any).user;
   const id = Number(req.params.id);
   if (!Array.isArray(db.documents)) db.documents = [];
-  db.documents = db.documents.filter((d: any) => !(d.id === id && d.owner_id === user.id));
+  db.documents = db.documents.filter((d: any) => !(Number(d.id) === id && (Number(d.owner_id) === Number(user.id) || user.role === 'ADMIN')));
   saveDB(db);
   res.json({ message: 'Documento excluído com sucesso.' });
 });

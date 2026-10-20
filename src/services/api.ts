@@ -77,22 +77,36 @@ export const api = {
     const token = this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
       ...(options.headers as Record<string, string>),
     };
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-    const cachedUser = this.getCachedUser();
     const isGet = !options.method || options.method === 'GET';
+    let url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+    if (isGet) {
+      const sep = url.includes('?') ? '&' : '?';
+      url = `${url}${sep}_t=${Date.now()}`;
+    }
+    const cachedUser = this.getCachedUser();
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
     const signal = options.signal || controller.signal;
 
+    let isServerResponseError = false;
+
     try {
-      const res = await fetch(url, { ...options, headers, signal });
+      const res = await fetch(url, {
+        ...options,
+        cache: 'no-store',
+        headers,
+        signal,
+      });
       clearTimeout(timeoutId);
 
       if (res.status === 401) {
@@ -101,6 +115,7 @@ export const api = {
       }
 
       if (!res.ok) {
+        isServerResponseError = true;
         let errMsg = 'Erro na requisição ao servidor.';
         try {
           const errorData = await res.json();
@@ -123,60 +138,74 @@ export const api = {
       }
       const data = await res.json();
 
+      if (data && (data as any).is_offline) {
+        throw new Error('Modo Offline: Dados indisponíveis no momento.');
+      }
+
       // Salva resposta GET no cache isolado do veterinário logado
       if (isGet && cachedUser?.id) {
         offlineStorage.saveData(cachedUser.id, endpoint, data);
-      } else if (!isGet && cachedUser?.id) {
-        // Invalida cache após mutações bem-sucedidas para garantir dados frescos
-        if (endpoint.includes('tutor')) {
-          offlineStorage.removeData(cachedUser.id, 'tutor');
-          offlineStorage.removeData(cachedUser.id, 'dashboard');
-        } else if (endpoint.includes('patient')) {
-          offlineStorage.removeData(cachedUser.id, 'patient');
-          offlineStorage.removeData(cachedUser.id, 'dashboard');
-        } else if (endpoint.includes('appointment')) {
-          offlineStorage.removeData(cachedUser.id, 'appointment');
-          offlineStorage.removeData(cachedUser.id, 'dashboard');
-        } else if (endpoint.includes('consultation')) {
-          offlineStorage.removeData(cachedUser.id, 'consultation');
-          offlineStorage.removeData(cachedUser.id, 'dashboard');
+      }
+ else if (!isGet) {
+        // Notifica o Service Worker para limpar o cache da API em mutações
+        if (typeof window !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
+        }
+        if (cachedUser?.id) {
+          // Invalida cache após mutações bem-sucedidas para garantir dados frescos
+          if (endpoint.includes('tutor')) {
+            offlineStorage.removeData(cachedUser.id, 'tutor');
+            offlineStorage.removeData(cachedUser.id, 'dashboard');
+          } else if (endpoint.includes('patient')) {
+            offlineStorage.removeData(cachedUser.id, 'patient');
+            offlineStorage.removeData(cachedUser.id, 'dashboard');
+          } else if (endpoint.includes('appointment')) {
+            offlineStorage.removeData(cachedUser.id, 'appointment');
+            offlineStorage.removeData(cachedUser.id, 'dashboard');
+          } else if (endpoint.includes('consultation')) {
+            offlineStorage.removeData(cachedUser.id, 'consultation');
+            offlineStorage.removeData(cachedUser.id, 'dashboard');
+          }
         }
       }
 
       return data;
     } catch (err: any) {
       clearTimeout(timeoutId);
-      // Se a rede falhar ou estiver sem internet:
-      if (cachedUser?.id) {
-        // Fallback 1: Retorna do cache local para requisições GET
-        if (isGet) {
-          const cachedData = offlineStorage.getData<T>(cachedUser.id, endpoint);
-          if (cachedData !== null) {
-            return cachedData;
-          }
+
+      // Se o servidor respondeu com status de erro (4xx/5xx): NUNCA simule sucesso offline!
+      if (isServerResponseError) {
+        throw err;
+      }
+
+      // Se estiver offline de fato (sem conexão com a internet) e for GET:
+      if (cachedUser?.id && isGet && (!navigator.onLine || err.message?.includes('Failed to fetch'))) {
+        const cachedData = offlineStorage.getData<T>(cachedUser.id, endpoint);
+        if (cachedData !== null) {
+          return cachedData;
         }
+      }
 
-        // Fallback 2: Enfileira mutações POST/PUT para sincronização automática quando a rede voltar
-        if (options.method === 'POST' || options.method === 'PUT') {
-          let bodyObj: any = null;
-          try {
-            if (options.body) bodyObj = JSON.parse(options.body as string);
-          } catch {}
+      // Se estiver verdadeiramente sem sinal (offline real) e for mutação:
+      if (cachedUser?.id && !isGet && !navigator.onLine && (options.method === 'POST' || options.method === 'PUT')) {
+        let bodyObj: any = null;
+        try {
+          if (options.body) bodyObj = JSON.parse(options.body as string);
+        } catch {}
 
-          offlineStorage.queueMutation(cachedUser.id, {
-            url,
-            method: options.method,
-            body: bodyObj,
-            description: `${options.method} ${endpoint}`,
-          });
+        offlineStorage.queueMutation(cachedUser.id, {
+          url,
+          method: options.method,
+          body: bodyObj,
+          description: `${options.method} ${endpoint}`,
+        });
 
-          // Retorno otimista simulado para que a interface não trave
-          return {
-            id: Date.now(),
-            ...bodyObj,
-            _offline_saved: true,
-          } as unknown as T;
-        }
+        // Retorno otimista simulado para que a interface não trave APENAS quando sem internet
+        return {
+          id: Date.now(),
+          ...bodyObj,
+          _offline_saved: true,
+        } as unknown as T;
       }
 
       throw err;
@@ -687,29 +716,130 @@ export const api = {
     return this.request<PlanUsage>('/dashboard/plan-usage');
   },
 
-  // Tutors
+  // Helper local storage keys
+  getTutorsStorageKey(): string {
+    const user = this.getCachedUser();
+    return user?.id ? `vetgo_tutors_u${user.id}` : 'vetgo_tutors';
+  },
+
+  getPatientsStorageKey(): string {
+    const user = this.getCachedUser();
+    return user?.id ? `vetgo_patients_u${user.id}` : 'vetgo_patients';
+  },
+
+  getAppointmentsStorageKey(): string {
+    const user = this.getCachedUser();
+    return user?.id ? `vetgo_appointments_u${user.id}` : 'vetgo_appointments';
+  },
+
+  // Tutors with reliable server sync and local persistence mirror
   async getTutors(): Promise<Tutor[]> {
-    return this.request<Tutor[]>('/tutors');
+    const key = this.getTutorsStorageKey();
+    try {
+      const serverList = await this.request<Tutor[]>('/tutors');
+      if (Array.isArray(serverList)) {
+        localStorage.setItem(key, JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar tutores do servidor, usando cache local:', err);
+    }
+
+    const local = localStorage.getItem(key);
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    return [];
   },
 
   async createTutor(tutorData: Partial<Tutor>): Promise<Tutor> {
-    return this.request<Tutor>('/tutors', {
+    const key = this.getTutorsStorageKey();
+    const created = await this.request<Tutor>('/tutors', {
       method: 'POST',
       body: JSON.stringify(tutorData)
     });
+    const tutorItem: Tutor = {
+      ...tutorData,
+      ...created,
+      id: created?.id || Date.now(),
+      created_at: created?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      is_active: created?.is_active !== false,
+    } as Tutor;
+
+    try {
+      const local = localStorage.getItem(key);
+      const list = local ? JSON.parse(local) : [];
+      const nextList = [tutorItem, ...list.filter((t: any) => Number(t.id) !== Number(tutorItem.id))];
+      localStorage.setItem(key, JSON.stringify(nextList));
+    } catch {}
+
+    return tutorItem;
   },
 
   async updateTutor(id: number, updates: Partial<Tutor>): Promise<Tutor> {
-    return this.request<Tutor>(`/tutors/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates)
-    });
+    const key = this.getTutorsStorageKey();
+    let updated: Tutor | null = null;
+    try {
+      updated = await this.request<Tutor>(`/tutors/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+    } catch (e) {
+      console.warn('Erro na requisição PUT tutor, atualizando localmente:', e);
+    }
+
+    const mergedTutor: Tutor = {
+      ...updates,
+      ...(updated || {}),
+      id,
+      updated_at: new Date().toISOString(),
+    } as Tutor;
+
+    try {
+      const local = localStorage.getItem(key);
+      const list = local ? JSON.parse(local) : [];
+      const nextList = list.map((t: any) => Number(t.id) === Number(id) ? { ...t, ...mergedTutor } : t);
+      localStorage.setItem(key, JSON.stringify(nextList));
+    } catch {}
+
+    return mergedTutor;
+  },
+
+  async deleteTutor(id: number): Promise<void> {
+    const key = this.getTutorsStorageKey();
+    try {
+      await this.request(`/tutors/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Erro ao deletar tutor no servidor, removendo localmente:', e);
+    }
+    try {
+      const local = localStorage.getItem(key);
+      if (local) {
+        const list = JSON.parse(local);
+        const nextList = list.filter((t: any) => Number(t.id) !== Number(id));
+        localStorage.setItem(key, JSON.stringify(nextList));
+      }
+    } catch {}
   },
 
   async toggleTutorStatus(id: number): Promise<{ message: string; is_active: boolean }> {
-    return this.request<{ message: string; is_active: boolean }>(`/tutors/${id}/toggle-status`, {
+    const key = this.getTutorsStorageKey();
+    const res = await this.request<{ message: string; is_active: boolean }>(`/tutors/${id}/toggle-status`, {
       method: 'PATCH'
     });
+    try {
+      const local = localStorage.getItem(key);
+      if (local) {
+        const list = JSON.parse(local);
+        const nextList = list.map((t: any) => Number(t.id) === Number(id) ? { ...t, is_active: res.is_active } : t);
+        localStorage.setItem(key, JSON.stringify(nextList));
+      }
+    } catch {}
+    return res;
   },
 
   async checkTutorCpfDuplicate(cpf: string, excludeTutorId?: number): Promise<Tutor | null> {
@@ -725,30 +855,120 @@ export const api = {
     }
   },
 
-  // Patients
+  // Patients with reliable server sync and local persistence mirror
   async getPatients(tutorId?: number): Promise<Patient[]> {
+    const key = this.getPatientsStorageKey();
     const query = tutorId ? `?tutor_id=${tutorId}` : '';
-    return this.request<Patient[]>(`/patients${query}`);
+    try {
+      const serverList = await this.request<Patient[]>(`/patients${query}`);
+      if (Array.isArray(serverList)) {
+        if (!tutorId) {
+          localStorage.setItem(key, JSON.stringify(serverList));
+        }
+        return serverList;
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar pacientes do servidor, usando cache local:', err);
+    }
+
+    const local = localStorage.getItem(key);
+    if (local) {
+      try {
+        const list: Patient[] = JSON.parse(local);
+        if (Array.isArray(list)) {
+          if (tutorId) return list.filter((p) => Number(p.tutor_id) === Number(tutorId));
+          return list;
+        }
+      } catch {}
+    }
+    return [];
   },
 
   async createPatient(patientData: Partial<Patient>): Promise<Patient> {
-    return this.request<Patient>('/patients', {
+    const key = this.getPatientsStorageKey();
+    const created = await this.request<Patient>('/patients', {
       method: 'POST',
       body: JSON.stringify(patientData)
     });
+    const patientItem: Patient = {
+      ...patientData,
+      ...created,
+      id: created?.id || Date.now(),
+      created_at: created?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      is_active: created?.is_active !== false,
+    } as Patient;
+
+    try {
+      const local = localStorage.getItem(key);
+      const list = local ? JSON.parse(local) : [];
+      const nextList = [patientItem, ...list.filter((p: any) => Number(p.id) !== Number(patientItem.id))];
+      localStorage.setItem(key, JSON.stringify(nextList));
+    } catch {}
+
+    return patientItem;
   },
 
   async updatePatient(id: number, updates: Partial<Patient>): Promise<Patient> {
-    return this.request<Patient>(`/patients/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates)
-    });
+    const key = this.getPatientsStorageKey();
+    let updated: Patient | null = null;
+    try {
+      updated = await this.request<Patient>(`/patients/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+    } catch (e) {
+      console.warn('Erro na requisição PUT paciente, atualizando localmente:', e);
+    }
+
+    const mergedPatient: Patient = {
+      ...updates,
+      ...(updated || {}),
+      id,
+      updated_at: new Date().toISOString(),
+    } as Patient;
+
+    try {
+      const local = localStorage.getItem(key);
+      const list = local ? JSON.parse(local) : [];
+      const nextList = list.map((p: any) => Number(p.id) === Number(id) ? { ...p, ...mergedPatient } : p);
+      localStorage.setItem(key, JSON.stringify(nextList));
+    } catch {}
+
+    return mergedPatient;
+  },
+
+  async deletePatient(id: number): Promise<void> {
+    const key = this.getPatientsStorageKey();
+    try {
+      await this.request(`/patients/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Erro ao deletar paciente no servidor, removendo localmente:', e);
+    }
+    try {
+      const local = localStorage.getItem(key);
+      if (local) {
+        const list = JSON.parse(local);
+        const nextList = list.filter((p: any) => Number(p.id) !== Number(id));
+        localStorage.setItem(key, JSON.stringify(nextList));
+      }
+    } catch {}
   },
 
   async togglePatientStatus(id: number): Promise<{ message: string; is_active: boolean }> {
-    return this.request<{ message: string; is_active: boolean }>(`/patients/${id}/toggle-status`, {
+    const key = this.getPatientsStorageKey();
+    const res = await this.request<{ message: string; is_active: boolean }>(`/patients/${id}/toggle-status`, {
       method: 'PATCH'
     });
+    try {
+      const local = localStorage.getItem(key);
+      if (local) {
+        const list = JSON.parse(local);
+        const nextList = list.map((p: any) => Number(p.id) === Number(id) ? { ...p, is_active: res.is_active } : p);
+        localStorage.setItem(key, JSON.stringify(nextList));
+      }
+    } catch {}
+    return res;
   },
 
   async checkMicrochipDuplicate(microchipNumber: string, excludePatientId?: number): Promise<Patient | null> {
@@ -806,13 +1026,28 @@ export const api = {
   },
 
   async createClinic(data: Partial<Clinic>): Promise<Clinic> {
+    try {
+      const created = await this.request<Clinic>('/clinics', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      if (created && created.id) {
+        const clinics = await this.getClinics();
+        const nextList = [created, ...clinics.filter((c) => c.id !== created.id)];
+        localStorage.setItem('vetgo_clinics', JSON.stringify(nextList));
+        return created;
+      }
+    } catch (e) {
+      console.warn('Erro ao criar clínica no servidor, criando localmente:', e);
+    }
+
     const clinics = await this.getClinics();
+    const user = this.getCachedUser();
     const nextNum = clinics.length + 1;
     const code = data.code || `CL-${String(nextNum).padStart(2, '0')}`;
-
     const newClinic: Clinic = {
       id: Date.now(),
-      owner_id: 2,
+      owner_id: user?.id || 1,
       code,
       name: data.name || '',
       corporate_name: data.corporate_name,
@@ -839,7 +1074,7 @@ export const api = {
       is_active: data.is_active !== false,
       created_at: new Date().toISOString(),
       total_procedures: 0,
-      total_billed: 0
+      total_billed: 0,
     };
     clinics.unshift(newClinic);
     localStorage.setItem('vetgo_clinics', JSON.stringify(clinics));
@@ -847,6 +1082,20 @@ export const api = {
   },
 
   async updateClinic(id: number, updates: Partial<Clinic>): Promise<Clinic> {
+    try {
+      const updated = await this.request<Clinic>(`/clinics/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
+      if (updated) {
+        const clinics = await this.getClinics();
+        const nextList = clinics.map((c) => c.id === id ? { ...c, ...updated } : c);
+        localStorage.setItem('vetgo_clinics', JSON.stringify(nextList));
+        return updated;
+      }
+    } catch (e) {
+      console.warn('Erro ao atualizar clínica no servidor, atualizando localmente:', e);
+    }
     const clinics = await this.getClinics();
     const idx = clinics.findIndex((c) => c.id === id);
     if (idx === -1) throw new Error('Clínica não encontrada');
@@ -856,6 +1105,11 @@ export const api = {
   },
 
   async deleteClinic(id: number): Promise<void> {
+    try {
+      await this.request(`/clinics/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Erro ao remover clínica no servidor, removendo localmente:', e);
+    }
     const clinics = await this.getClinics();
     const filtered = clinics.filter((c) => c.id !== id);
     localStorage.setItem('vetgo_clinics', JSON.stringify(filtered));
@@ -897,13 +1151,29 @@ export const api = {
   },
 
   async createSurgeon(data: Partial<Surgeon>): Promise<Surgeon> {
+    try {
+      const created = await this.request<Surgeon>('/surgeons', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      if (created && created.id) {
+        const list = await this.getSurgeons();
+        const nextList = [created, ...list.filter((s) => s.id !== created.id)];
+        localStorage.setItem('vetgo_surgeons', JSON.stringify(nextList));
+        return created;
+      }
+    } catch (e) {
+      console.warn('Erro ao criar cirurgião no servidor, criando localmente:', e);
+    }
+
     const list = await this.getSurgeons();
+    const user = this.getCachedUser();
     const nextNum = list.length + 1;
     const code = data.code || `PR-${Math.floor(10 + Math.random() * 89)}`;
 
     const newSurgeon: Surgeon = {
       id: Date.now(),
-      owner_id: 2,
+      owner_id: user?.id || 1,
       code,
       name: data.name || '',
       crmv: data.crmv || '',
@@ -922,6 +1192,20 @@ export const api = {
   },
 
   async updateSurgeon(id: number, updates: Partial<Surgeon>): Promise<Surgeon> {
+    try {
+      const updated = await this.request<Surgeon>(`/surgeons/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
+      if (updated) {
+        const list = await this.getSurgeons();
+        const nextList = list.map((s) => s.id === id ? { ...s, ...updated } : s);
+        localStorage.setItem('vetgo_surgeons', JSON.stringify(nextList));
+        return updated;
+      }
+    } catch (e) {
+      console.warn('Erro ao atualizar cirurgião no servidor, atualizando localmente:', e);
+    }
     const list = await this.getSurgeons();
     const idx = list.findIndex((s) => s.id === id);
     if (idx === -1) throw new Error('Cirurgião não encontrado');
@@ -931,6 +1215,11 @@ export const api = {
   },
 
   async deleteSurgeon(id: number): Promise<void> {
+    try {
+      await this.request(`/surgeons/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Erro ao remover cirurgião no servidor, removendo localmente:', e);
+    }
     const list = await this.getSurgeons();
     const filtered = list.filter((s) => s.id !== id);
     localStorage.setItem('vetgo_surgeons', JSON.stringify(filtered));
@@ -973,13 +1262,14 @@ export const api = {
   },
 
   async createAnesthesia(data: Partial<AnesthesiaRecord>): Promise<AnesthesiaRecord> {
+    const user = this.getCachedUser();
     const list = await this.getAnesthesias();
     const year = new Date().getFullYear();
     const nextCode = `AN-${year}-${String(list.length + 1).padStart(3, '0')}`;
 
     const newRecord: AnesthesiaRecord = {
       id: Date.now(),
-      owner_id: 2,
+      owner_id: user?.id || 1,
       code: data.code || nextCode,
       clinic_id: data.clinic_id || 1,
       clinic_name: data.clinic_name || '',
@@ -1026,6 +1316,18 @@ export const api = {
       created_at: new Date().toISOString()
     };
 
+    try {
+      const created = await this.request<AnesthesiaRecord>('/anesthesias', {
+        method: 'POST',
+        body: JSON.stringify(newRecord),
+      });
+      if (created && created.id) {
+        Object.assign(newRecord, created);
+      }
+    } catch (e) {
+      console.warn('Erro ao salvar ficha anestésica no servidor, salvando localmente:', e);
+    }
+
     list.unshift(newRecord);
     localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
 
@@ -1042,6 +1344,14 @@ export const api = {
   },
 
   async updateAnesthesia(id: number, updates: Partial<AnesthesiaRecord>): Promise<AnesthesiaRecord> {
+    try {
+      await this.request<AnesthesiaRecord>(`/anesthesias/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
+    } catch (e) {
+      console.warn('Erro ao atualizar ficha anestésica no servidor, atualizando localmente:', e);
+    }
     const list = await this.getAnesthesias();
     const idx = list.findIndex((a) => a.id === id);
     if (idx === -1) throw new Error('Anestesia não encontrada');
@@ -1296,25 +1606,86 @@ export const api = {
   },
 
   async getAppointments(): Promise<Appointment[]> {
-    return this.request<Appointment[]>('/appointments');
+    const key = this.getAppointmentsStorageKey();
+    try {
+      const serverList = await this.request<Appointment[]>('/appointments');
+      if (Array.isArray(serverList)) {
+        let merged = [...serverList];
+        const local = localStorage.getItem(key);
+        if (local) {
+          try {
+            const localList = JSON.parse(local);
+            if (Array.isArray(localList)) {
+              for (const loc of localList) {
+                if (!merged.some((m) => Number(m.id) === Number(loc.id))) {
+                  merged.push(loc);
+                }
+              }
+            }
+          } catch {}
+        }
+        localStorage.setItem(key, JSON.stringify(merged));
+        return merged;
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar agendamentos do servidor, usando cache local:', err);
+    }
+
+    const local = localStorage.getItem(key);
+    if (local) {
+      try {
+        const list = JSON.parse(local);
+        if (Array.isArray(list)) return list;
+      } catch {}
+    }
+    return [];
   },
 
   async createAppointment(data: Partial<Appointment>): Promise<Appointment> {
-    return this.request<Appointment>('/appointments', {
+    const key = this.getAppointmentsStorageKey();
+    const created = await this.request<Appointment>('/appointments', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    if (created && created.id) {
+      try {
+        const local = localStorage.getItem(key);
+        const list = local ? JSON.parse(local) : [];
+        const nextList = [created, ...list.filter((a: any) => Number(a.id) !== Number(created.id))];
+        localStorage.setItem(key, JSON.stringify(nextList));
+      } catch {}
+    }
+    return created;
   },
 
   async updateAppointment(id: number, updates: Partial<Appointment>): Promise<Appointment> {
-    return this.request<Appointment>(`/appointments/${id}`, {
+    const key = this.getAppointmentsStorageKey();
+    const updated = await this.request<Appointment>(`/appointments/${id}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     });
+    if (updated && updated.id) {
+      try {
+        const local = localStorage.getItem(key);
+        const list = local ? JSON.parse(local) : [];
+        const nextList = list.map((a: any) => Number(a.id) === Number(id) ? { ...a, ...updated } : a);
+        localStorage.setItem(key, JSON.stringify(nextList));
+      } catch {}
+    }
+    return updated;
   },
 
   async deleteAppointment(id: number): Promise<void> {
+    const key = this.getAppointmentsStorageKey();
     await this.request(`/appointments/${id}`, { method: 'DELETE' });
+    try {
+      const local = localStorage.getItem(key);
+      if (local) {
+        const list = JSON.parse(local);
+        const nextList = list.filter((a: any) => Number(a.id) !== Number(id));
+        localStorage.setItem(key, JSON.stringify(nextList));
+      }
+    } catch {}
   },
 
   async getConsultations(patientId?: number): Promise<ClinicalConsultation[]> {
