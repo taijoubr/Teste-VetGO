@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
@@ -18,7 +18,8 @@ import {
   X,
   CreditCard,
   UserCheck,
-  Tag
+  Tag,
+  Loader2
 } from 'lucide-react';
 import {
   formatCNPJ,
@@ -26,6 +27,7 @@ import {
   formatPhone,
   CPF_CNPJ_DISCLAIMER
 } from '../utils/validators';
+import { formatCEP, fetchAddressByCep } from '../services/cepService';
 
 export const ClinicsPage: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -41,6 +43,9 @@ export const ClinicsPage: React.FC = () => {
 
   const [modalError, setModalError] = useState<string | null>(null);
   const [cnpjWarning, setCnpjWarning] = useState<string | null>(null);
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepFeedback, setCepFeedback] = useState<{ text: string; type: 'success' | 'warning' } | null>(null);
+  const clinicNumberInputRef = useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = useState({
     code: '',
@@ -113,7 +118,52 @@ export const ClinicsPage: React.FC = () => {
     });
     setModalError(null);
     setCnpjWarning(null);
+    setCepFeedback(null);
+    setCepLoading(false);
     setShowModal(true);
+  };
+
+  const handleCepChange = async (value: string) => {
+    const formatted = formatCEP(value);
+    setForm((prev) => ({ ...prev, postal_code: formatted }));
+    setCepFeedback(null);
+
+    const clean = formatted.replace(/\D/g, '');
+    if (clean.length === 8) {
+      setCepLoading(true);
+      try {
+        const res = await fetchAddressByCep(clean);
+        if (res.success && res.data) {
+          setForm((prev) => ({
+            ...prev,
+            address: res.data!.street || prev.address,
+            neighborhood: res.data!.neighborhood || prev.neighborhood,
+            city: res.data!.city || prev.city,
+            state: res.data!.state || prev.state,
+            postal_code: res.data!.postal_code || formatted,
+          }));
+          setCepFeedback({
+            type: 'success',
+            text: `Localizado: ${res.data.street ? res.data.street + ', ' : ''}${res.data.neighborhood} - ${res.data.city}/${res.data.state}`,
+          });
+          setTimeout(() => {
+            clinicNumberInputRef.current?.focus();
+          }, 120);
+        } else {
+          setCepFeedback({
+            type: 'warning',
+            text: res.error || 'CEP não localizado. Preencha o endereço manualmente.',
+          });
+        }
+      } catch {
+        setCepFeedback({
+          type: 'warning',
+          text: 'Falha temporária ao consultar CEP. Preencha o endereço manualmente.',
+        });
+      } finally {
+        setCepLoading(false);
+      }
+    }
   };
 
   const handleCnpjChange = async (value: string) => {
@@ -658,51 +708,123 @@ export const ClinicsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Endereço */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <span className="font-bold text-slate-800">Endereço da Clínica</span>
+              {/* Endereço com Busca Automática de CEP */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+                    Endereço da Clínica
+                  </span>
+                  <span className="text-[10px] text-slate-400">Busca rápida por CEP</span>
+                </div>
+
+                {/* Campo de CEP com busca automática */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    CEP (digite os 8 dígitos para preenchimento automático)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={form.postal_code}
+                      onChange={(e) => handleCepChange(e.target.value)}
+                      placeholder="00000-000"
+                      maxLength={9}
+                      className="w-full px-3 py-2 pr-10 border border-slate-200 rounded-lg font-mono text-xs outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 transition"
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
+                      {cepLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />
+                      ) : (
+                        <Search className="w-4 h-4 text-slate-400" />
+                      )}
+                    </div>
+                  </div>
+
+                  {cepFeedback && (
+                    <p
+                      className={`text-[11px] mt-1.5 flex items-start gap-1 font-medium ${
+                        cepFeedback.type === 'success' ? 'text-emerald-700' : 'text-amber-700'
+                      }`}
+                    >
+                      {cepFeedback.type === 'success' ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-700" />
+                      ) : (
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-700" />
+                      )}
+                      <span>{cepFeedback.text}</span>
+                    </p>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                   <div className="sm:col-span-3">
+                    <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Rua / Logradouro</label>
                     <input
                       type="text"
                       value={form.address}
                       onChange={(e) => setForm({ ...form, address: e.target.value })}
                       placeholder="Logradouro / Avenida / Rua"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-600"
                     />
                   </div>
                   <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Número</label>
                     <input
+                      ref={clinicNumberInputRef}
                       type="text"
                       value={form.address_number}
                       onChange={(e) => setForm({ ...form, address_number: e.target.value })}
                       placeholder="Número"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-600"
                     />
                   </div>
                 </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <input
-                    type="text"
-                    value={form.neighborhood}
-                    onChange={(e) => setForm({ ...form, neighborhood: e.target.value })}
-                    placeholder="Bairro"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg"
-                  />
-                  <input
-                    type="text"
-                    value={form.city}
-                    onChange={(e) => setForm({ ...form, city: e.target.value })}
-                    placeholder="Cidade"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg"
-                  />
-                  <input
-                    type="text"
-                    value={form.postal_code}
-                    onChange={(e) => setForm({ ...form, postal_code: e.target.value })}
-                    placeholder="CEP"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg"
-                  />
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Complemento</label>
+                    <input
+                      type="text"
+                      value={form.complement}
+                      onChange={(e) => setForm({ ...form, complement: e.target.value })}
+                      placeholder="Sala, Andar, Bloco"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Bairro</label>
+                    <input
+                      type="text"
+                      value={form.neighborhood}
+                      onChange={(e) => setForm({ ...form, neighborhood: e.target.value })}
+                      placeholder="Bairro"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-600"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <div className="col-span-2">
+                      <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Cidade</label>
+                      <input
+                        type="text"
+                        value={form.city}
+                        onChange={(e) => setForm({ ...form, city: e.target.value })}
+                        placeholder="Cidade"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-600 mb-0.5 text-center">UF</label>
+                      <input
+                        type="text"
+                        value={form.state}
+                        maxLength={2}
+                        onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase() })}
+                        placeholder="SP"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg font-mono uppercase text-center text-xs outline-none focus:ring-2 focus:ring-emerald-600"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
