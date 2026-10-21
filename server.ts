@@ -14,7 +14,18 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const DB_PATH = path.resolve(__dirname, 'data', 'db.json');
+const isVercelEnv = Boolean(process.env.VERCEL || process.env.NOW_REGION);
+const defaultLocalDbPath = path.resolve(__dirname, 'data', 'db.json');
+let DB_PATH = defaultLocalDbPath;
+
+if (isVercelEnv) {
+  DB_PATH = path.resolve('/tmp', 'vetgo_db.json');
+  if (!fs.existsSync(DB_PATH) && fs.existsSync(defaultLocalDbPath)) {
+    try {
+      fs.copyFileSync(defaultLocalDbPath, DB_PATH);
+    } catch {}
+  }
+}
 
 // Gemini AI Client Setup
 const ai = new GoogleGenAI({
@@ -27,8 +38,13 @@ const ai = new GoogleGenAI({
 });
 
 // Ensure data directory exists
-if (!fs.existsSync(path.dirname(DB_PATH))) {
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+try {
+  if (!fs.existsSync(path.dirname(DB_PATH))) {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  }
+} catch (e) {
+  console.warn('Could not create directory for DB_PATH, fallback to /tmp:', e);
+  DB_PATH = path.resolve('/tmp', 'vetgo_db.json');
 }
 
 interface DatabaseData {
@@ -50,15 +66,20 @@ interface DatabaseData {
 }
 
 function loadDB(): DatabaseData {
-  if (fs.existsSync(DB_PATH)) {
-    try {
-      const raw = fs.readFileSync(DB_PATH, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
-        return parsed;
-      }
-    } catch (e) {
-      console.error('Error reading db.json, initializing defaults:', e);
+  const tryPaths = [
+    DB_PATH,
+    path.resolve('/tmp', 'vetgo_db.json'),
+    path.resolve(__dirname, 'data', 'db.json'),
+  ];
+  for (const p of tryPaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const raw = fs.readFileSync(p, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
+          return parsed;
+        }
+      } catch (e) {}
     }
   }
 
@@ -78,6 +99,15 @@ function saveDB(data: DatabaseData) {
     fs.renameSync(tmpPath, DB_PATH);
   } catch (e) {
     console.error('Error saving db.json:', e);
+    if (!DB_PATH.startsWith('/tmp')) {
+      try {
+        const fallbackPath = path.resolve('/tmp', 'vetgo_db.json');
+        fs.writeFileSync(fallbackPath, JSON.stringify(data, null, 2), 'utf-8');
+        DB_PATH = fallbackPath;
+      } catch (err2) {
+        console.error('Fallback save to /tmp also failed:', err2);
+      }
+    }
   }
 }
 

@@ -732,48 +732,105 @@ export const api = {
     return user?.id ? `vetgo_appointments_u${user.id}` : 'vetgo_appointments';
   },
 
-  // Tutors with reliable server sync and local persistence mirror
+  // Tutors with reliable server sync, tombstone tracking, and local-first persistence
   async getTutors(): Promise<Tutor[]> {
     const key = this.getTutorsStorageKey();
-    try {
-      const serverList = await this.request<Tutor[]>('/tutors');
-      if (Array.isArray(serverList)) {
-        localStorage.setItem(key, JSON.stringify(serverList));
-        return serverList;
-      }
-    } catch (err) {
-      console.warn('Erro ao carregar tutores do servidor, usando cache local:', err);
-    }
+    const deletedKey = `${key}_deleted`;
 
+    let deletedIds = new Set<number>();
+    try {
+      const delRaw = localStorage.getItem(deletedKey);
+      if (delRaw) {
+        deletedIds = new Set(JSON.parse(delRaw).map(Number));
+      }
+    } catch {}
+
+    let localList: Tutor[] = [];
     const local = localStorage.getItem(key);
     if (local) {
       try {
         const parsed = JSON.parse(local);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          localList = parsed.filter((t) => t && t.id && !deletedIds.has(Number(t.id)));
+        }
       } catch {}
     }
-    return [];
+
+    try {
+      const serverList = await this.request<Tutor[]>('/tutors');
+      if (Array.isArray(serverList)) {
+        const validServerList = serverList.filter((t) => t && t.id && !deletedIds.has(Number(t.id)));
+        const map = new Map<number, Tutor>();
+        // 1. Inicia com a lista local (mantém cadastros recentes locais)
+        for (const loc of localList) {
+          if (loc && loc.id) map.set(Number(loc.id), loc);
+        }
+        // 2. Mescla itens do servidor preservando contagens e campos atualizados
+        for (const srv of validServerList) {
+          const srvId = Number(srv.id);
+          const existing = map.get(srvId);
+          if (existing) {
+            map.set(srvId, { ...existing, ...srv });
+          } else {
+            map.set(srvId, srv);
+          }
+        }
+        const merged = Array.from(map.values()).sort((a, b) => {
+          const tA = new Date(a.created_at || 0).getTime();
+          const tB = new Date(b.created_at || 0).getTime();
+          return tB - tA;
+        });
+
+        localStorage.setItem(key, JSON.stringify(merged));
+        return merged;
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar tutores do servidor, usando persistência local:', err);
+    }
+
+    return localList;
   },
 
   async createTutor(tutorData: Partial<Tutor>): Promise<Tutor> {
     const key = this.getTutorsStorageKey();
-    const created = await this.request<Tutor>('/tutors', {
-      method: 'POST',
-      body: JSON.stringify(tutorData)
-    });
+    const deletedKey = `${key}_deleted`;
+
+    let created: Tutor | null = null;
+    try {
+      created = await this.request<Tutor>('/tutors', {
+        method: 'POST',
+        body: JSON.stringify(tutorData)
+      });
+    } catch (err) {
+      console.warn('Requisição de tutor no servidor falhou/offline, persistindo localmente:', err);
+    }
+
+    const tutorId = created?.id || Date.now();
     const tutorItem: Tutor = {
       ...tutorData,
-      ...created,
-      id: created?.id || Date.now(),
+      ...(created || {}),
+      id: tutorId,
+      code: created?.code || `TUT-${String(tutorId).slice(-4).padStart(4, '0')}`,
       created_at: created?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
       is_active: created?.is_active !== false,
+      patients_count: 0,
     } as Tutor;
 
+    // Remove da lista de excluídos caso ID tenha sido reciclado
+    try {
+      const delRaw = localStorage.getItem(deletedKey);
+      if (delRaw) {
+        const delList = JSON.parse(delRaw).filter((id: any) => Number(id) !== Number(tutorId));
+        localStorage.setItem(deletedKey, JSON.stringify(delList));
+      }
+    } catch {}
+
+    // Salva imediatamente no espelho local antes de qualquer requisição subsequente
     try {
       const local = localStorage.getItem(key);
       const list = local ? JSON.parse(local) : [];
-      const nextList = [tutorItem, ...list.filter((t: any) => Number(t.id) !== Number(tutorItem.id))];
+      const nextList = [tutorItem, ...list.filter((t: any) => Number(t.id) !== Number(tutorId))];
       localStorage.setItem(key, JSON.stringify(nextList));
     } catch {}
 
@@ -795,7 +852,7 @@ export const api = {
     const mergedTutor: Tutor = {
       ...updates,
       ...(updated || {}),
-      id,
+      id: Number(id),
       updated_at: new Date().toISOString(),
     } as Tutor;
 
@@ -811,11 +868,19 @@ export const api = {
 
   async deleteTutor(id: number): Promise<void> {
     const key = this.getTutorsStorageKey();
+    const deletedKey = `${key}_deleted`;
+
+    // 1. Registra tombstone de exclusão para nunca ressuscitar
     try {
-      await this.request(`/tutors/${id}`, { method: 'DELETE' });
-    } catch (e) {
-      console.warn('Erro ao deletar tutor no servidor, removendo localmente:', e);
-    }
+      const delRaw = localStorage.getItem(deletedKey);
+      const delList: number[] = delRaw ? JSON.parse(delRaw) : [];
+      if (!delList.includes(Number(id))) {
+        delList.push(Number(id));
+        localStorage.setItem(deletedKey, JSON.stringify(delList));
+      }
+    } catch {}
+
+    // 2. Remove imediatamente da lista local
     try {
       const local = localStorage.getItem(key);
       if (local) {
@@ -824,6 +889,13 @@ export const api = {
         localStorage.setItem(key, JSON.stringify(nextList));
       }
     } catch {}
+
+    // 3. Notifica o servidor
+    try {
+      await this.request(`/tutors/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Erro ao deletar tutor no servidor, mantido removido localmente:', e);
+    }
   },
 
   async toggleTutorStatus(id: number): Promise<{ message: string; is_active: boolean }> {
@@ -855,54 +927,108 @@ export const api = {
     }
   },
 
-  // Patients with reliable server sync and local persistence mirror
+  // Patients with reliable server sync, tombstone tracking, and local-first persistence
   async getPatients(tutorId?: number): Promise<Patient[]> {
     const key = this.getPatientsStorageKey();
+    const deletedKey = `${key}_deleted`;
+
+    let deletedIds = new Set<number>();
+    try {
+      const delRaw = localStorage.getItem(deletedKey);
+      if (delRaw) {
+        deletedIds = new Set(JSON.parse(delRaw).map(Number));
+      }
+    } catch {}
+
+    let localList: Patient[] = [];
+    const local = localStorage.getItem(key);
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) {
+          localList = parsed.filter((p) => p && p.id && !deletedIds.has(Number(p.id)));
+        }
+      } catch {}
+    }
+
     const query = tutorId ? `?tutor_id=${tutorId}` : '';
     try {
       const serverList = await this.request<Patient[]>(`/patients${query}`);
       if (Array.isArray(serverList)) {
-        if (!tutorId) {
-          localStorage.setItem(key, JSON.stringify(serverList));
+        const validServerList = serverList.filter((p) => p && p.id && !deletedIds.has(Number(p.id)));
+        const map = new Map<number, Patient>();
+        for (const loc of localList) {
+          if (loc && loc.id) map.set(Number(loc.id), loc);
         }
-        return serverList;
+        for (const srv of validServerList) {
+          const srvId = Number(srv.id);
+          const existing = map.get(srvId);
+          if (existing) {
+            map.set(srvId, { ...existing, ...srv });
+          } else {
+            map.set(srvId, srv);
+          }
+        }
+        const merged = Array.from(map.values()).sort((a, b) => {
+          const tA = new Date(a.created_at || 0).getTime();
+          const tB = new Date(b.created_at || 0).getTime();
+          return tB - tA;
+        });
+
+        localStorage.setItem(key, JSON.stringify(merged));
+        if (tutorId) {
+          return merged.filter((p) => Number(p.tutor_id) === Number(tutorId));
+        }
+        return merged;
       }
     } catch (err) {
-      console.warn('Erro ao carregar pacientes do servidor, usando cache local:', err);
+      console.warn('Erro ao carregar pacientes do servidor, usando persistência local:', err);
     }
 
-    const local = localStorage.getItem(key);
-    if (local) {
-      try {
-        const list: Patient[] = JSON.parse(local);
-        if (Array.isArray(list)) {
-          if (tutorId) return list.filter((p) => Number(p.tutor_id) === Number(tutorId));
-          return list;
-        }
-      } catch {}
+    if (tutorId) {
+      return localList.filter((p) => Number(p.tutor_id) === Number(tutorId));
     }
-    return [];
+    return localList;
   },
 
   async createPatient(patientData: Partial<Patient>): Promise<Patient> {
     const key = this.getPatientsStorageKey();
-    const created = await this.request<Patient>('/patients', {
-      method: 'POST',
-      body: JSON.stringify(patientData)
-    });
+    const deletedKey = `${key}_deleted`;
+
+    let created: Patient | null = null;
+    try {
+      created = await this.request<Patient>('/patients', {
+        method: 'POST',
+        body: JSON.stringify(patientData)
+      });
+    } catch (err) {
+      console.warn('Requisição de paciente no servidor falhou/offline, persistindo localmente:', err);
+    }
+
+    const patientId = created?.id || Date.now();
     const patientItem: Patient = {
       ...patientData,
-      ...created,
-      id: created?.id || Date.now(),
+      ...(created || {}),
+      id: patientId,
       created_at: created?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
       is_active: created?.is_active !== false,
     } as Patient;
 
+    // Remove da lista de excluídos caso ID tenha sido reciclado
+    try {
+      const delRaw = localStorage.getItem(deletedKey);
+      if (delRaw) {
+        const delList = JSON.parse(delRaw).filter((id: any) => Number(id) !== Number(patientId));
+        localStorage.setItem(deletedKey, JSON.stringify(delList));
+      }
+    } catch {}
+
+    // Salva imediatamente no espelho local antes de qualquer requisição subsequente
     try {
       const local = localStorage.getItem(key);
       const list = local ? JSON.parse(local) : [];
-      const nextList = [patientItem, ...list.filter((p: any) => Number(p.id) !== Number(patientItem.id))];
+      const nextList = [patientItem, ...list.filter((p: any) => Number(p.id) !== Number(patientId))];
       localStorage.setItem(key, JSON.stringify(nextList));
     } catch {}
 
@@ -924,7 +1050,7 @@ export const api = {
     const mergedPatient: Patient = {
       ...updates,
       ...(updated || {}),
-      id,
+      id: Number(id),
       updated_at: new Date().toISOString(),
     } as Patient;
 
@@ -940,11 +1066,19 @@ export const api = {
 
   async deletePatient(id: number): Promise<void> {
     const key = this.getPatientsStorageKey();
+    const deletedKey = `${key}_deleted`;
+
+    // 1. Registra tombstone de exclusão para nunca ressuscitar
     try {
-      await this.request(`/patients/${id}`, { method: 'DELETE' });
-    } catch (e) {
-      console.warn('Erro ao deletar paciente no servidor, removendo localmente:', e);
-    }
+      const delRaw = localStorage.getItem(deletedKey);
+      const delList: number[] = delRaw ? JSON.parse(delRaw) : [];
+      if (!delList.includes(Number(id))) {
+        delList.push(Number(id));
+        localStorage.setItem(deletedKey, JSON.stringify(delList));
+      }
+    } catch {}
+
+    // 2. Remove imediatamente da lista local
     try {
       const local = localStorage.getItem(key);
       if (local) {
@@ -953,6 +1087,13 @@ export const api = {
         localStorage.setItem(key, JSON.stringify(nextList));
       }
     } catch {}
+
+    // 3. Notifica o servidor
+    try {
+      await this.request(`/patients/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Erro ao deletar paciente no servidor, mantido removido localmente:', e);
+    }
   },
 
   async togglePatientStatus(id: number): Promise<{ message: string; is_active: boolean }> {
@@ -1607,77 +1748,140 @@ export const api = {
 
   async getAppointments(): Promise<Appointment[]> {
     const key = this.getAppointmentsStorageKey();
+    const deletedKey = `${key}_deleted`;
+
+    let deletedIds = new Set<number>();
+    try {
+      const delRaw = localStorage.getItem(deletedKey);
+      if (delRaw) {
+        deletedIds = new Set(JSON.parse(delRaw).map(Number));
+      }
+    } catch {}
+
+    let localList: Appointment[] = [];
+    const local = localStorage.getItem(key);
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) {
+          localList = parsed.filter((a) => a && a.id && !deletedIds.has(Number(a.id)));
+        }
+      } catch {}
+    }
+
     try {
       const serverList = await this.request<Appointment[]>('/appointments');
       if (Array.isArray(serverList)) {
-        let merged = [...serverList];
-        const local = localStorage.getItem(key);
-        if (local) {
-          try {
-            const localList = JSON.parse(local);
-            if (Array.isArray(localList)) {
-              for (const loc of localList) {
-                if (!merged.some((m) => Number(m.id) === Number(loc.id))) {
-                  merged.push(loc);
-                }
-              }
-            }
-          } catch {}
+        const validServerList = serverList.filter((a) => a && a.id && !deletedIds.has(Number(a.id)));
+        const map = new Map<number, Appointment>();
+        for (const loc of localList) {
+          if (loc && loc.id) map.set(Number(loc.id), loc);
         }
+        for (const srv of validServerList) {
+          const srvId = Number(srv.id);
+          const existing = map.get(srvId);
+          if (existing) {
+            map.set(srvId, { ...existing, ...srv });
+          } else {
+            map.set(srvId, srv);
+          }
+        }
+        const merged = Array.from(map.values()).sort((a, b) => {
+          return (b.date_time || '').localeCompare(a.date_time || '');
+        });
         localStorage.setItem(key, JSON.stringify(merged));
         return merged;
       }
     } catch (err) {
-      console.warn('Erro ao carregar agendamentos do servidor, usando cache local:', err);
+      console.warn('Erro ao carregar agendamentos do servidor, usando persistência local:', err);
     }
 
-    const local = localStorage.getItem(key);
-    if (local) {
-      try {
-        const list = JSON.parse(local);
-        if (Array.isArray(list)) return list;
-      } catch {}
-    }
-    return [];
+    return localList;
   },
 
   async createAppointment(data: Partial<Appointment>): Promise<Appointment> {
     const key = this.getAppointmentsStorageKey();
-    const created = await this.request<Appointment>('/appointments', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-    if (created && created.id) {
-      try {
-        const local = localStorage.getItem(key);
-        const list = local ? JSON.parse(local) : [];
-        const nextList = [created, ...list.filter((a: any) => Number(a.id) !== Number(created.id))];
-        localStorage.setItem(key, JSON.stringify(nextList));
-      } catch {}
+    const deletedKey = `${key}_deleted`;
+
+    let created: Appointment | null = null;
+    try {
+      created = await this.request<Appointment>('/appointments', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (err) {
+      console.warn('Requisição de agendamento no servidor falhou/offline, persistindo localmente:', err);
     }
-    return created;
+
+    const apptId = created?.id || Date.now();
+    const newAppt: Appointment = {
+      ...data,
+      ...(created || {}),
+      id: apptId,
+      created_at: created?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as Appointment;
+
+    try {
+      const delRaw = localStorage.getItem(deletedKey);
+      if (delRaw) {
+        const delList = JSON.parse(delRaw).filter((id: any) => Number(id) !== Number(apptId));
+        localStorage.setItem(deletedKey, JSON.stringify(delList));
+      }
+    } catch {}
+
+    try {
+      const local = localStorage.getItem(key);
+      const list = local ? JSON.parse(local) : [];
+      const nextList = [newAppt, ...list.filter((a: any) => Number(a.id) !== Number(apptId))];
+      localStorage.setItem(key, JSON.stringify(nextList));
+    } catch {}
+
+    return newAppt;
   },
 
   async updateAppointment(id: number, updates: Partial<Appointment>): Promise<Appointment> {
     const key = this.getAppointmentsStorageKey();
-    const updated = await this.request<Appointment>(`/appointments/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
-    if (updated && updated.id) {
-      try {
-        const local = localStorage.getItem(key);
-        const list = local ? JSON.parse(local) : [];
-        const nextList = list.map((a: any) => Number(a.id) === Number(id) ? { ...a, ...updated } : a);
-        localStorage.setItem(key, JSON.stringify(nextList));
-      } catch {}
+    let updated: Appointment | null = null;
+    try {
+      updated = await this.request<Appointment>(`/appointments/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
+    } catch (e) {
+      console.warn('Erro ao atualizar agendamento no servidor, atualizando localmente:', e);
     }
-    return updated;
+
+    const mergedAppt: Appointment = {
+      ...updates,
+      ...(updated || {}),
+      id: Number(id),
+      updated_at: new Date().toISOString(),
+    } as Appointment;
+
+    try {
+      const local = localStorage.getItem(key);
+      const list = local ? JSON.parse(local) : [];
+      const nextList = list.map((a: any) => Number(a.id) === Number(id) ? { ...a, ...mergedAppt } : a);
+      localStorage.setItem(key, JSON.stringify(nextList));
+    } catch {}
+
+    return mergedAppt;
   },
 
   async deleteAppointment(id: number): Promise<void> {
     const key = this.getAppointmentsStorageKey();
-    await this.request(`/appointments/${id}`, { method: 'DELETE' });
+    const deletedKey = `${key}_deleted`;
+
+    try {
+      const delRaw = localStorage.getItem(deletedKey);
+      const delList: number[] = delRaw ? JSON.parse(delRaw) : [];
+      if (!delList.includes(Number(id))) {
+        delList.push(Number(id));
+        localStorage.setItem(deletedKey, JSON.stringify(delList));
+      }
+    } catch {}
+
     try {
       const local = localStorage.getItem(key);
       if (local) {
@@ -1686,6 +1890,12 @@ export const api = {
         localStorage.setItem(key, JSON.stringify(nextList));
       }
     } catch {}
+
+    try {
+      await this.request(`/appointments/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Erro ao deletar agendamento no servidor, mantido removido localmente:', e);
+    }
   },
 
   async getConsultations(patientId?: number): Promise<ClinicalConsultation[]> {
