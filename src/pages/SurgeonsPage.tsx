@@ -172,7 +172,7 @@ export const SurgeonsPage: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Cirurgiões e profissionais parceiros com vínculo a múltiplas clínicas (identificador PR-xx). Seleção prioritária durante anestesias.
+            Cadastro dos médicos-veterinários cirurgiões para identificação e preenchimento obrigatório nas fichas anestésicas.
           </p>
         </div>
 

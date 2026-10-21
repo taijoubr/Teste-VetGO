@@ -62,7 +62,7 @@ export const SettingsPage: React.FC = () => {
       await refreshUser();
       setSavedMessage(
         newValue
-          ? 'Módulo de Anestesiologia & Cirurgia ATIVADO com sucesso! As opções foram adicionadas ao menu lateral.'
+          ? 'Módulo de Anestesiologia ATIVADO com sucesso! As opções foram adicionadas ao menu lateral.'
           : 'Módulo de Anestesiologia DESATIVADO com sucesso! O menu lateral foi simplificado.'
       );
       setTimeout(() => setSavedMessage(null), 4000);
@@ -323,7 +323,7 @@ export const SettingsPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Módulo Principal: Anestesiologia & Cirurgia Volante */}
+            {/* Módulo Principal: Anestesiologia */}
             <div className={`p-5 rounded-2xl border transition-all ${
               isAnesthesiaActive
                 ? 'bg-emerald-950/5 border-emerald-500/40 shadow-xs'
@@ -341,7 +341,7 @@ export const SettingsPage: React.FC = () => {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="text-sm font-bold text-slate-900">
-                        Anestesiologia & Cirurgia Volante
+                        Módulo de Anestesiologia
                       </h4>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
                         isAnesthesiaActive
@@ -352,7 +352,7 @@ export const SettingsPage: React.FC = () => {
                       </span>
                     </div>
                     <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      Voltado para médicos-veterinários anestesiologistas, cirurgiões e volantes que prestam serviços em clínicas parceiras e hospitais.
+                      Voltado para médicos-veterinários que realizam avaliação, monitorização e fichas anestésicas perioperatórias em clínicas e hospitais.
                     </p>
                   </div>
                 </div>
@@ -384,7 +384,7 @@ export const SettingsPage: React.FC = () => {
               <div className="mt-4 pt-4 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
                 <div className="flex items-start gap-2">
                   <Check className={`w-4 h-4 shrink-0 mt-0.5 ${isAnesthesiaActive ? 'text-emerald-700' : 'text-slate-400'}`} />
-                  <span><strong>Ficha Anestésica Perioperatória</strong> com cronômetro contínuo em sala cirúrgica</span>
+                  <span><strong>Ficha Anestésica Perioperatória</strong> com cronômetro contínuo e parâmetros vitais</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className={`w-4 h-4 shrink-0 mt-0.5 ${isAnesthesiaActive ? 'text-emerald-700' : 'text-slate-400'}`} />
@@ -396,7 +396,7 @@ export const SettingsPage: React.FC = () => {
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className={`w-4 h-4 shrink-0 mt-0.5 ${isAnesthesiaActive ? 'text-emerald-700' : 'text-slate-400'}`} />
-                  <span><strong>Gestão de Clínicas Parceiras & Cirurgiões</strong> com código de parceiro (PR-xx)</span>
+                  <span><strong>Vínculo de Clínicas e Cirurgiões Responsáveis</strong> exigidos na ficha</span>
                 </div>
               </div>
 
@@ -835,7 +835,7 @@ export const SettingsPage: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2 font-medium text-emerald-800">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Módulo de Anestesiologia & Cirurgia liberado para todos</span>
+                    <span>Módulo de Anestesiologia liberado para todos</span>
                   </div>
                 </div>
               </div>

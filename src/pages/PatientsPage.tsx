@@ -677,23 +677,58 @@ export const PatientsPage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {SPECIES_CONFIGS[form.species]?.breedLabel || 'Raça'}
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      {SPECIES_CONFIGS[form.species]?.breedLabel || 'Raça'}
+                    </label>
+                    <span className="text-[10px] text-slate-400">Sugestões dinâmicas</span>
+                  </div>
                   <input
                     type="text"
-                    placeholder={SPECIES_CONFIGS[form.species]?.breedPlaceholder || 'Ex: Golden Retriever ou SRD'}
+                    list="species-breed-list"
+                    autoComplete="off"
+                    placeholder={SPECIES_CONFIGS[form.species]?.breedPlaceholder || 'Selecione ou digite a raça'}
                     value={form.breed}
                     onChange={(e) => setForm({ ...form, breed: e.target.value })}
-                    className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none"
+                    className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
                   />
+                  <datalist id="species-breed-list">
+                    {SPECIES_CONFIGS[form.species]?.defaultBreeds?.map((b) => (
+                      <option key={b} value={b} />
+                    ))}
+                  </datalist>
+
+                  {/* Chips rápidos com as raças mais comuns no Brasil */}
+                  {SPECIES_CONFIGS[form.species]?.popularBreeds && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {SPECIES_CONFIGS[form.species].popularBreeds!.map((popBreed) => {
+                        const label = popBreed === 'Sem Raça Definida (SRD)' ? 'SRD' : popBreed.split(' (')[0];
+                        const isSelected = form.breed === popBreed;
+                        return (
+                          <button
+                            key={popBreed}
+                            type="button"
+                            onClick={() => setForm({ ...form, breed: popBreed })}
+                            className={`text-[10px] px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                              isSelected
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                            title={`Selecionar ${popBreed}`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Sexo</label>
                   <select
                     value={form.gender}
                     onChange={(e) => setForm({ ...form, gender: e.target.value as any })}
-                    className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
+                    className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white focus:ring-2 focus:ring-emerald-600"
                   >
                     <option value="Macho">Macho</option>
                     <option value="Fêmea">Fêmea</option>
