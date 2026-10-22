@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { printElement } from '../utils/printHelper';
+import { printElement, exportToPdf } from '../utils/printHelper';
 import {
   Printer,
   Share2,
@@ -20,7 +20,9 @@ import {
   Mail,
   MapPin,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Download,
+  Microscope
 } from 'lucide-react';
 
 interface FullMedicalRecordModalProps {
@@ -136,13 +138,24 @@ export const FullMedicalRecordModal: React.FC<FullMedicalRecordModalProps> = ({
 
             <button
               type="button"
+              onClick={() => exportToPdf('printable-medical-record-modal-document', `Prontuario_${data?.patient?.name || 'Paciente'}`)}
+              disabled={loading || !data}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Baixar arquivo PDF real no dispositivo"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Baixar PDF</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handlePrint}
               disabled={loading || !data}
               className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Imprimir ou Salvar em PDF"
+              title="Imprimir com layout A4 isolado"
             >
               <Printer className="w-4 h-4" />
-              <span>Imprimir / Salvar PDF</span>
+              <span>Imprimir</span>
             </button>
 
             <button
@@ -454,7 +467,43 @@ export const FullMedicalRecordModal: React.FC<FullMedicalRecordModalProps> = ({
                 </div>
               )}
 
-              {/* SEÇÃO 4: DOCUMENTOS E TERMOS EMITIDOS */}
+              {/* SEÇÃO 4: EXAMES LABORATORIAIS E COMPLEMENTARES */}
+              {data.exams && data.exams.length > 0 && (
+                <div className="space-y-2.5 break-inside-avoid">
+                  <div className="flex items-center gap-2 border-b border-slate-200 pb-1.5">
+                    <Microscope className="w-4 h-4 text-teal-700" />
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                      Exames Laboratoriais & Complementares Realizados ({data.exams.length})
+                    </h2>
+                  </div>
+                  <div className="space-y-2">
+                    {data.exams.map((ex: any, eIdx: number) => (
+                      <div key={eIdx} className="p-3 border border-slate-200 rounded-lg text-xs space-y-1 bg-slate-50/50">
+                        <div className="flex items-center justify-between font-bold">
+                          <span className="text-slate-900">{ex.exam_type}</span>
+                          <span className="text-teal-800 font-mono">
+                            {ex.date ? new Date(ex.date).toLocaleDateString('pt-BR') : ''}
+                          </span>
+                        </div>
+                        {ex.laboratory && (
+                          <div className="text-[11px] text-slate-500">
+                            Laboratório/Clínica: {ex.laboratory} • Status: {ex.status}
+                          </div>
+                        )}
+                        {ex.results && (
+                          <div className="bg-white p-2.5 rounded border border-slate-200 text-slate-800 font-mono text-[11px] whitespace-pre-line mt-1">
+                            <span className="font-bold text-[10px] text-teal-800 block uppercase mb-0.5">Laudo / Resultados:</span>
+                            {ex.results}
+                          </div>
+                        )}
+                        {ex.notes && <p className="text-[11px] text-slate-500 italic">Obs: {ex.notes}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* SEÇÃO 5: DOCUMENTOS E TERMOS EMITIDOS */}
               {data.documents && data.documents.length > 0 && (
                 <div className="space-y-2.5 break-inside-avoid">
                   <div className="flex items-center gap-2 border-b border-slate-200 pb-1.5">

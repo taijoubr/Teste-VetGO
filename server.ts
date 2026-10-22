@@ -62,6 +62,7 @@ interface DatabaseData {
   anesthesia_records?: any[];
   documents?: any[];
   services?: any[];
+  exams?: any[];
   smtp_settings?: any;
 }
 
@@ -1578,6 +1579,11 @@ app.get('/api/v1/patients/:id/medical-record', requireAuth, (req, res) => {
     .filter((d: any) => d.patient_id === id && d.owner_id === user.id)
     .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
+  // Exames laboratoriais e complementares realizados
+  const exams = (db.exams || [])
+    .filter((e: any) => e.patient_id === id && (Number(e.owner_id) === Number(user.id) || !e.owner_id))
+    .sort((a: any, b: any) => new Date(b.date || b.created_at).getTime() - new Date(a.date || a.created_at).getTime());
+
   res.json({
     patient: {
       ...patient,
@@ -1603,6 +1609,7 @@ app.get('/api/v1/patients/:id/medical-record', requireAuth, (req, res) => {
     consultations,
     vaccines,
     anesthesia_records,
+    exams,
     documents,
     emitted_at: new Date().toISOString(),
   });
@@ -2004,6 +2011,26 @@ app.post('/api/v1/financial', requireAuth, (req, res) => {
   res.status(201).json(newEntry);
 });
 
+app.put('/api/v1/financial/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  const data = req.body;
+  if (!Array.isArray(db.financial_entries)) db.financial_entries = [];
+
+  const idx = db.financial_entries.findIndex((f) => Number(f.id) === id && (Number(f.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Lançamento financeiro não encontrado.' });
+  }
+
+  db.financial_entries[idx] = {
+    ...db.financial_entries[idx],
+    ...data,
+    updated_at: new Date().toISOString(),
+  };
+  saveDB(db);
+  res.json(db.financial_entries[idx]);
+});
+
 app.delete('/api/v1/financial/:id', requireAuth, (req, res) => {
   const user = (req as any).user;
   const id = Number(req.params.id);
@@ -2017,6 +2044,91 @@ app.delete('/api/v1/financial/:id', requireAuth, (req, res) => {
   db.financial_entries.splice(idx, 1);
   saveDB(db);
   res.json({ message: 'Lançamento financeiro removido com sucesso.' });
+});
+
+// -------------------------------------------------------------
+// PATIENT EXAMS ENDPOINTS (HEMOGRAMA, BIOQUÍMICA, ULTRASSOM, ETC.)
+// -------------------------------------------------------------
+app.get('/api/v1/exams', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const patientId = req.query.patient_id ? Number(req.query.patient_id) : undefined;
+  if (!Array.isArray(db.exams)) db.exams = [];
+
+  let list = db.exams.filter((e: any) => Number(e.owner_id) === Number(user.id) || user.role === 'ADMIN' || !e.owner_id);
+  if (patientId) {
+    list = list.filter((e: any) => Number(e.patient_id) === patientId);
+  }
+  list.sort((a: any, b: any) => new Date(b.date || b.created_at).getTime() - new Date(a.date || a.created_at).getTime());
+  res.json(list);
+});
+
+app.post('/api/v1/exams', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const data = req.body;
+  if (!Array.isArray(db.exams)) db.exams = [];
+
+  const patient = (db.patients || []).find((p: any) => p.id === Number(data.patient_id));
+  const tutor = (db.tutors || []).find((t: any) => t.id === (patient ? patient.tutor_id : Number(data.tutor_id)));
+
+  const newExam = {
+    ...data,
+    id: Date.now(),
+    owner_id: user.id,
+    patient_id: Number(data.patient_id),
+    patient_name: data.patient_name || patient?.name || 'Paciente',
+    tutor_id: data.tutor_id ? Number(data.tutor_id) : (patient?.tutor_id || undefined),
+    tutor_name: data.tutor_name || tutor?.name || undefined,
+    exam_type: data.exam_type || 'Exame Complementar',
+    date: data.date || new Date().toISOString().split('T')[0],
+    laboratory: data.laboratory || '',
+    status: data.status || 'CONCLUIDO',
+    results: data.results || '',
+    reference_values: data.reference_values || '',
+    attachments: data.attachments || [],
+    notes: data.notes || '',
+    price: Number(data.price) || 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  db.exams.unshift(newExam);
+  saveDB(db);
+  res.status(201).json(newExam);
+});
+
+app.put('/api/v1/exams/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  const data = req.body;
+  if (!Array.isArray(db.exams)) db.exams = [];
+
+  const idx = db.exams.findIndex((e: any) => Number(e.id) === id && (Number(e.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Exame não encontrado.' });
+  }
+
+  db.exams[idx] = {
+    ...db.exams[idx],
+    ...data,
+    updated_at: new Date().toISOString()
+  };
+  saveDB(db);
+  res.json(db.exams[idx]);
+});
+
+app.delete('/api/v1/exams/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray(db.exams)) db.exams = [];
+
+  const idx = db.exams.findIndex((e: any) => Number(e.id) === id && (Number(e.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Exame não encontrado.' });
+  }
+
+  db.exams.splice(idx, 1);
+  saveDB(db);
+  res.json({ message: 'Exame removido com sucesso.' });
 });
 
 // -------------------------------------------------------------

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { Tutor } from '../types';
-import { Users, Search, Plus, Phone, MapPin, Mail, AlertCircle, CheckCircle2, PawPrint, X, Edit3, Loader2 } from 'lucide-react';
+import { Tutor, Patient } from '../types';
+import { Users, Search, Plus, Phone, MapPin, Mail, AlertCircle, CheckCircle2, PawPrint, X, Edit3, Loader2, Eye, FileText, Calendar } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   formatCPF,
@@ -14,6 +14,8 @@ import { formatCEP, fetchAddressByCep } from '../services/cepService';
 
 export const TutorsPage: React.FC = () => {
   const [tutors, setTutors] = useState<Tutor[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [viewingTutorModal, setViewingTutorModal] = useState<Tutor | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -53,12 +55,18 @@ export const TutorsPage: React.FC = () => {
   const loadTutors = async (showLoadingSpinner = true) => {
     try {
       if (showLoadingSpinner) setLoading(true);
-      const data = await api.getTutors();
-      if (Array.isArray(data)) {
-        setTutors(data);
+      const [tutorsData, patientsData] = await Promise.all([
+        api.getTutors(),
+        api.getPatients()
+      ]);
+      if (Array.isArray(tutorsData)) {
+        setTutors(tutorsData);
+      }
+      if (Array.isArray(patientsData)) {
+        setPatients(patientsData);
       }
     } catch (e) {
-      console.error('Erro ao carregar tutores:', e);
+      console.error('Erro ao carregar tutores e pacientes:', e);
     } finally {
       if (showLoadingSpinner) setLoading(false);
     }
@@ -368,14 +376,59 @@ export const TutorsPage: React.FC = () => {
                 </div>
               )}
 
+              {/* Seção de Animais Vinculados */}
+              {(() => {
+                const tutorPets = patients.filter((p) => Number(p.tutor_id) === Number(tutor.id));
+                return (
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                        <PawPrint className="w-3.5 h-3.5 text-emerald-700" />
+                        Animais Vinculados ({tutorPets.length})
+                      </span>
+                      <Link
+                        to={`/pacientes?tutor_id=${tutor.id}&new_pet=true`}
+                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-0.5"
+                      >
+                        <Plus className="w-3 h-3" /> Novo Pet
+                      </Link>
+                    </div>
+
+                    {tutorPets.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 italic">
+                        Nenhum animal cadastrado ainda para este tutor.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {tutorPets.map((pet) => (
+                          <Link
+                            key={pet.id}
+                            to={`/atendimentos?patient_id=${pet.id}`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 border border-slate-200 hover:border-emerald-300 rounded-lg text-xs font-semibold transition group shadow-2xs"
+                            title={`Clique para abrir prontuário de ${pet.name}`}
+                          >
+                            <span className="text-emerald-700 font-bold group-hover:scale-110 transition-transform">🐾</span>
+                            <span className="font-bold">{pet.name}</span>
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              ({pet.species} • {pet.breed || 'SRD'}{pet.weight_kg ? ` • ${pet.weight_kg}kg` : ''})
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
-                <Link
-                  to={`/pacientes?tutor_id=${tutor.id}`}
-                  className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline"
+                <button
+                  type="button"
+                  onClick={() => setViewingTutorModal(tutor)}
+                  className="inline-flex items-center gap-1.5 font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
                 >
-                  <PawPrint className="w-3.5 h-3.5" />
-                  Ver pacientes
-                </Link>
+                  <Eye className="w-3.5 h-3.5" />
+                  Ver Ficha Completa
+                </button>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -391,6 +444,176 @@ export const TutorsPage: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal Ficha Completa do Tutor */}
+      {viewingTutorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh] space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-base">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                      #{formatTutorCode(viewingTutorModal)}
+                    </span>
+                    <h3 className="text-base font-bold text-slate-900">{viewingTutorModal.name}</h3>
+                  </div>
+                  <p className="text-xs text-slate-500">Ficha cadastral completa e animais vinculados</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingTutorModal(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Dados do Tutor */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+              {viewingTutorModal.cpf && (
+                <div>
+                  <span className="text-slate-400 block font-semibold">CPF:</span>
+                  <span className="font-mono font-bold text-slate-800">{viewingTutorModal.cpf}</span>
+                </div>
+              )}
+              {viewingTutorModal.phone && (
+                <div>
+                  <span className="text-slate-400 block font-semibold">Telefone:</span>
+                  <a
+                    href={`tel:${viewingTutorModal.phone}`}
+                    className="font-bold text-emerald-700 hover:underline flex items-center gap-1"
+                  >
+                    <Phone className="w-3.5 h-3.5" /> {viewingTutorModal.phone}
+                  </a>
+                </div>
+              )}
+              {viewingTutorModal.whatsapp && (
+                <div>
+                  <span className="text-slate-400 block font-semibold">WhatsApp:</span>
+                  <a
+                    href={`https://wa.me/55${viewingTutorModal.whatsapp.replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-bold text-emerald-700 hover:underline flex items-center gap-1"
+                  >
+                    💬 {viewingTutorModal.whatsapp}
+                  </a>
+                </div>
+              )}
+              {viewingTutorModal.email && (
+                <div>
+                  <span className="text-slate-400 block font-semibold">E-mail:</span>
+                  <span className="font-medium text-slate-800">{viewingTutorModal.email}</span>
+                </div>
+              )}
+              <div className="sm:col-span-2">
+                <span className="text-slate-400 block font-semibold">Endereço Completo:</span>
+                <span className="font-medium text-slate-800">
+                  {viewingTutorModal.address || 'Não informado'}
+                  {viewingTutorModal.address_number ? `, nº ${viewingTutorModal.address_number}` : ''}
+                  {viewingTutorModal.complement ? ` (${viewingTutorModal.complement})` : ''}
+                  {viewingTutorModal.neighborhood ? ` • ${viewingTutorModal.neighborhood}` : ''}
+                  {viewingTutorModal.city ? ` • ${viewingTutorModal.city}-${viewingTutorModal.state || 'SP'}` : ''}
+                  {viewingTutorModal.postal_code ? ` • CEP: ${viewingTutorModal.postal_code}` : ''}
+                </span>
+              </div>
+              {viewingTutorModal.notes && (
+                <div className="sm:col-span-2 pt-2 border-t border-slate-200">
+                  <span className="text-slate-400 block font-semibold">Observações:</span>
+                  <p className="italic text-slate-600">{viewingTutorModal.notes}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Animais deste Tutor */}
+            {(() => {
+              const tutorPets = patients.filter((p) => Number(p.tutor_id) === Number(viewingTutorModal.id));
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <PawPrint className="w-4 h-4 text-emerald-700" />
+                      Animais Cadastrados ({tutorPets.length})
+                    </h4>
+                    <Link
+                      to={`/pacientes?tutor_id=${viewingTutorModal.id}&new_pet=true`}
+                      className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Adicionar Paciente
+                    </Link>
+                  </div>
+
+                  {tutorPets.length === 0 ? (
+                    <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-500">
+                      Nenhum paciente cadastrado para este tutor ainda.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {tutorPets.map((pet) => (
+                        <div
+                          key={pet.id}
+                          className="p-3 bg-white border border-slate-200 rounded-xl hover:border-emerald-500/80 transition space-y-2 shadow-2xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-sm text-slate-900 flex items-center gap-1">
+                              🐾 {pet.name}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              #{pet.code || `PAC-${String(pet.id).padStart(4, '0')}`}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            {pet.species} • {pet.breed || 'SRD'} {pet.gender ? `• ${pet.gender}` : ''} {pet.weight_kg ? `• ${pet.weight_kg} kg` : ''}
+                          </p>
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                            <Link
+                              to={`/atendimentos?patient_id=${pet.id}`}
+                              className="font-bold text-emerald-700 hover:underline flex items-center gap-1"
+                            >
+                              <FileText className="w-3.5 h-3.5" /> Prontuário
+                            </Link>
+                            <Link
+                              to={`/anestesia?patient_id=${pet.id}`}
+                              className="font-bold text-indigo-700 hover:underline flex items-center gap-1 text-[11px]"
+                            >
+                              💉 Ficha Anestésica
+                            </Link>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const t = viewingTutorModal;
+                  setViewingTutorModal(null);
+                  handleOpenEdit(t);
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition flex items-center gap-1.5"
+              >
+                <Edit3 className="w-3.5 h-3.5" /> Editar Cadastro
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewingTutorModal(null)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs transition"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { Patient, Tutor, Species, AnesthesiaRecord } from '../types';
-import { PawPrint, Search, Plus, User, AlertCircle, X, CheckCircle2, Activity, Calendar, ShieldCheck, QrCode, Edit3, FileText } from 'lucide-react';
+import { Patient, Tutor, Species, AnesthesiaRecord, PatientExam } from '../types';
+import { PawPrint, Search, Plus, User, AlertCircle, X, CheckCircle2, Activity, Calendar, ShieldCheck, QrCode, Edit3, FileText, Microscope, FileSpreadsheet, Heart } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SPECIES_CONFIGS } from '../utils/speciesData';
 import { PetCardModal } from '../components/PetCardModal';
@@ -32,6 +32,20 @@ export const PatientsPage: React.FC = () => {
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [tutors, setTutors] = useState<Tutor[]>([]);
+  const [anesthesias, setAnesthesias] = useState<AnesthesiaRecord[]>([]);
+  const [exams, setExams] = useState<PatientExam[]>([]);
+  const [selectedPetForExams, setSelectedPetForExams] = useState<Patient | null>(null);
+  const [showNewExamModal, setShowNewExamModal] = useState(false);
+  const [examForm, setExamForm] = useState({
+    exam_type: 'Hemograma Completo',
+    date: new Date().toISOString().split('T')[0],
+    laboratory: '',
+    status: 'CONCLUIDO' as 'SOLICITADO' | 'COLETADO' | 'CONCLUIDO',
+    results: '',
+    reference_values: '',
+    price: 0,
+    notes: ''
+  });
   const [search, setSearch] = useState('');
   const [speciesFilter, setSpeciesFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
@@ -104,9 +118,17 @@ export const PatientsPage: React.FC = () => {
   const loadData = async (showLoadingSpinner = true) => {
     try {
       if (showLoadingSpinner) setLoading(true);
-      const [pts, tuts] = await Promise.all([api.getPatients(), api.getTutors()]);
+      const [pts, tuts, anesthesiasData, examsData] = await Promise.all([
+        api.getPatients(),
+        api.getTutors(),
+        api.getAnesthesias().catch(() => []),
+        api.getPatientExams().catch(() => [])
+      ]);
       if (Array.isArray(pts)) setPatients(pts);
       if (Array.isArray(tuts)) setTutors(tuts);
+      if (Array.isArray(anesthesiasData)) setAnesthesias(anesthesiasData);
+      if (Array.isArray(examsData)) setExams(examsData);
+
       if (tuts && tuts.length > 0) {
         setForm((prev) => ({
           ...prev,
@@ -117,6 +139,10 @@ export const PatientsPage: React.FC = () => {
         }
       } else {
         setTutorMode('NEW');
+      }
+
+      if (searchParams.get('new_pet') === 'true') {
+        setShowModal(true);
       }
     } catch (e) {
       console.error(e);
@@ -397,6 +423,48 @@ export const PatientsPage: React.FC = () => {
                   "{patient.notes}"
                 </div>
               )}
+
+              {/* Badges de Acesso Rápido a Anestesias e Exames */}
+              {(() => {
+                const petAnesthesias = anesthesias.filter((a) => Number(a.patient_id) === Number(patient.id));
+                const petExams = exams.filter((e) => Number(e.patient_id) === Number(patient.id));
+                return (
+                  <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 flex-wrap">
+                    {petAnesthesias.length > 0 ? (
+                      <Link
+                        to={`/anestesia?patient_id=${patient.id}`}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200/80 rounded-lg text-[11px] font-bold transition shadow-2xs"
+                        title="Abrir diretamente a ficha anestésica deste animal"
+                      >
+                        <Heart className="w-3 h-3 text-indigo-600" />
+                        <span>💉 {petAnesthesias.length} Ficha{petAnesthesias.length > 1 ? 's' : ''} Anestésica{petAnesthesias.length > 1 ? 's' : ''}</span>
+                      </Link>
+                    ) : (
+                      <Link
+                        to={`/anestesia?patient_id=${patient.id}&new=true`}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg text-[11px] font-medium transition"
+                        title="Iniciar procedimento anestésico para este animal"
+                      >
+                        <span>+ Anestesia</span>
+                      </Link>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPetForExams(patient)}
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition shadow-2xs cursor-pointer ${
+                        petExams.length > 0
+                          ? 'bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/80'
+                          : 'bg-slate-50 hover:bg-teal-50 text-slate-600 hover:text-teal-800 border border-slate-200'
+                      }`}
+                      title="Registrar e consultar exames laboratoriais / de imagem deste pet"
+                    >
+                      <Microscope className="w-3 h-3 text-teal-600" />
+                      <span>Exames ({petExams.length})</span>
+                    </button>
+                  </div>
+                );
+              })()}
 
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs gap-2 flex-wrap">
                 <Link
@@ -875,6 +943,340 @@ export const PatientsPage: React.FC = () => {
         onClose={() => setSelectedPetForMedicalRecord(null)}
         patientId={selectedPetForMedicalRecord?.id || null}
       />
+
+      {/* Modal de Exames Realizados & Laudos do Paciente */}
+      {selectedPetForExams && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh] space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center font-bold">
+                  <Microscope className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Exames & Laudos de {selectedPetForExams.name}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Histórico de exames laboratoriais, bioquímicos e imagens
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedPetForExams(null);
+                  setShowNewExamModal(false);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Ações / Novo Exame */}
+            {!showNewExamModal ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Exames Registrados ({exams.filter((e) => Number(e.patient_id) === Number(selectedPetForExams.id)).length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExamForm({
+                        exam_type: 'Hemograma Completo',
+                        date: new Date().toISOString().split('T')[0],
+                        laboratory: '',
+                        status: 'CONCLUIDO',
+                        results: '',
+                        reference_values: '',
+                        price: 0,
+                        notes: ''
+                      });
+                      setShowNewExamModal(true);
+                    }}
+                    className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Registrar Exame Realizado
+                  </button>
+                </div>
+
+                {exams.filter((e) => Number(e.patient_id) === Number(selectedPetForExams.id)).length === 0 ? (
+                  <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-300 rounded-2xl space-y-2">
+                    <Microscope className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs text-slate-600 font-semibold">
+                      Nenhum exame cadastrado para {selectedPetForExams.name} ainda.
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Registre resultados de hemogramas, bioquímica, ultrassonografia, raio-X ou biópsias.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {exams
+                      .filter((e) => Number(e.patient_id) === Number(selectedPetForExams.id))
+                      .map((exam) => (
+                        <div
+                          key={exam.id}
+                          className="p-4 bg-slate-50/80 border border-slate-200/90 rounded-xl space-y-2 text-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 text-sm">{exam.exam_type}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  exam.status === 'CONCLUIDO'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {exam.status}
+                              </span>
+                            </div>
+                            <span className="text-slate-400 font-mono text-[11px]">
+                              {exam.date ? new Date(exam.date).toLocaleDateString('pt-BR') : ''}
+                            </span>
+                          </div>
+
+                          {exam.laboratory && (
+                            <p className="text-slate-600 text-[11px]">
+                              <strong>Laboratório / Clínica:</strong> {exam.laboratory}
+                            </p>
+                          )}
+
+                          {exam.results && (
+                            <div className="bg-white p-3 rounded-lg border border-slate-200 text-slate-800 space-y-1">
+                              <span className="font-bold text-[10px] uppercase tracking-wider text-teal-800 block">
+                                Laudo / Resultados Obtidos:
+                              </span>
+                              <p className="whitespace-pre-line text-xs font-mono">{exam.results}</p>
+                            </div>
+                          )}
+
+                          {exam.reference_values && (
+                            <div className="bg-white/60 p-2 rounded-lg border border-slate-200/60 text-slate-600 text-[11px]">
+                              <span className="font-semibold block text-slate-500">Valores de Referência:</span>
+                              <p className="whitespace-pre-line">{exam.reference_values}</p>
+                            </div>
+                          )}
+
+                          {exam.notes && (
+                            <p className="text-[11px] text-slate-500 italic">
+                              Obs: {exam.notes}
+                            </p>
+                          )}
+
+                          <div className="pt-2 border-t border-slate-200/70 flex items-center justify-between text-[11px]">
+                            {exam.price ? (
+                              <span className="font-bold text-emerald-800 font-mono">
+                                Valor: R$ {exam.price.toFixed(2)}
+                              </span>
+                            ) : <span></span>}
+
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (confirm('Deseja excluir este registro de exame?')) {
+                                  await api.deletePatientExam(exam.id);
+                                  setExams((prev) => prev.filter((ex) => ex.id !== exam.id));
+                                  showToast('Exame removido com sucesso.');
+                                }
+                              }}
+                              className="text-rose-600 hover:text-rose-800 font-medium"
+                            >
+                              Excluir Exame
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Formulário de Novo Exame */
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  try {
+                    const created = await api.createPatientExam({
+                      ...examForm,
+                      patient_id: selectedPetForExams.id,
+                      patient_name: selectedPetForExams.name,
+                      tutor_id: selectedPetForExams.tutor_id,
+                      tutor_name: tutors.find((t) => t.id === selectedPetForExams.tutor_id)?.name
+                    });
+
+                    // Se foi informado valor monetário, cria lançamento no financeiro
+                    if (Number(examForm.price) > 0) {
+                      await api.createFinancialEntry({
+                        entry_type: 'RECEITA',
+                        category: 'Exames & Diagnóstico',
+                        description: `Exame: ${examForm.exam_type} - ${selectedPetForExams.name}`,
+                        amount: Number(examForm.price),
+                        payment_method: 'PIX',
+                        status: 'PAGO',
+                        date: examForm.date,
+                        tutor_id: selectedPetForExams.tutor_id,
+                        tutor_name: tutors.find((t) => t.id === selectedPetForExams.tutor_id)?.name,
+                        patient_id: selectedPetForExams.id,
+                        patient_name: selectedPetForExams.name
+                      }).catch(() => {});
+                    }
+
+                    setExams((prev) => [created, ...prev]);
+                    setShowNewExamModal(false);
+                    showToast(`Exame "${examForm.exam_type}" registrado com sucesso!`);
+                  } catch (err) {
+                    console.error('Erro ao salvar exame:', err);
+                  }
+                }}
+                className="space-y-4 text-xs"
+              >
+                <div className="p-3 bg-teal-50 rounded-xl border border-teal-200/80">
+                  <span className="text-[11px] font-bold text-teal-800 block mb-2">
+                    Modelos Rápidos de Exames Frequentes:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'Hemograma Completo',
+                      'Bioquímica Renal (Ureia + Creatinina)',
+                      'Bioquímica Hepática (ALT + FA)',
+                      'Ultrassonografia Abdominal',
+                      'Radiografia Digital',
+                      'Urinálise Completa (EAS)',
+                      'Coproparasitológico',
+                      'Citologia / Biópsia',
+                      'Eletrocardiograma (ECG)'
+                    ].map((model) => (
+                      <button
+                        key={model}
+                        type="button"
+                        onClick={() => setExamForm({ ...examForm, exam_type: model })}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border ${
+                          examForm.exam_type === model
+                            ? 'bg-teal-700 text-white border-teal-800'
+                            : 'bg-white text-slate-700 border-teal-200 hover:bg-teal-100'
+                        }`}
+                      >
+                        {model}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Tipo de Exame *</label>
+                    <input
+                      type="text"
+                      required
+                      value={examForm.exam_type}
+                      onChange={(e) => setExamForm({ ...examForm, exam_type: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none font-medium focus:border-teal-600"
+                      placeholder="Ex: Hemograma, Perfil Renal, etc."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Data da Coleta/Realização *</label>
+                    <input
+                      type="date"
+                      required
+                      value={examForm.date}
+                      onChange={(e) => setExamForm({ ...examForm, date: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none font-medium focus:border-teal-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Laboratório / Clínica Executante</label>
+                    <input
+                      type="text"
+                      value={examForm.laboratory}
+                      onChange={(e) => setExamForm({ ...examForm, laboratory: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none font-medium focus:border-teal-600"
+                      placeholder="Ex: LabVet Central, Atendimento Volante..."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Status do Exame</label>
+                    <select
+                      value={examForm.status}
+                      onChange={(e) => setExamForm({ ...examForm, status: e.target.value as any })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none font-medium bg-white focus:border-teal-600"
+                    >
+                      <option value="CONCLUIDO">Concluído (Laudado)</option>
+                      <option value="COLETADO">Coletado / Em Análise</option>
+                      <option value="SOLICITADO">Solicitado / Aguardando Coleta</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Laudo / Resultados Encontrados (Valores e Achados Clínicos)
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={examForm.results}
+                    onChange={(e) => setExamForm({ ...examForm, results: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none font-mono text-xs focus:border-teal-600"
+                    placeholder="Ex: Hemácias: 6.8 M/uL (Ref: 5.5-8.5)&#10;Leucócitos Totais: 11.200 /uL&#10;Ureia: 42 mg/dL (Ref: 20-56)&#10;Creatinina: 1.1 mg/dL (Ref: 0.5-1.5)&#10;Achados ultrassonográficos: Bexiga com conteúdo anecóico..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Valor Cobrado ao Tutor (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={examForm.price}
+                      onChange={(e) => setExamForm({ ...examForm, price: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none font-mono focus:border-teal-600"
+                      placeholder="0.00"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      Se maior que R$ 0,00, gerará receita automática no financeiro.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Observações Gerais</label>
+                    <input
+                      type="text"
+                      value={examForm.notes}
+                      onChange={(e) => setExamForm({ ...examForm, notes: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-teal-600"
+                      placeholder="Instruções para o tutor, repetição de exame..."
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewExamModal(false)}
+                    className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-100 rounded-lg transition"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-teal-700 text-white font-bold rounded-lg hover:bg-teal-800 transition flex items-center gap-1.5 shadow-sm"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Salvar Exame no Prontuário
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

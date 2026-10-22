@@ -1,11 +1,13 @@
-// Vetgo Isolated Print Engine
-// Garante impressão A4 impecável em qualquer navegador, dispositivo móvel e desktop,
-// eliminando fundos de modais, menus laterais e cabeçalhos da página.
+// Vetgo Isolated Print & PDF Engine
+// Garante impressão A4 impecável e geração de PDFs reais em qualquer navegador e dispositivo móvel,
+// eliminando fundos escuros de modais, menus laterais e cabeçalhos da página.
 
-export function printElement(elementId: string, documentTitle = 'Prontuario_Veterinario_Vetgo'): void {
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
+
+export function printElement(elementId: string, documentTitle = 'Documento_Veterinario_Vetgo'): void {
   const sourceEl = document.getElementById(elementId);
   if (!sourceEl) {
-    // Fallback: tenta imprimir a janela atual
     window.print();
     return;
   }
@@ -102,5 +104,33 @@ export function printElement(elementId: string, documentTitle = 'Prontuario_Vete
     setTimeout(triggerPrint, 600);
   } else {
     window.print();
+  }
+}
+
+/**
+ * Gera download real de arquivo PDF a partir de um elemento HTML
+ */
+export async function exportToPdf(elementId: string, filename = 'documento-vetgo.pdf'): Promise<void> {
+  const element = document.getElementById(elementId);
+  if (!element) {
+    printElement(elementId, filename);
+    return;
+  }
+
+  const cleanName = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
+
+  const opt = {
+    margin: [10, 10, 10, 10] as [number, number, number, number],
+    filename: cleanName,
+    image: { type: 'jpeg' as const, quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+  };
+
+  try {
+    await html2pdf().set(opt).from(element).save();
+  } catch (err) {
+    console.warn('Erro ao gerar PDF direto via html2pdf, acionando impressão isolada:', err);
+    printElement(elementId, cleanName);
   }
 }

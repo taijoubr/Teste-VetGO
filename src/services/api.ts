@@ -27,7 +27,8 @@ import {
   SystemDocumentTemplate,
   ClinicalServiceItem,
   Supplier,
-  SupplierOrder
+  SupplierOrder,
+  PatientExam
 } from '../types';
 import { adminService } from './adminService';
 import { offlineStorage } from './offlineStorage';
@@ -1451,7 +1452,7 @@ export const api = {
       monitorings: data.monitorings || [],
       timeline_events: data.timeline_events || [],
       recovery: data.recovery,
-      total_billed_amount: data.total_billed_amount || 450.0,
+      total_billed_amount: typeof data.total_billed_amount === 'number' ? data.total_billed_amount : 0.0,
       billing_status: data.billing_status || 'PENDENTE',
       notes: data.notes,
       created_at: new Date().toISOString()
@@ -1575,31 +1576,34 @@ export const api = {
 
     localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
 
-    // Gera automaticamente o registro no financeiro (vinculado à clínica e ao atendimento)
-    const user = this.getCachedUser();
-    const financialEntries = await this.getFinancialEntries();
-    financialEntries.unshift({
-      id: Date.now(),
-      owner_id: user?.id || 1,
-      entry_type: 'RECEITA',
-      category: 'Procedimento Anestésico',
-      description: `Ficha ${list[idx].code} - ${list[idx].procedure_name} (${list[idx].patient_name} / ${list[idx].clinic_name})`,
-      amount: list[idx].total_billed_amount || 480.0,
-      payment_method: 'FATURAMENTO_CLINICA',
-      status: 'PENDENTE',
-      date: new Date().toISOString().split('T')[0],
-      tutor_id: list[idx].tutor_id,
-      tutor_name: list[idx].tutor_name,
-      patient_id: list[idx].patient_id,
-      patient_name: list[idx].patient_name,
-      clinic_id: list[idx].clinic_id,
-      clinic_name: list[idx].clinic_name,
-      anesthesia_id: list[idx].id,
-      receipt_number: `FAT-${list[idx].code}`,
-      created_at: new Date().toISOString()
-    });
-    const finUserKey = user?.id ? `vetgo_financial_u${user.id}` : 'vetgo_financial';
-    localStorage.setItem(finUserKey, JSON.stringify(financialEntries));
+    // Se houver valor faturado cadastrado, gera o registro no financeiro
+    const billedAmount = Number(list[idx].total_billed_amount) || 0;
+    if (billedAmount > 0) {
+      const user = this.getCachedUser();
+      const financialEntries = await this.getFinancialEntries();
+      financialEntries.unshift({
+        id: Date.now(),
+        owner_id: user?.id || 1,
+        entry_type: 'RECEITA',
+        category: 'Procedimento Anestésico',
+        description: `Ficha ${list[idx].code} - ${list[idx].procedure_name} (${list[idx].patient_name} / ${list[idx].clinic_name})`,
+        amount: billedAmount,
+        payment_method: 'FATURAMENTO_CLINICA',
+        status: 'PENDENTE',
+        date: new Date().toISOString().split('T')[0],
+        tutor_id: list[idx].tutor_id,
+        tutor_name: list[idx].tutor_name,
+        patient_id: list[idx].patient_id,
+        patient_name: list[idx].patient_name,
+        clinic_id: list[idx].clinic_id,
+        clinic_name: list[idx].clinic_name,
+        anesthesia_id: list[idx].id,
+        receipt_number: `FAT-${list[idx].code}`,
+        created_at: new Date().toISOString()
+      });
+      const finUserKey = user?.id ? `vetgo_financial_u${user.id}` : 'vetgo_financial';
+      localStorage.setItem(finUserKey, JSON.stringify(financialEntries));
+    }
 
     return list[idx];
   },
@@ -2203,6 +2207,46 @@ export const api = {
     return newEntry;
   },
 
+  async updateFinancialEntry(id: number, data: Partial<FinancialEntry>): Promise<FinancialEntry> {
+    const user = this.getCachedUser();
+    const userKey = user?.id ? `vetgo_financial_u${user.id}` : 'vetgo_financial';
+    const entries = await this.getFinancialEntries();
+    const idx = entries.findIndex((e) => Number(e.id) === Number(id));
+
+    let updated: FinancialEntry;
+    if (idx !== -1) {
+      updated = { ...entries[idx], ...data, updated_at: new Date().toISOString() };
+      entries[idx] = updated;
+    } else {
+      updated = {
+        id,
+        owner_id: user?.id || 1,
+        entry_type: data.entry_type || 'RECEITA',
+        category: data.category || 'Atendimento',
+        description: data.description || '',
+        amount: data.amount || 0,
+        payment_method: data.payment_method || 'PIX',
+        status: data.status || 'PAGO',
+        date: data.date || new Date().toISOString().split('T')[0],
+        created_at: data.created_at || new Date().toISOString(),
+        ...data
+      };
+      entries.unshift(updated);
+    }
+    localStorage.setItem(userKey, JSON.stringify(entries));
+
+    try {
+      await this.request<FinancialEntry>(`/financial/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+    } catch (e) {
+      console.warn('Fallback updating financial entry locally:', e);
+    }
+
+    return updated;
+  },
+
   async deleteFinancialEntry(id: number): Promise<boolean> {
     try {
       await this.request(`/financial/${id}`, { method: 'DELETE' });
@@ -2214,6 +2258,127 @@ export const api = {
     const entries = await this.getFinancialEntries();
     const filtered = entries.filter((e) => e.id !== id);
     localStorage.setItem(userKey, JSON.stringify(filtered));
+    return true;
+  },
+
+  // -----------------------------------------------------------------
+  // MÓDULO DE EXAMES LABORATORIAIS E COMPLEMENTARES
+  // -----------------------------------------------------------------
+  async getPatientExams(patientId?: number): Promise<PatientExam[]> {
+    const user = this.getCachedUser();
+    const key = user?.id ? `vetgo_exams_u${user.id}` : 'vetgo_exams';
+    try {
+      const query = patientId ? `?patient_id=${patientId}` : '';
+      const serverList = await this.request<PatientExam[]>(`/exams${query}`);
+      if (Array.isArray(serverList)) {
+        localStorage.setItem(key, JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch (e) {
+      console.warn('Fallback to local exams:', e);
+    }
+
+    try {
+      const raw = localStorage.getItem(key);
+      const list: PatientExam[] = raw ? JSON.parse(raw) : [];
+      if (patientId) {
+        return list.filter((e) => Number(e.patient_id) === Number(patientId));
+      }
+      return list;
+    } catch {
+      return [];
+    }
+  },
+
+  async createPatientExam(data: Partial<PatientExam>): Promise<PatientExam> {
+    const user = this.getCachedUser();
+    const key = user?.id ? `vetgo_exams_u${user.id}` : 'vetgo_exams';
+    const exams = await this.getPatientExams();
+
+    const newExam: PatientExam = {
+      id: Date.now(),
+      owner_id: user?.id || 1,
+      patient_id: Number(data.patient_id),
+      patient_name: data.patient_name || 'Paciente',
+      tutor_id: data.tutor_id,
+      tutor_name: data.tutor_name,
+      exam_type: data.exam_type || 'Exame Complementar',
+      date: data.date || new Date().toISOString().split('T')[0],
+      laboratory: data.laboratory || '',
+      status: data.status || 'CONCLUIDO',
+      results: data.results || '',
+      reference_values: data.reference_values || '',
+      attachments: data.attachments || [],
+      notes: data.notes || '',
+      price: Number(data.price) || 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      const created = await this.request<PatientExam>('/exams', {
+        method: 'POST',
+        body: JSON.stringify(newExam)
+      });
+      if (created && created.id) {
+        Object.assign(newExam, created);
+      }
+    } catch (e) {
+      console.warn('Fallback creating exam locally:', e);
+    }
+
+    exams.unshift(newExam);
+    localStorage.setItem(key, JSON.stringify(exams));
+    return newExam;
+  },
+
+  async updatePatientExam(id: number, data: Partial<PatientExam>): Promise<PatientExam> {
+    const user = this.getCachedUser();
+    const key = user?.id ? `vetgo_exams_u${user.id}` : 'vetgo_exams';
+    const exams = await this.getPatientExams();
+    const idx = exams.findIndex((e) => Number(e.id) === Number(id));
+
+    let updated: PatientExam;
+    if (idx !== -1) {
+      updated = { ...exams[idx], ...data, updated_at: new Date().toISOString() };
+      exams[idx] = updated;
+    } else {
+      updated = {
+        id,
+        patient_id: Number(data.patient_id) || 1,
+        exam_type: data.exam_type || 'Exame Complementar',
+        date: data.date || new Date().toISOString().split('T')[0],
+        status: data.status || 'CONCLUIDO',
+        created_at: new Date().toISOString(),
+        ...data
+      };
+      exams.unshift(updated);
+    }
+    localStorage.setItem(key, JSON.stringify(exams));
+
+    try {
+      await this.request<PatientExam>(`/exams/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      });
+    } catch (e) {
+      console.warn('Fallback updating exam locally:', e);
+    }
+
+    return updated;
+  },
+
+  async deletePatientExam(id: number): Promise<boolean> {
+    try {
+      await this.request(`/exams/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Fallback deleting exam locally:', e);
+    }
+    const user = this.getCachedUser();
+    const key = user?.id ? `vetgo_exams_u${user.id}` : 'vetgo_exams';
+    const exams = await this.getPatientExams();
+    const filtered = exams.filter((e) => Number(e.id) !== Number(id));
+    localStorage.setItem(key, JSON.stringify(filtered));
     return true;
   },
 

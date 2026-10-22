@@ -14,7 +14,8 @@ import {
   AlertCircle,
   X,
   CheckCircle2,
-  Filter
+  Filter,
+  Edit2
 } from 'lucide-react';
 import { formatPhone } from '../utils/validators';
 
@@ -27,6 +28,7 @@ export const SurgeonsPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingSurgeon, setEditingSurgeon] = useState<Surgeon | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
@@ -63,6 +65,7 @@ export const SurgeonsPage: React.FC = () => {
   };
 
   const handleOpenModal = () => {
+    setEditingSurgeon(null);
     const nextCode = `PR-${Math.floor(10 + Math.random() * 89)}`;
     setForm({
       code: nextCode,
@@ -75,6 +78,24 @@ export const SurgeonsPage: React.FC = () => {
       notes: '',
       clinic_ids: [],
       is_active: true
+    });
+    setModalError(null);
+    setShowModal(true);
+  };
+
+  const handleOpenEditModal = (surgeon: Surgeon) => {
+    setEditingSurgeon(surgeon);
+    setForm({
+      code: surgeon.code || '',
+      name: surgeon.name || '',
+      crmv: surgeon.crmv || '',
+      crmv_uf: surgeon.crmv_uf || 'SP',
+      phone: surgeon.phone || '',
+      whatsapp: surgeon.whatsapp || surgeon.phone || '',
+      email: surgeon.email || '',
+      notes: surgeon.notes || '',
+      clinic_ids: surgeon.clinic_ids || [],
+      is_active: surgeon.is_active !== false
     });
     setModalError(null);
     setShowModal(true);
@@ -106,11 +127,16 @@ export const SurgeonsPage: React.FC = () => {
     }
 
     try {
-      await api.createSurgeon(form);
+      if (editingSurgeon) {
+        await api.updateSurgeon(editingSurgeon.id, form);
+      } else {
+        await api.createSurgeon(form);
+      }
       setShowModal(false);
+      setEditingSurgeon(null);
       loadData();
     } catch (err: any) {
-      setModalError(err.message || 'Erro ao cadastrar cirurgião.');
+      setModalError(err.message || 'Erro ao salvar cirurgião.');
     }
   };
 
@@ -236,13 +262,24 @@ export const SurgeonsPage: React.FC = () => {
                     CRMV-{surgeon.crmv_uf} {surgeon.crmv}
                   </p>
                 </div>
-                <span
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                    surgeon.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
-                  }`}
-                >
-                  {surgeon.is_active ? 'Ativo' : 'Inativo'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                      surgeon.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {surgeon.is_active ? 'Ativo' : 'Inativo'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditModal(surgeon)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition cursor-pointer"
+                    title="Editar dados do cirurgião parceiro"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    Editar
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1 text-xs text-slate-600">
@@ -300,17 +337,22 @@ export const SurgeonsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Cadastro Cirurgião */}
+      {/* Modal Cadastro/Edição de Cirurgião */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg max-h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-emerald-700" />
-                <h3 className="text-base font-bold text-slate-900">Cadastrar Novo Cirurgião</h3>
+                <h3 className="text-base font-bold text-slate-900">
+                  {editingSurgeon ? `Editar Cirurgião: ${editingSurgeon.name}` : 'Cadastrar Novo Cirurgião'}
+                </h3>
               </div>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingSurgeon(null);
+                }}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
               >
                 <X className="w-5 h-5" />
@@ -448,16 +490,19 @@ export const SurgeonsPage: React.FC = () => {
               <div className="p-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50 -mx-5 -mb-5 mt-4">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 font-semibold"
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingSurgeon(null);
+                  }}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 font-semibold cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-semibold shadow-sm"
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-semibold shadow-sm cursor-pointer"
                 >
-                  Salvar Cirurgião
+                  {editingSurgeon ? 'Salvar Alterações' : 'Salvar Cirurgião'}
                 </button>
               </div>
             </form>

@@ -38,12 +38,86 @@ import {
   TrendingDown,
   ArrowRight,
   ShieldAlert,
-  Edit3
+  Edit3,
+  Download
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { printElement, exportToPdf } from '../utils/printHelper';
+
+interface StandardAnestheticDrug {
+  name: string;
+  category: 'Indução' | 'MPA / Sedação' | 'Opióide' | 'Analgésico' | 'Emergência / Antídoto' | 'Antibiótico' | 'Bloqueio Local';
+  stage: 'MPA' | 'INDUCAO' | 'MANUTENCAO' | 'RECUPERACAO' | 'OUTRO';
+  concentration: number; // mg/ml
+  standard_dose: number; // mg/kg
+  route: 'IV' | 'IM' | 'SC' | 'INALATORIA' | 'LOCAL' | 'EPIDURAL' | 'OUTRA';
+}
+
+const STANDARD_ANESTHETIC_DRUGS: StandardAnestheticDrug[] = [
+  { name: 'Propofol', category: 'Indução', stage: 'INDUCAO', concentration: 10, standard_dose: 4.0, route: 'IV' },
+  { name: 'Cetamina 10%', category: 'Indução', stage: 'INDUCAO', concentration: 100, standard_dose: 5.0, route: 'IV' },
+  { name: 'Cetamina 5%', category: 'Indução', stage: 'INDUCAO', concentration: 50, standard_dose: 5.0, route: 'IV' },
+  { name: 'Midazolam', category: 'MPA / Sedação', stage: 'MPA', concentration: 5, standard_dose: 0.2, route: 'IV' },
+  { name: 'Diazepam', category: 'MPA / Sedação', stage: 'MPA', concentration: 5, standard_dose: 0.3, route: 'IV' },
+  { name: 'Dexmedetomidina', category: 'MPA / Sedação', stage: 'MPA', concentration: 0.5, standard_dose: 0.005, route: 'IM' },
+  { name: 'Acepromazina 0.2%', category: 'MPA / Sedação', stage: 'MPA', concentration: 2, standard_dose: 0.03, route: 'IM' },
+  { name: 'Xilazina 2%', category: 'MPA / Sedação', stage: 'MPA', concentration: 20, standard_dose: 0.5, route: 'IM' },
+  { name: 'Fentanil', category: 'Opióide', stage: 'INDUCAO', concentration: 0.05, standard_dose: 0.005, route: 'IV' },
+  { name: 'Morfina', category: 'Opióide', stage: 'MPA', concentration: 10, standard_dose: 0.3, route: 'IM' },
+  { name: 'Metadona', category: 'Opióide', stage: 'MPA', concentration: 10, standard_dose: 0.3, route: 'IM' },
+  { name: 'Tramadol', category: 'Analgésico', stage: 'MPA', concentration: 50, standard_dose: 3.0, route: 'SC' },
+  { name: 'Lidocaína 2% (sem vaso)', category: 'Bloqueio Local', stage: 'INDUCAO', concentration: 20, standard_dose: 1.0, route: 'IV' },
+  { name: 'Bupivacaína 0.5%', category: 'Bloqueio Local', stage: 'INDUCAO', concentration: 5, standard_dose: 1.0, route: 'LOCAL' },
+  { name: 'Atropina', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 0.5, standard_dose: 0.04, route: 'SC' },
+  { name: 'Adrenalina / Epinefrina', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 1.0, standard_dose: 0.02, route: 'IV' },
+  { name: 'Atipamezol', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 5.0, standard_dose: 0.02, route: 'IM' },
+  { name: 'Naloxona', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 0.4, standard_dose: 0.04, route: 'IV' },
+  { name: 'Cefazolina', category: 'Antibiótico', stage: 'MPA', concentration: 100, standard_dose: 25.0, route: 'IV' },
+  { name: 'Dipirona 50%', category: 'Analgésico', stage: 'RECUPERACAO', concentration: 500, standard_dose: 25.0, route: 'IV' },
+  { name: 'Meloxicam 0.2%', category: 'Analgésico', stage: 'RECUPERACAO', concentration: 2, standard_dose: 0.2, route: 'SC' }
+];
+
+const STANDARD_FLUID_OPTIONS = [
+  'Ringer com Lactato',
+  'Cloreto de Sódio 0,9% (Fisiológico)',
+  'Ringer Simples',
+  'Solução Glicofisiológica',
+  'Solução Glicosada 5%',
+  'Ringer Lactato com Glicose 2.5%',
+  'Plasma-Lyte',
+  'Voluven / Colóide'
+];
+
+interface PostOpPreset {
+  name: string;
+  dose: number;
+  route: string;
+  concentration?: number;
+}
+
+const POST_OP_PRESETS: PostOpPreset[] = [
+  { name: 'Dipirona 50%', dose: 25, route: 'IV ou SC', concentration: 500 },
+  { name: 'Meloxicam 0.2%', dose: 0.1, route: 'SC', concentration: 2 },
+  { name: 'Tramadol 5%', dose: 3.0, route: 'SC ou IV lento', concentration: 50 },
+  { name: 'Cetoprofeno 1%', dose: 1.0, route: 'SC', concentration: 10 },
+  { name: 'Metadona 1%', dose: 0.2, route: 'SC ou IM', concentration: 10 },
+  { name: 'Morfina 1%', dose: 0.2, route: 'IM', concentration: 10 },
+  { name: 'Cefazolina', dose: 30, route: 'IV', concentration: 100 },
+  { name: 'Ondansetrona', dose: 0.5, route: 'IV', concentration: 2 },
+  { name: 'Omeprazol', dose: 1.0, route: 'IV', concentration: 4 }
+];
+
+const getDeviceCurrentTime = (): string => {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+};
 
 export const AnesthesiaPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const urlPatientId = searchParams.get('patient_id') ? Number(searchParams.get('patient_id')) : null;
+  const isNewUrl = searchParams.get('new') === 'true';
+
   const { user, refreshUser } = useAuth();
   const isAnesthesiaActive = Boolean(user?.specialty_anesthesia_enabled);
   const [anesthesias, setAnesthesias] = useState<AnesthesiaRecord[]>([]);
@@ -87,7 +161,7 @@ export const AnesthesiaPage: React.FC = () => {
     tutor_id: 0,
     procedure_name: '',
     procedure_nature: 'ELETIVA' as ProcedureNature,
-    scheduled_time: '09:00',
+    scheduled_time: getDeviceCurrentTime(),
     // Pré-avaliação
     weight_kg: 10,
     fasting_food_hours: 8,
@@ -115,7 +189,8 @@ export const AnesthesiaPage: React.FC = () => {
     intubation: true,
     tube_size: 'Tubo 8.0 com cuff',
     ventilation_type: 'Espontânea' as any,
-    monitoring_interval_minutes: 5
+    monitoring_interval_minutes: 5,
+    total_billed_amount: 0
   });
 
   // Form de Cirurgião Rápido (embutido no fluxo)
@@ -175,7 +250,7 @@ export const AnesthesiaPage: React.FC = () => {
 
   // Form de Recuperação
   const [recoveryForm, setRecoveryForm] = useState<PostAnesthesiaRecovery>({
-    extubation_time: '10:30',
+    extubation_time: getDeviceCurrentTime(),
     consciousness_level: 'Alerta',
     heart_rate_bpm: 94,
     respiratory_rate_mpm: 18,
@@ -187,6 +262,14 @@ export const AnesthesiaPage: React.FC = () => {
     post_op_medications: 'Dipirona 25mg/kg + Meloxicam 0,1mg/kg',
     discharge_notes: 'Paciente consciente e estável.'
   });
+
+  const handleOpenNewAnesthesiaModal = () => {
+    setNewForm((prev) => ({
+      ...prev,
+      scheduled_time: getDeviceCurrentTime(),
+    }));
+    setShowNewAnesthesiaModal(true);
+  };
 
   useEffect(() => {
     loadAllData();
@@ -244,6 +327,22 @@ export const AnesthesiaPage: React.FC = () => {
           setElapsedSeconds(Number(savedTime));
         }
         setIsTimerRunning(true);
+      } else if (urlPatientId) {
+        const foundAnesthesia = anesthesiasData.find((a) => Number(a.patient_id) === urlPatientId);
+        if (foundAnesthesia && !isNewUrl) {
+          setActiveAnesthesia(foundAnesthesia);
+        } else {
+          const pat = patientsData.find((p) => p.id === urlPatientId);
+          if (pat) {
+            setNewForm((prev) => ({
+              ...prev,
+              patient_id: pat.id,
+              tutor_id: pat.tutor_id,
+              weight_kg: pat.weight_kg || 10
+            }));
+            setShowNewAnesthesiaModal(true);
+          }
+        }
       }
     } catch (e) {
       console.error(e);
@@ -475,20 +574,33 @@ export const AnesthesiaPage: React.FC = () => {
       return;
     }
 
+    const surgeonCrmvFormatted = surgeon.crmv
+      ? `${surgeon.name} (CRMV-${surgeon.crmv_uf || 'SP'} ${surgeon.crmv})`
+      : `${surgeon.name} (${surgeon.code})`;
+
+    const tutorObj = tutor || (patient ? tutors.find((t) => t.id === patient.tutor_id) : null);
+    const tutorDisplayName = tutorObj ? tutorObj.name : (patient.tutor_name || 'Tutor Responsável');
+
+    // Se o paciente não possuía tutor cadastrado e foi definido um tutor neste atendimento, vincula automaticamente
+    if (patient && tutorObj && (!patient.tutor_id || patient.tutor_id === 0)) {
+      api.updatePatient(patient.id, { tutor_id: tutorObj.id, tutor_name: tutorObj.name }).catch(() => {});
+    }
+
     const created = await api.createAnesthesia({
       clinic_id: clinic.id,
       clinic_name: clinic.name,
       surgeon_id: surgeon.id,
-      surgeon_name: `${surgeon.name} (${surgeon.code})`,
+      surgeon_name: surgeonCrmvFormatted,
       patient_id: patient.id,
       patient_name: patient.name,
       patient_species: patient.species,
       patient_breed: patient.breed,
-      tutor_id: tutor ? tutor.id : patient.tutor_id,
-      tutor_name: tutor ? tutor.name : (patient.tutor_name || 'Tutor'),
+      tutor_id: tutorObj ? tutorObj.id : patient.tutor_id,
+      tutor_name: tutorDisplayName,
       procedure_name: newForm.procedure_name,
       procedure_nature: newForm.procedure_nature,
       scheduled_time: newForm.scheduled_time,
+      total_billed_amount: Number(newForm.total_billed_amount) || 0,
       status: 'PLANEJAMENTO',
       pre_evaluation: {
         weight_kg: Number(newForm.weight_kg),
@@ -600,8 +712,8 @@ export const AnesthesiaPage: React.FC = () => {
             </button>
           )}
           <button
-            onClick={() => setShowNewAnesthesiaModal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-sm"
+            onClick={handleOpenNewAnesthesiaModal}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Novo Procedimento
@@ -716,8 +828,14 @@ export const AnesthesiaPage: React.FC = () => {
                 {activeAnesthesia.status === 'EM_ANDAMENTO' && (
                   <>
                     <button
-                      onClick={() => setShowRecoveryModal(true)}
-                      className="w-full sm:w-auto px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-black transition shadow-sm text-center"
+                      onClick={() => {
+                        setRecoveryForm((prev) => ({
+                          ...prev,
+                          extubation_time: getDeviceCurrentTime(),
+                        }));
+                        setShowRecoveryModal(true);
+                      }}
+                      className="w-full sm:w-auto px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-black transition shadow-sm text-center cursor-pointer"
                     >
                       ENCERRAR ANESTESIA → RECUPERAÇÃO
                     </button>
@@ -1286,35 +1404,76 @@ export const AnesthesiaPage: React.FC = () => {
                       onChange={(e) => {
                         const pid = Number(e.target.value);
                         const pat = patients.find((p) => p.id === pid);
+                        const linkedTutor = tutors.find((t) => t.id === pat?.tutor_id);
                         setNewForm({
                           ...newForm,
                           patient_id: pid,
-                          tutor_id: pat ? pat.tutor_id : 0,
+                          tutor_id: linkedTutor ? linkedTutor.id : (pat?.tutor_id || newForm.tutor_id || 0),
                           weight_kg: pat?.weight_kg || 10
                         });
                       }}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
                     >
                       <option value={0}>Selecione o Paciente...</option>
-                      {patients.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({p.species} • {p.breed || 'SRD'}) - Tutor: {p.tutor_name}
-                        </option>
-                      ))}
+                      {patients.map((p) => {
+                        const petTutor = tutors.find((t) => t.id === p.tutor_id);
+                        const tutorLabel = petTutor?.name || p.tutor_name || 'Sem tutor cadastrado';
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.species} • {p.breed || 'SRD'}) - Tutor: {tutorLabel}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Procedimento Cirúrgico *</label>
-                    <input
-                      type="text"
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Tutor Responsável *
+                    </label>
+                    <select
                       required
-                      value={newForm.procedure_name}
-                      onChange={(e) => setNewForm({ ...newForm, procedure_name: e.target.value })}
-                      placeholder="Ex: OSH Terapêutica / Nodulectomia / Osteossíntese"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
-                    />
+                      value={newForm.tutor_id}
+                      onChange={(e) => setNewForm({ ...newForm, tutor_id: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white font-medium text-slate-800"
+                    >
+                      <option value={0}>Selecione o Tutor...</option>
+                      {tutors.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.code ? `${t.code} - ` : ''}{t.name} {t.phone ? `(${t.phone})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {(() => {
+                      const selPatient = patients.find((p) => p.id === Number(newForm.patient_id));
+                      const selTutor = tutors.find((t) => t.id === Number(newForm.tutor_id)) || (selPatient ? tutors.find((t) => t.id === selPatient.tutor_id) : null);
+                      if (!selTutor && !selPatient) return null;
+                      return (
+                        <div className="mt-1.5 p-2 bg-emerald-50/90 border border-emerald-200/90 rounded-lg flex items-center justify-between text-xs">
+                          <span className="text-emerald-950 font-semibold">
+                            👤 <strong>Tutor Confirmado:</strong> {selTutor?.name || selPatient?.tutor_name || 'Tutor Responsável'}
+                          </span>
+                          {selTutor?.phone && (
+                            <span className="text-emerald-800 font-mono text-[11px]">
+                              📞 {selTutor.phone}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Procedimento Cirúrgico *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newForm.procedure_name}
+                    onChange={(e) => setNewForm({ ...newForm, procedure_name: e.target.value })}
+                    placeholder="Ex: OSH Terapêutica / Nodulectomia / Osteossíntese"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1342,7 +1501,17 @@ export const AnesthesiaPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Horário Previsto</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-semibold text-slate-700">Horário Previsto</label>
+                      <button
+                        type="button"
+                        onClick={() => setNewForm((prev) => ({ ...prev, scheduled_time: getDeviceCurrentTime() }))}
+                        className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-0.5 cursor-pointer hover:underline"
+                        title="Capturar horário atual do dispositivo"
+                      >
+                        🕒 Horário Atual
+                      </button>
+                    </div>
                     <input
                       type="time"
                       value={newForm.scheduled_time}
@@ -1528,13 +1697,28 @@ export const AnesthesiaPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Fluidoterapia</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-semibold text-slate-700">Fluidoterapia *</label>
+                      <span className="text-[10px] text-emerald-700 font-bold">Lista padrão</span>
+                    </div>
+                    <select
+                      value={newForm.fluid_type}
+                      onChange={(e) => setNewForm({ ...newForm, fluid_type: e.target.value })}
+                      className="w-full px-2.5 py-2 border border-slate-200 rounded-lg bg-white text-xs font-medium text-slate-800"
+                    >
+                      {STANDARD_FLUID_OPTIONS.map((fl) => (
+                        <option key={fl} value={fl}>
+                          {fl}
+                        </option>
+                      ))}
+                      <option value="Sem Fluidoterapia">Sem Fluidoterapia</option>
+                    </select>
                     <input
                       type="text"
                       value={newForm.fluid_type}
                       onChange={(e) => setNewForm({ ...newForm, fluid_type: e.target.value })}
-                      placeholder="Ringer Lactato"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                      placeholder="Ou digite outra solução..."
+                      className="mt-1 w-full px-2 py-1 text-[11px] border border-slate-200 rounded bg-slate-50 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -1549,6 +1733,78 @@ export const AnesthesiaPage: React.FC = () => {
                       <option value={15}>A cada 15 minutos</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2.5 border-t border-slate-200/80 items-center">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-semibold text-slate-700">Taxa de Fluidoterapia (ml/kg/h)</label>
+                      <div className="flex gap-1 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => setNewForm({ ...newForm, fluid_rate_ml_kg_h: 3 })}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-emerald-100 text-slate-700 rounded font-semibold cursor-pointer"
+                        >
+                          3 (Felinos)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewForm({ ...newForm, fluid_rate_ml_kg_h: 5 })}
+                          className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold cursor-pointer"
+                        >
+                          5 (Padrão)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewForm({ ...newForm, fluid_rate_ml_kg_h: 10 })}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-emerald-100 text-slate-700 rounded font-semibold cursor-pointer"
+                        >
+                          10 (Reposição)
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={newForm.fluid_rate_ml_kg_h}
+                      onChange={(e) => setNewForm({ ...newForm, fluid_rate_ml_kg_h: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white font-mono text-xs"
+                    />
+                  </div>
+                  <div className="p-2.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg text-xs space-y-0.5">
+                    <span className="font-bold text-emerald-950 block text-[11px]">💧 Cálculo Automático de Infusão:</span>
+                    <p className="text-emerald-900 font-mono text-[11px]">
+                      Taxa contínua: <strong>{((Number(newForm.weight_kg) || 10) * Number(newForm.fluid_rate_ml_kg_h || 5)).toFixed(0)} ml/hora</strong>
+                    </p>
+                    <p className="text-emerald-800 text-[10px]">
+                      Gotejamento macrogotas (20 gts/ml): {(((Number(newForm.weight_kg) || 10) * Number(newForm.fluid_rate_ml_kg_h || 5)) / 3).toFixed(1)} gotas/min
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Etapa 6: Honorários Anestésicos (Opcional) */}
+              <div className="space-y-2 bg-emerald-50/70 p-3.5 rounded-lg border border-emerald-200/80">
+                <span className="font-bold text-emerald-950 uppercase tracking-wider text-[10px]">
+                  6. Honorários do Procedimento Anestésico (Opcional)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Valor dos Honorários (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={newForm.total_billed_amount === 0 ? '' : newForm.total_billed_amount}
+                      onChange={(e) => setNewForm({ ...newForm, total_billed_amount: parseFloat(e.target.value) || 0 })}
+                      placeholder="0,00 (Deixe 0 se cortesia ou acertado fora)"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-mono text-xs focus:border-emerald-600 outline-none"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Se preenchido com valor maior que R$ 0,00, o sistema gerará a pendência no módulo Financeiro para baixa após a finalização da cirurgia.
+                  </p>
                 </div>
               </div>
 
@@ -1790,6 +2046,69 @@ export const AnesthesiaPage: React.FC = () => {
               </button>
             </div>
             <form onSubmit={handleSaveDrug} className="p-4 space-y-3 text-xs">
+              {/* Seleção rápida de catálogo */}
+              <div className="bg-blue-50 p-3 rounded-xl border border-blue-200/90 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-blue-900">
+                    ⚡ Catálogo de Medicamentos Anestésicos
+                  </label>
+                  <span className="text-[10px] text-blue-700 font-semibold">Seleção com 1 clique</span>
+                </div>
+                <select
+                  onChange={(e) => {
+                    const sel = STANDARD_ANESTHETIC_DRUGS.find((d) => d.name === e.target.value);
+                    if (sel) {
+                      const weight = Number(activeAnesthesia?.pre_evaluation?.weight_kg) || 10;
+                      const calculatedVol = Number(((weight * sel.standard_dose) / sel.concentration).toFixed(2));
+                      setDrugForm({
+                        ...drugForm,
+                        drug_name: sel.name,
+                        stage: sel.stage as any,
+                        concentration_mg_ml: sel.concentration,
+                        dose_mg_kg: sel.standard_dose,
+                        route: sel.route as any,
+                        administered_volume: calculatedVol > 0 ? calculatedVol : 1.0,
+                        presentation_type: 'LIQUIDO_ML'
+                      });
+                    }
+                  }}
+                  className="w-full px-2.5 py-1.5 border border-blue-300 rounded-lg bg-white font-medium text-slate-800 text-xs focus:border-blue-600 outline-none"
+                >
+                  <option value="">Selecione um fármaco pré-cadastrado no sistema...</option>
+                  <optgroup label="Indutores">
+                    {STANDARD_ANESTHETIC_DRUGS.filter((d) => d.category === 'Indução').map((d) => (
+                      <option key={d.name} value={d.name}>
+                        {d.name} ({d.concentration} mg/ml) — Dose: {d.standard_dose} mg/kg {d.route}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="MPA & Sedativos">
+                    {STANDARD_ANESTHETIC_DRUGS.filter((d) => d.category === 'MPA / Sedação').map((d) => (
+                      <option key={d.name} value={d.name}>
+                        {d.name} ({d.concentration} mg/ml) — Dose: {d.standard_dose} mg/kg {d.route}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Opióides & Analgésicos">
+                    {STANDARD_ANESTHETIC_DRUGS.filter((d) => d.category === 'Opióide' || d.category === 'Analgésico').map((d) => (
+                      <option key={d.name} value={d.name}>
+                        {d.name} ({d.concentration} mg/ml) — Dose: {d.standard_dose} mg/kg {d.route}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Bloqueio & Emergência">
+                    {STANDARD_ANESTHETIC_DRUGS.filter((d) => d.category === 'Bloqueio Local' || d.category === 'Antibiótico' || d.category === 'Emergência / Antídoto').map((d) => (
+                      <option key={d.name} value={d.name}>
+                        {d.name} ({d.concentration} mg/ml) — {d.category}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+                <p className="text-[10px] text-blue-700">
+                  Calcula automaticamente o volume pelo peso ({activeAnesthesia?.pre_evaluation?.weight_kg || 10} kg). Você pode alterar qualquer campo livremente.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Etapa</label>
@@ -1922,25 +2241,70 @@ export const AnesthesiaPage: React.FC = () => {
             </div>
             <form onSubmit={handleSaveFluid} className="p-4 space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Tipo de Solução</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-slate-700">Tipo de Solução *</label>
+                  <span className="text-[10px] text-cyan-800 font-bold">Catálogo do sistema</span>
+                </div>
+                <select
+                  value={fluidForm.fluid_type}
+                  onChange={(e) => setFluidForm({ ...fluidForm, fluid_type: e.target.value })}
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-xs font-medium text-slate-800"
+                >
+                  {STANDARD_FLUID_OPTIONS.map((fl) => (
+                    <option key={fl} value={fl}>
+                      {fl}
+                    </option>
+                  ))}
+                </select>
                 <input
                   type="text"
                   required
                   value={fluidForm.fluid_type}
                   onChange={(e) => setFluidForm({ ...fluidForm, fluid_type: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                  placeholder="Ou digite outra solução..."
+                  className="mt-1 w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:bg-white text-xs"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Taxa (ml/kg/h)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-semibold text-slate-700">Taxa (ml/kg/h)</label>
+                    <div className="flex gap-1 text-[9px]">
+                      <button
+                        type="button"
+                        onClick={() => setFluidForm({ ...fluidForm, rate_ml_kg_h: 3 })}
+                        className="px-1 py-0.5 bg-slate-100 hover:bg-cyan-100 rounded font-semibold cursor-pointer"
+                      >
+                        3
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFluidForm({ ...fluidForm, rate_ml_kg_h: 5 })}
+                        className="px-1 py-0.5 bg-cyan-100 text-cyan-800 rounded font-bold cursor-pointer"
+                      >
+                        5
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFluidForm({ ...fluidForm, rate_ml_kg_h: 10 })}
+                        className="px-1 py-0.5 bg-slate-100 hover:bg-cyan-100 rounded font-semibold cursor-pointer"
+                      >
+                        10
+                      </button>
+                    </div>
+                  </div>
                   <input
                     type="number"
                     step="0.5"
                     value={fluidForm.rate_ml_kg_h}
                     onChange={(e) => setFluidForm({ ...fluidForm, rate_ml_kg_h: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg font-mono font-bold"
                   />
+                  {activeAnesthesia && (
+                    <span className="text-[10px] text-cyan-800 font-mono block mt-0.5">
+                      {((Number(activeAnesthesia.pre_evaluation?.weight_kg) || 10) * Number(fluidForm.rate_ml_kg_h || 5)).toFixed(0)} ml/h
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Bolus Rápido (ml)</label>
@@ -1949,8 +2313,9 @@ export const AnesthesiaPage: React.FC = () => {
                     value={fluidForm.bolus_ml}
                     onChange={(e) => setFluidForm({ ...fluidForm, bolus_ml: Number(e.target.value) })}
                     placeholder="0"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg font-mono"
                   />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Opcional para choque</span>
                 </div>
               </div>
               <div>
@@ -2143,7 +2508,17 @@ export const AnesthesiaPage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Horário de Extubação *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-semibold text-slate-700">Horário de Extubação *</label>
+                    <button
+                      type="button"
+                      onClick={() => setRecoveryForm((prev) => ({ ...prev, extubation_time: getDeviceCurrentTime() }))}
+                      className="text-[10px] text-amber-900 hover:text-amber-950 font-bold flex items-center gap-0.5 cursor-pointer hover:underline"
+                      title="Capturar horário atual do dispositivo"
+                    >
+                      🕒 Horário Atual
+                    </button>
+                  </div>
                   <input
                     type="time"
                     required
@@ -2197,14 +2572,47 @@ export const AnesthesiaPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Medicamentos Pós-Operatórios</label>
-                <input
-                  type="text"
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-slate-700">Medicamentos Pós-Operatórios</label>
+                  <span className="text-[10px] text-amber-700 font-bold">⚡ Adição rápida com 1 clique</span>
+                </div>
+
+                {/* Chips de Adição Rápida Calculados pelo Peso */}
+                <div className="flex flex-wrap gap-1.5 mb-2 bg-amber-50/70 p-2 rounded-lg border border-amber-200/80">
+                  {POST_OP_PRESETS.map((preset) => {
+                    const weight = Number(activeAnesthesia?.pre_evaluation?.weight_kg) || 10;
+                    const totalMg = (weight * preset.dose).toFixed(1);
+                    const totalMl = preset.concentration ? (Number(totalMg) / preset.concentration).toFixed(2) : null;
+                    return (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        onClick={() => {
+                          const itemText = `${preset.name} (${totalMg} mg${totalMl ? ` • ${totalMl} ml` : ''} - ${preset.route})`;
+                          const current = recoveryForm.post_op_medications?.trim() || '';
+                          const updated = current ? `${current}; ${itemText}` : itemText;
+                          setRecoveryForm({ ...recoveryForm, post_op_medications: updated });
+                        }}
+                        className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer hover:scale-102"
+                        title={`Clique para incluir ${preset.name} calculado para ${weight}kg`}
+                      >
+                        <span>+ {preset.name}</span>
+                        <span className="text-[9px] text-amber-700 font-mono font-normal">({totalMg}mg)</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <textarea
+                  rows={2}
                   value={recoveryForm.post_op_medications}
                   onChange={(e) => setRecoveryForm({ ...recoveryForm, post_op_medications: e.target.value })}
-                  placeholder="Ex: Tramadol 3mg/kg + Meloxicam 0.1mg/kg SID..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                  placeholder="Ex: Tramadol 30mg SC; Dipirona 250mg IV lento; Meloxicam 1mg SC SID..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs"
                 />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Os botões acima calculam automaticamente as doses em mg e ml pelo peso do paciente ({activeAnesthesia?.pre_evaluation?.weight_kg || 10} kg). Você pode editar livremente o texto.
+                </p>
               </div>
 
               <div>
@@ -2252,14 +2660,24 @@ export const AnesthesiaPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 transition shadow-sm"
+                  type="button"
+                  onClick={() => exportToPdf('printable-anesthesia-sheet', `Ficha_Anestesia_${activeAnesthesia.code}_${activeAnesthesia.patient_name || 'Paciente'}`)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 transition shadow-sm cursor-pointer"
+                  title="Baixar arquivo PDF oficial no dispositivo"
                 >
-                  <Printer className="w-4 h-4" /> Imprimir / PDF
+                  <Download className="w-4 h-4" /> Baixar PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printElement('printable-anesthesia-sheet', `Ficha_Anestesia_${activeAnesthesia.code}`)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-700 transition shadow-sm cursor-pointer"
+                  title="Imprimir documento em página A4 limpa sem menus"
+                >
+                  <Printer className="w-4 h-4" /> Imprimir A4
                 </button>
                 <button
                   onClick={() => setShowPrintModal(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -2267,18 +2685,24 @@ export const AnesthesiaPage: React.FC = () => {
             </div>
 
             {/* Ficha Documento Formatado A4 */}
-            <div className="p-8 overflow-y-auto flex-1 text-slate-900 font-sans space-y-6 bg-white text-xs print:p-0">
-              {/* Cabeçalho do Veterinário */}
+            <div
+              id="printable-anesthesia-sheet"
+              className="printable-document p-8 overflow-y-auto flex-1 text-slate-900 font-sans space-y-6 bg-white text-xs print:p-0"
+            >
+              {/* Cabeçalho do Veterinário Responsável */}
               <div className="border-b-2 border-emerald-800 pb-4 flex items-start justify-between">
                 <div>
                   <h2 className="text-lg font-black text-emerald-950 uppercase tracking-wide">
-                    Dra. Carolina Mendes
+                    {user?.first_name || user?.last_name
+                      ? `Dr(a). ${user.first_name || ''} ${user.last_name || ''}`.trim()
+                      : 'Dr(a). Médico(a) Veterinário(a)'}
                   </h2>
                   <p className="text-xs font-bold text-emerald-800">
-                    Médica Veterinária • CRMV-SP 34892
+                    Médico(a) Veterinário(a) • {user?.crmv ? `CRMV-${user.crmv_uf || 'SP'} ${user.crmv}` : 'CRMV Especialista'}
                   </p>
                   <p className="text-[11px] text-slate-500">
-                    Especialista em Anestesiologia Veterinária & Atendimento Volante
+                    {user?.clinic_name || 'Especialista em Anestesiologia Veterinária & Cuidados Críticos'}
+                    {user?.phone ? ` • Contato: ${user.phone}` : ''}
                   </p>
                 </div>
                 <div className="text-right">
@@ -2295,11 +2719,25 @@ export const AnesthesiaPage: React.FC = () => {
                   <p><strong>Paciente:</strong> {activeAnesthesia.patient_name}</p>
                   <p><strong>Espécie/Raça:</strong> {activeAnesthesia.patient_species} • {activeAnesthesia.patient_breed || 'SRD'}</p>
                   <p><strong>Peso:</strong> {activeAnesthesia.pre_evaluation.weight_kg} kg</p>
-                  <p><strong>Tutor:</strong> {activeAnesthesia.tutor_name}</p>
+                  {(() => {
+                    const tObj = tutors.find((t) => t.id === activeAnesthesia.tutor_id);
+                    const tutorDisplay = activeAnesthesia.tutor_name || tObj?.name || 'Tutor Responsável';
+                    return (
+                      <p><strong>Tutor:</strong> {tutorDisplay} {tObj?.phone ? `• Tel: ${tObj.phone}` : ''}</p>
+                    );
+                  })()}
                 </div>
                 <div className="space-y-1">
                   <p><strong>Clínica:</strong> {activeAnesthesia.clinic_name}</p>
-                  <p><strong>Cirurgião:</strong> {activeAnesthesia.surgeon_name}</p>
+                  {(() => {
+                    const sObj = surgeons.find((s) => s.id === activeAnesthesia.surgeon_id);
+                    const surgeonDisplay = sObj && sObj.crmv
+                      ? `${sObj.name} (CRMV-${sObj.crmv_uf || 'SP'} ${sObj.crmv})`
+                      : activeAnesthesia.surgeon_name;
+                    return (
+                      <p><strong>Cirurgião:</strong> {surgeonDisplay}</p>
+                    );
+                  })()}
                   <p><strong>Procedimento:</strong> {activeAnesthesia.procedure_name}</p>
                   <p><strong>Caráter:</strong> {activeAnesthesia.procedure_nature} • <strong>ASA:</strong> {activeAnesthesia.asa_category.replace('_', ' ')}{activeAnesthesia.is_emergency ? '-E' : ''}</p>
                 </div>
@@ -2411,16 +2849,20 @@ export const AnesthesiaPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Assinatura */}
+              {/* Assinatura Oficial do Veterinário Anestesista */}
               <div className="pt-10 flex items-center justify-between border-t border-slate-200">
                 <div className="text-[10px] text-slate-400">
                   Gerado pelo Sistema Vetgo • Registro Clínico Seguro
                 </div>
                 <div className="text-center">
                   <div className="w-56 border-b border-slate-800 pb-1 font-bold text-xs text-slate-900">
-                    Dra. Carolina Mendes
+                    {user?.first_name || user?.last_name
+                      ? `Dr(a). ${user.first_name || ''} ${user.last_name || ''}`.trim()
+                      : 'Médico(a) Veterinário(a)'}
                   </div>
-                  <span className="text-[10px] text-slate-500">CRMV-SP 34892 • Anestesiologia</span>
+                  <span className="text-[10px] text-slate-500">
+                    {user?.crmv ? `CRMV-${user.crmv_uf || 'SP'} ${user.crmv}` : 'CRMV Especialista'} • Anestesiologia
+                  </span>
                 </div>
               </div>
             </div>

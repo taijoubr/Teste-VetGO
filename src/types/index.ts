@@ -537,6 +537,7 @@ export interface FinancialEntry {
   notes?: string;
   receipt_number?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 // -------------------------------------------------------------
@@ -800,5 +801,25 @@ export interface SupplierOrder {
   created_at: string;
   updated_at?: string;
   received_at?: string;
+}
+
+export interface PatientExam {
+  id: number;
+  owner_id?: number;
+  patient_id: number;
+  patient_name?: string;
+  tutor_id?: number;
+  tutor_name?: string;
+  exam_type: string;
+  date: string;
+  laboratory?: string;
+  status: 'SOLICITADO' | 'COLETADO' | 'CONCLUIDO' | 'CANCELADO';
+  results?: string;
+  reference_values?: string;
+  attachments?: { name: string; url: string; type: string }[];
+  notes?: string;
+  price?: number;
+  created_at: string;
+  updated_at?: string;
 }
 

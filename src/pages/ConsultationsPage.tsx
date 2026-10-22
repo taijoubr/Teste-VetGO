@@ -43,13 +43,15 @@ import {
   Check,
   MessageCircle,
   Percent,
-  Tag
+  Tag,
+  Download
 } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AIAssistantModal } from '../components/AIAssistantModal';
 import { PixPaymentModal } from '../components/PixPaymentModal';
 import { FullMedicalRecordModal } from '../components/FullMedicalRecordModal';
+import { printElement, exportToPdf } from '../utils/printHelper';
 
 export const ConsultationsPage: React.FC = () => {
   const { user } = useAuth();
@@ -1211,11 +1213,22 @@ export const ConsultationsPage: React.FC = () => {
                   <span>Orçamento / Recibo</span>
                 </button>
                 <button
-                  onClick={() => window.print()}
+                  type="button"
+                  onClick={() => exportToPdf('printable-consultation-doc', `Prontuario_${(viewingConsultation as any).code || viewingConsultation.id}`)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800 transition cursor-pointer"
+                  title="Baixar arquivo PDF no dispositivo"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printElement('printable-consultation-doc', `Prontuario_${(viewingConsultation as any).code || viewingConsultation.id}`)}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition cursor-pointer"
+                  title="Imprimir documento em página A4 limpa"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Imprimir / PDF</span>
+                  <span>Imprimir A4</span>
                 </button>
                 <button
                   onClick={() => setViewingConsultation(null)}
@@ -1227,14 +1240,14 @@ export const ConsultationsPage: React.FC = () => {
             </div>
 
             {/* Printable Document Body with Professional Header & Discrete Vetgo Footer */}
-            <div className="space-y-6 text-slate-800">
+            <div id="printable-consultation-doc" className="printable-document space-y-6 text-slate-800">
               {/* Professional Vet Header */}
               <div className="text-center border-b border-slate-300 pb-4">
                 <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                  {user?.clinic_name || `${user?.first_name} ${user?.last_name}`}
+                  {user?.clinic_name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Clínica Veterinária'}
                 </h2>
                 <div className="text-xs font-semibold text-emerald-800 mt-0.5">
-                  Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                  Médico(a) Veterinário(a) • {user?.crmv ? `CRMV-${user.crmv_uf || 'SP'} ${user.crmv}` : 'CRMV não informado'}
                 </div>
                 {user?.phone && (
                   <div className="text-[11px] text-slate-500 mt-0.5">
@@ -1500,11 +1513,22 @@ export const ConsultationsPage: React.FC = () => {
               </span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 text-white hover:bg-emerald-800 transition cursor-pointer"
+                  type="button"
+                  onClick={() => exportToPdf('printable-exam-requisition-doc', `Requisicao_Exames_${viewingExamDoc.patient_name || 'Paciente'}`)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 transition cursor-pointer"
+                  title="Baixar arquivo PDF da guia no dispositivo"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printElement('printable-exam-requisition-doc', `Requisicao_Exames_${viewingExamDoc.patient_name || 'Paciente'}`)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition cursor-pointer"
+                  title="Imprimir documento em página A4 limpa"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Imprimir / PDF</span>
+                  <span>Imprimir A4</span>
                 </button>
                 <button
                   onClick={() => setViewingExamDoc(null)}
@@ -1516,13 +1540,13 @@ export const ConsultationsPage: React.FC = () => {
             </div>
 
             {/* Document sheet */}
-            <div className="space-y-6 text-slate-800">
+            <div id="printable-exam-requisition-doc" className="printable-document space-y-6 text-slate-800">
               <div className="text-center border-b border-slate-300 pb-4">
                 <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                  {user?.clinic_name || `${user?.first_name} ${user?.last_name}`}
+                  {user?.clinic_name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Clínica Veterinária'}
                 </h2>
                 <div className="text-xs font-semibold text-emerald-800 mt-0.5">
-                  Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                  Médico(a) Veterinário(a) • {user?.crmv ? `CRMV-${user.crmv_uf || 'SP'} ${user.crmv}` : 'CRMV não informado'}
                 </div>
                 {user?.phone && (
                   <div className="text-[11px] text-slate-500 mt-0.5">
@@ -1630,11 +1654,22 @@ export const ConsultationsPage: React.FC = () => {
                   </button>
                 )}
                 <button
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 text-white hover:bg-emerald-800 transition cursor-pointer"
+                  type="button"
+                  onClick={() => exportToPdf('printable-budget-doc', `Orcamento_${(viewingBudgetDoc as any).code || viewingBudgetDoc.id}`)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800 transition cursor-pointer"
+                  title="Baixar arquivo PDF do orçamento no dispositivo"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printElement('printable-budget-doc', `Orcamento_${(viewingBudgetDoc as any).code || viewingBudgetDoc.id}`)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition cursor-pointer"
+                  title="Imprimir documento em página A4 limpa"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Imprimir / PDF</span>
+                  <span>Imprimir A4</span>
                 </button>
                 <button
                   onClick={() => setViewingBudgetDoc(null)}
@@ -1646,13 +1681,13 @@ export const ConsultationsPage: React.FC = () => {
             </div>
 
             {/* Document sheet */}
-            <div className="space-y-6 text-slate-800">
+            <div id="printable-budget-doc" className="printable-document space-y-6 text-slate-800">
               <div className="text-center border-b border-slate-300 pb-4">
                 <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                  {user?.clinic_name || `${user?.first_name} ${user?.last_name}`}
+                  {user?.clinic_name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Clínica Veterinária'}
                 </h2>
                 <div className="text-xs font-semibold text-emerald-800 mt-0.5">
-                  Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                  Médico(a) Veterinário(a) • {user?.crmv ? `CRMV-${user.crmv_uf || 'SP'} ${user.crmv}` : 'CRMV não informado'}
                 </div>
                 {user?.phone && (
                   <div className="text-[11px] text-slate-500 mt-0.5">
@@ -1888,11 +1923,22 @@ export const ConsultationsPage: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => exportToPdf('printable-prescription-doc', `Receita_${viewingPrescriptionDoc.patient_name || 'Paciente'}`)}
                   className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-purple-700 hover:bg-purple-800 text-white transition cursor-pointer shadow-xs"
+                  title="Baixar arquivo PDF da receita no dispositivo"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => printElement('printable-prescription-doc', `Receita_${viewingPrescriptionDoc.patient_name || 'Paciente'}`)}
+                  className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white transition cursor-pointer shadow-xs"
+                  title="Imprimir documento em página A4 limpa"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Imprimir / PDF</span>
+                  <span>Imprimir A4</span>
                 </button>
 
                 <button
@@ -1915,14 +1961,14 @@ export const ConsultationsPage: React.FC = () => {
             </div>
 
             {/* Document sheet */}
-            <div className="space-y-6 text-slate-800 pt-2">
+            <div id="printable-prescription-doc" className="printable-document space-y-6 text-slate-800 pt-2">
               {/* Cabeçalho do Veterinário */}
               <div className="text-center border-b border-slate-300 pb-4">
                 <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                  {user?.clinic_name || `${user?.first_name} ${user?.last_name}`}
+                  {user?.clinic_name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Clínica Veterinária'}
                 </h2>
                 <div className="text-xs font-semibold text-purple-950 mt-0.5">
-                  Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                  Médico(a) Veterinário(a) • {user?.crmv ? `CRMV-${user.crmv_uf || 'SP'} ${user.crmv}` : 'CRMV não informado'}
                 </div>
                 {user?.phone && (
                   <div className="text-[11px] text-slate-500 mt-0.5">

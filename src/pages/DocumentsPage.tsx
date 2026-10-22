@@ -19,10 +19,12 @@ import {
   SlidersHorizontal,
   Layers,
   FileCheck2,
-  ArrowRight
+  ArrowRight,
+  Download
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { formatPatientCode, formatTutorCode } from '../utils/formatters';
+import { printElement, exportToPdf } from '../utils/printHelper';
 
 // Available Dynamic Variables for templates
 const TEMPLATE_VARIABLES = [
@@ -1399,11 +1401,22 @@ export const DocumentsPage: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 text-white hover:bg-emerald-800 transition cursor-pointer"
+                  type="button"
+                  onClick={() => exportToPdf('printable-document-template', `Documento_${viewingDoc.title || 'Veterinario'}`)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800 transition cursor-pointer"
+                  title="Baixar arquivo PDF do documento no dispositivo"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printElement('printable-document-template', `Documento_${viewingDoc.title || 'Veterinario'}`)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition cursor-pointer"
+                  title="Imprimir documento em folha A4 limpa"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Imprimir / Salvar PDF</span>
+                  <span>Imprimir A4</span>
                 </button>
 
                 <button
@@ -1416,14 +1429,14 @@ export const DocumentsPage: React.FC = () => {
             </div>
 
             {/* Document Printable Body */}
-            <div className="space-y-6 text-slate-800">
+            <div id="printable-document-template" className="printable-document space-y-6 text-slate-800">
               {/* Professional Vet Header */}
               <div className="text-center border-b border-slate-300 pb-4">
                 <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                  {user?.clinic_name || `${user?.first_name} ${user?.last_name || ''}`}
+                  {user?.clinic_name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Clínica Veterinária'}
                 </h2>
                 <div className="text-xs font-semibold text-emerald-800 mt-0.5">
-                  Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                  Médico(a) Veterinário(a) • {user?.crmv ? `CRMV-${user.crmv_uf || 'SP'} ${user.crmv}` : 'CRMV não informado'}
                 </div>
                 {user?.phone && (
                   <div className="text-[11px] text-slate-500 mt-0.5">

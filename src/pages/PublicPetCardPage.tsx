@@ -12,9 +12,11 @@ import {
   Award,
   Clock,
   CheckCircle2,
-  Syringe
+  Syringe,
+  Download
 } from 'lucide-react';
 import { Footer } from '../components/Footer';
+import { printElement, exportToPdf } from '../utils/printHelper';
 
 interface PublicCardData {
   id: number;
@@ -126,17 +128,29 @@ export const PublicPetCardPage: React.FC = () => {
             </div>
           </div>
 
-          <button
-            onClick={() => window.print()}
-            className="p-2 text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-xl shadow-2xs hover:bg-slate-50 transition cursor-pointer print:hidden"
-            title="Imprimir Carteira"
-          >
-            <Printer className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1.5 print:hidden">
+            <button
+              type="button"
+              onClick={() => exportToPdf('printable-public-pet-card', `Carteira_Vacinacao_${data?.name || 'Pet'}`)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-2xs transition cursor-pointer"
+              title="Baixar PDF da Carteira de Vacinação"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Baixar PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => printElement('printable-public-pet-card', `Carteira_Vacinacao_${data?.name || 'Pet'}`)}
+              className="p-2 text-slate-700 hover:text-slate-900 bg-white border border-slate-200 rounded-xl shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+              title="Imprimir Carteira Limpa"
+            >
+              <Printer className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Official Card Certificate Wrapper */}
-        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
+        <div id="printable-public-pet-card" className="printable-document bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
           {/* Header Banner */}
           <div className="bg-gradient-to-r from-emerald-800 to-teal-800 text-white p-6 relative overflow-hidden">
             <div className="absolute -right-6 -bottom-6 opacity-10">

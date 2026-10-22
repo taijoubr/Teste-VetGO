@@ -15,10 +15,12 @@ import {
   Trash2,
   CheckCircle2,
   AlertCircle,
-  QrCode
+  QrCode,
+  Download
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PixPaymentModal } from '../components/PixPaymentModal';
+import { printElement, exportToPdf } from '../utils/printHelper';
 
 export const FinancialPage: React.FC = () => {
   const { user } = useAuth();
@@ -52,6 +54,11 @@ export const FinancialPage: React.FC = () => {
     patient_id: 1,
     notes: ''
   });
+
+  const [settlingEntry, setSettlingEntry] = useState<FinancialEntry | null>(null);
+  const [settleMethod, setSettleMethod] = useState<PaymentMethod>('PIX');
+  const [settleDate, setSettleDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -104,6 +111,24 @@ export const FinancialPage: React.FC = () => {
 
     setShowModal(false);
     loadData();
+  };
+
+  const handleConfirmSettle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settlingEntry) return;
+    try {
+      await api.updateFinancialEntry(settlingEntry.id, {
+        status: 'PAGO',
+        payment_method: settleMethod,
+        date: settleDate,
+      });
+      setToastMessage(`Lançamento #${settlingEntry.id} liquidado com sucesso como PAGO!`);
+      setSettlingEntry(null);
+      loadData();
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err) {
+      console.error('Erro ao liquidar pagamento:', err);
+    }
   };
 
   const handleDeleteEntry = async (id: number) => {
@@ -335,12 +360,27 @@ export const FinancialPage: React.FC = () => {
                       {e.entry_type === 'RECEITA' ? '+ ' : '- '}
                       R$ {e.amount.toFixed(2)}
                     </td>
-                    <td className="px-4 py-3 text-right space-x-2">
+                    <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
+                      {e.status !== 'PAGO' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettlingEntry(e);
+                            setSettleMethod(e.payment_method || 'PIX');
+                            setSettleDate(new Date().toISOString().split('T')[0]);
+                          }}
+                          title="Dar Baixa / Marcar como Pago"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs cursor-pointer mr-1"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Dar Baixa</span>
+                        </button>
+                      )}
                       {e.entry_type === 'RECEITA' && (
                         <button
                           onClick={() => setSelectedReceipt(e)}
                           title="Gerar Recibo de Pagamento"
-                          className="p-1 text-slate-400 hover:text-emerald-700 transition cursor-pointer"
+                          className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
                         >
                           <Receipt className="w-4 h-4 inline" />
                         </button>
@@ -348,7 +388,7 @@ export const FinancialPage: React.FC = () => {
                       <button
                         onClick={() => handleDeleteEntry(e.id)}
                         title="Excluir Lançamento"
-                        className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4 inline" />
                       </button>
@@ -361,20 +401,127 @@ export const FinancialPage: React.FC = () => {
         )}
       </div>
 
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-xs font-bold border border-emerald-700 animate-fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Modal de Baixa de Pagamento */}
+      {settlingEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Dar Baixa no Pagamento</h3>
+                  <p className="text-[11px] text-slate-500">Confirmar recebimento de honorários</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSettlingEntry(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmSettle} className="space-y-4 text-xs">
+              <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200/80 space-y-1">
+                <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                  Descrição do Lançamento
+                </span>
+                <p className="font-semibold text-slate-900 text-sm">
+                  {settlingEntry.description || settlingEntry.category}
+                </p>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-slate-500">Valor Total:</span>
+                  <span className="text-lg font-black text-emerald-800 font-mono">
+                    R$ {settlingEntry.amount.toFixed(2)}
+                  </span>
+                </div>
+                {settlingEntry.tutor_name && (
+                  <p className="text-[11px] text-slate-600 pt-1 border-t border-emerald-200/50">
+                    <strong>Tutor:</strong> {settlingEntry.tutor_name}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Forma de Pagamento Recebida *</label>
+                <select
+                  value={settleMethod}
+                  onChange={(e) => setSettleMethod(e.target.value as PaymentMethod)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-medium focus:border-emerald-600 outline-none"
+                >
+                  <option value="PIX">PIX Instantâneo</option>
+                  <option value="DINHEIRO">Dinheiro / Espécie</option>
+                  <option value="CARTAO_DEBITO">Cartão de Débito</option>
+                  <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+                  <option value="TRANSFERENCIA">Transferência Bancária / TED</option>
+                  <option value="BOLETO">Boleto Bancário</option>
+                  <option value="FATURAMENTO_CLINICA">Faturamento / Repasse de Clínica</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Data da Liquidação / Recebimento *</label>
+                <input
+                  type="date"
+                  required
+                  value={settleDate}
+                  onChange={(e) => setSettleDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-medium focus:border-emerald-600 outline-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSettlingEntry(null)}
+                  className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-100 rounded-lg transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-700 text-white font-bold rounded-lg hover:bg-emerald-800 transition flex items-center gap-1.5 shadow-sm"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Confirmar Baixa (Pago)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Receipt Modal */}
       {selectedReceipt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6">
+        <div className="printable-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="printable-modal-box bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 print:hidden">
               <span className="text-xs font-bold text-slate-500 uppercase">
-                Recibo de Pagamento de Honorários Veterinários
+                Recibo Oficial de Honorários Veterinários
               </span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 text-white hover:bg-emerald-800"
+                  onClick={() => exportToPdf('printable-financial-receipt', `Recibo_${selectedReceipt.receipt_number || 'REC'}`)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 text-white hover:bg-emerald-800 transition flex items-center gap-1"
                 >
-                  <Printer className="w-3.5 h-3.5 inline mr-1" />
+                  <Download className="w-3.5 h-3.5" />
+                  Baixar PDF
+                </button>
+                <button
+                  onClick={() => printElement('printable-financial-receipt', `Recibo_${selectedReceipt.receipt_number || 'REC'}`)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition flex items-center gap-1"
+                >
+                  <Printer className="w-3.5 h-3.5" />
                   Imprimir
                 </button>
                 <button
@@ -387,7 +534,7 @@ export const FinancialPage: React.FC = () => {
             </div>
 
             {/* Printable Receipt Card */}
-            <div className="space-y-4 text-xs text-slate-800">
+            <div id="printable-financial-receipt" className="space-y-4 text-xs text-slate-800 bg-white p-2">
               <div className="text-center border-b border-slate-200 pb-3">
                 <h3 className="text-base font-black text-slate-900 uppercase">
                   {user?.clinic_name || `${user?.first_name} ${user?.last_name}`}
