@@ -1,0 +1,236 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Veterinarian or Admin user profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "crmv": { "type": "string", "maxLength": 64 },
+        "role": { "type": "string", "enum": ["admin", "vet", "staff"] },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "email", "name"]
+    },
+    "Clinic": {
+      "title": "Clinic",
+      "description": "Partner veterinary clinic or hospital",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "address": { "type": "string", "maxLength": 300 },
+        "contact_person": { "type": "string", "maxLength": 150 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "name"]
+    },
+    "Surgeon": {
+      "title": "Surgeon",
+      "description": "Partner surgeon veterinarian",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "crmv": { "type": "string", "maxLength": 64 },
+        "specialty": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 150 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "name"]
+    },
+    "Tutor": {
+      "title": "Tutor",
+      "description": "Pet owner/guardian",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 150 },
+        "cpf": { "type": "string", "maxLength": 30 },
+        "address": { "type": "string", "maxLength": 300 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "name"]
+    },
+    "Patient": {
+      "title": "Patient",
+      "description": "Animal patient",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "tutor_id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "species": { "type": "string", "maxLength": 100 },
+        "breed": { "type": "string", "maxLength": 100 },
+        "age": { "type": "string", "maxLength": 50 },
+        "gender": { "type": "string", "maxLength": 20 },
+        "weight": { "type": "string", "maxLength": 30 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "name", "species"]
+    },
+    "AnesthesiaRecord": {
+      "title": "AnesthesiaRecord",
+      "description": "Veterinary anesthesia procedure ficha",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "patient_id": { "type": "string", "maxLength": 128 },
+        "clinic_id": { "type": "string", "maxLength": 128 },
+        "surgeon_id": { "type": "string", "maxLength": 128 },
+        "procedure_name": { "type": "string", "maxLength": 300 },
+        "scheduled_time": { "type": "string", "maxLength": 64 },
+        "extubation_time": { "type": "string", "maxLength": 64 },
+        "asa_classification": { "type": "string", "maxLength": 20 },
+        "status": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "procedure_name"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Veterinary clinical or surgical appointment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "patient_id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "date": { "type": "string", "maxLength": 64 },
+        "time": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "title", "date"]
+    },
+    "FinancialEntry": {
+      "title": "FinancialEntry",
+      "description": "Income or expense financial record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "description": { "type": "string", "maxLength": 250 },
+        "amount": { "type": "number" },
+        "category": { "type": "string", "maxLength": 100 },
+        "payment_method": { "type": "string", "maxLength": 80 },
+        "status": { "type": "string", "maxLength": 50 },
+        "date": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "type", "description", "amount", "date"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Stock medicine or medical supply item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "current_stock": { "type": "number" },
+        "min_stock": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 30 },
+        "cost_price": { "type": "number" },
+        "sale_price": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "name", "category"]
+    },
+    "Consultation": {
+      "title": "Consultation",
+      "description": "Clinical consultation record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "patient_id": { "type": "string", "maxLength": 128 },
+        "chief_complaint": { "type": "string", "maxLength": 1000 },
+        "diagnosis": { "type": "string", "maxLength": 2000 },
+        "treatment": { "type": "string", "maxLength": 2000 },
+        "date": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "patient_id", "date"]
+    },
+    "DocumentRecord": {
+      "title": "DocumentRecord",
+      "description": "Veterinary clinical certificate, recipe or consent document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "type": { "type": "string", "maxLength": 100 },
+        "patient_name": { "type": "string", "maxLength": 200 },
+        "tutor_name": { "type": "string", "maxLength": 200 },
+        "created_at": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "title"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles for authenticated veterinarians"
+    },
+    "/clinics/{clinicId}": {
+      "schema": "Clinic",
+      "description": "Partner clinics managed by veterinarians"
+    },
+    "/surgeons/{surgeonId}": {
+      "schema": "Surgeon",
+      "description": "Partner surgeons managed by veterinarians"
+    },
+    "/tutors/{tutorId}": {
+      "schema": "Tutor",
+      "description": "Pet owners registered by veterinarians"
+    },
+    "/patients/{patientId}": {
+      "schema": "Patient",
+      "description": "Patients under veterinary care"
+    },
+    "/anesthesias/{anesthesiaId}": {
+      "schema": "AnesthesiaRecord",
+      "description": "Anesthetic records and procedure timelines"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Consultation and surgical appointments"
+    },
+    "/financial_entries/{entryId}": {
+      "schema": "FinancialEntry",
+      "description": "Financial ledger transactions and income/expenses"
+    },
+    "/inventory_items/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "Veterinary medicines, consumables and stock items"
+    },
+    "/consultations/{consultationId}": {
+      "schema": "Consultation",
+      "description": "Clinical consults and patient assessments"
+    },
+    "/documents/{docId}": {
+      "schema": "DocumentRecord",
+      "description": "Generated certificates, recipes and consent documents"
+    }
+  }
+}

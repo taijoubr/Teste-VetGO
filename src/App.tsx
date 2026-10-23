@@ -34,6 +34,14 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isAdmin, isLoading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Sincronização automática com a nuvem do Firebase Firestore (sempre no topo dos hooks)
+  useEffect(() => {
+    if (isAuthenticated && !isAdmin) {
+      api.syncWithFirebaseCloud().catch((err) => {
+        console.warn('Sincronização em nuvem Firebase inicial:', err);
+      });
+    }
+  }, [isAuthenticated, isAdmin]);
 
   if (isLoading) {
     return (
@@ -50,7 +58,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // O administrador não tem acesso ao app clínico; seu ambiente exclusivo é o Backoffice (/admin)
   if (isAdmin) {
     return <Navigate to="/admin" replace />;
   }

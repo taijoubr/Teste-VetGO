@@ -31,8 +31,11 @@ import {
   AlertCircle,
   Smartphone,
   Download,
+  Upload,
+  Database,
   Zap,
-  WifiOff
+  WifiOff,
+  RefreshCw
 } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { PushNotificationManager } from '../components/PushNotificationManager';
@@ -45,8 +48,31 @@ export const SettingsPage: React.FC = () => {
   const activeTab = searchParams.get('tab') || 'perfil';
 
   const [pwaInstalledSuccess, setPwaInstalledSuccess] = useState(false);
-
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
+  // Backup & Restauração de Dados
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [isRestoringBackup, setIsRestoringBackup] = useState(false);
+  const [backupFeedback, setBackupFeedback] = useState<{ text: string; success: boolean } | null>(null);
+  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
+
+  const handleSyncFirebase = async () => {
+    setIsSyncingFirebase(true);
+    try {
+      const res = await api.syncWithFirebaseCloud();
+      setBackupFeedback({
+        text: `Sincronização com Firebase concluída com sucesso! ${res.count} registros em nuvem atualizados.`,
+        success: true
+      });
+    } catch {
+      setBackupFeedback({
+        text: 'Falha momentânea ao sincronizar com o Firebase. Seus dados continuam preservados localmente.',
+        success: false
+      });
+    } finally {
+      setIsSyncingFirebase(false);
+    }
+  };
 
   // Specialty state
   const isAnesthesiaActive = Boolean(user?.specialty_anesthesia_enabled);
@@ -106,6 +132,60 @@ export const SettingsPage: React.FC = () => {
     await refreshUser();
     setSavedMessage('Alterações salvas com sucesso!');
     setTimeout(() => setSavedMessage(null), 3000);
+  };
+
+  const handleExportBackup = async () => {
+    try {
+      setIsExportingBackup(true);
+      const jsonStr = await api.exportFullBackup();
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateStr = new Date().toISOString().split('T')[0];
+      a.href = url;
+      a.download = `vetgo-backup-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setBackupFeedback({
+        text: 'Backup completo exportado com sucesso! O arquivo JSON com todos os seus tutores, pacientes, clínicas, cirurgiões e fichas foi salvo no seu dispositivo.',
+        success: true
+      });
+    } catch (err: any) {
+      setBackupFeedback({
+        text: `Erro ao exportar backup: ${err.message}`,
+        success: false
+      });
+    } finally {
+      setIsExportingBackup(false);
+      setTimeout(() => setBackupFeedback(null), 6000);
+    }
+  };
+
+  const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsRestoringBackup(true);
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const res = await api.restoreFullBackup(data);
+      setBackupFeedback({
+        text: res.message,
+        success: true
+      });
+      await refreshUser();
+    } catch (err: any) {
+      setBackupFeedback({
+        text: `Falha ao restaurar o backup: ${err.message}`,
+        success: false
+      });
+    } finally {
+      setIsRestoringBackup(false);
+      e.target.value = '';
+      setTimeout(() => setBackupFeedback(null), 8000);
+    }
   };
 
   const tabs = [
@@ -259,6 +339,8 @@ export const SettingsPage: React.FC = () => {
           </form>
         )}
 
+
+
         {/* TAB: CATÁLOGO DE SERVIÇOS, PROCEDIMENTOS & EXAMES */}
         {activeTab === 'servicos' && (
           <div className="space-y-6 max-w-3xl">
@@ -392,7 +474,7 @@ export const SettingsPage: React.FC = () => {
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className={`w-4 h-4 shrink-0 mt-0.5 ${isAnesthesiaActive ? 'text-emerald-700' : 'text-slate-400'}`} />
-                  <span><strong>Calculadora Anestésica</strong> de doses, MPA, indução, manutenção e taxa de infusão (CRI)</span>
+                  <span><strong>Registro Fármaco-Anestésico</strong> de doses manuais, MPA, indução, manutenção e recuperação</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className={`w-4 h-4 shrink-0 mt-0.5 ${isAnesthesiaActive ? 'text-emerald-700' : 'text-slate-400'}`} />

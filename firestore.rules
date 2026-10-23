@@ -1,0 +1,143 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened helper primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'p.nikolas3@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Health-check / test connection document
+    match /test/{docId} {
+      allow read: if isSignedIn() && isValidId(docId);
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidId(userId) && incoming().email is string && incoming().email.size() <= 128;
+      allow update: if (isOwner(userId) || isAdmin()) && isValidId(userId);
+      allow delete: if isAdmin();
+    }
+
+    // Partner Clinics
+    match /clinics/{clinicId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(clinicId) && incoming().userId == request.auth.uid && incoming().name is string && incoming().name.size() <= 200;
+      allow update: if isSignedIn() && isValidId(clinicId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(clinicId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    // Partner Surgeons
+    match /surgeons/{surgeonId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(surgeonId) && incoming().userId == request.auth.uid && incoming().name is string && incoming().name.size() <= 200;
+      allow update: if isSignedIn() && isValidId(surgeonId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(surgeonId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    // Tutors
+    match /tutors/{tutorId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(tutorId) && incoming().userId == request.auth.uid && incoming().name is string && incoming().name.size() <= 200;
+      allow update: if isSignedIn() && isValidId(tutorId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(tutorId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    // Patients
+    match /patients/{patientId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(patientId) && incoming().userId == request.auth.uid && incoming().name is string && incoming().name.size() <= 200;
+      allow update: if isSignedIn() && isValidId(patientId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(patientId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    // Anesthesia Records
+    match /anesthesias/{anesthesiaId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(anesthesiaId) && incoming().userId == request.auth.uid && incoming().procedure_name is string && incoming().procedure_name.size() <= 300;
+      allow update: if isSignedIn() && isValidId(anesthesiaId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(anesthesiaId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    // Appointments
+    match /appointments/{appointmentId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(appointmentId) && incoming().userId == request.auth.uid && incoming().title is string && incoming().title.size() <= 200;
+      allow update: if isSignedIn() && isValidId(appointmentId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(appointmentId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    // Financial Entries
+    match /financial_entries/{entryId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(entryId) && incoming().userId == request.auth.uid && incoming().description is string && incoming().description.size() <= 250;
+      allow update: if isSignedIn() && isValidId(entryId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(entryId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    // Inventory Items
+    match /inventory_items/{itemId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(itemId) && incoming().userId == request.auth.uid && incoming().name is string && incoming().name.size() <= 200;
+      allow update: if isSignedIn() && isValidId(itemId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(itemId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    // Consultations
+    match /consultations/{consultationId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(consultationId) && incoming().userId == request.auth.uid && incoming().patient_id is string;
+      allow update: if isSignedIn() && isValidId(consultationId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(consultationId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    // Documents
+    match /documents/{docId} {
+      allow get: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidId(docId) && incoming().userId == request.auth.uid && incoming().title is string && incoming().title.size() <= 200;
+      allow update: if isSignedIn() && isValidId(docId) && ((existing().userId == request.auth.uid && incoming().userId == existing().userId) || isAdmin());
+      allow delete: if (isSignedIn() && isValidId(docId) && existing().userId == request.auth.uid) || isAdmin();
+    }
+  }
+}

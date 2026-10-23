@@ -32,6 +32,7 @@ import {
 } from '../types';
 import { adminService } from './adminService';
 import { offlineStorage } from './offlineStorage';
+import { firestoreSync } from './firebase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -232,31 +233,13 @@ export const api = {
     this.setToken(data.access_token);
     // Preserva ou inicializa a preferência de especialidade (padrão true se não definido)
     const savedUserStr = localStorage.getItem('vetgo_current_user');
-    if (savedUserStr) {
-      try {
-        const parsed = JSON.parse(savedUserStr);
-        if (parsed.id !== data.user.id) {
-          const legacyKeys = [
-            'vetgo_financial',
-            'vetgo_clinics',
-            'vetgo_surgeons',
-            'vetgo_anesthesias',
-            'vetgo_inventory',
-            'vetgo_consultations',
-            'vetgo_documents',
-            'vetgo_services',
-          ];
-          legacyKeys.forEach((k) => localStorage.removeItem(k));
-        }
-      } catch {}
-    }
     let specialtyEnabled = typeof data.user.specialty_anesthesia_enabled === 'boolean'
       ? data.user.specialty_anesthesia_enabled
       : false;
     if (savedUserStr) {
       try {
         const parsed = JSON.parse(savedUserStr);
-        if (parsed.id === data.user.id && typeof parsed.specialty_anesthesia_enabled === 'boolean') {
+        if (typeof parsed.specialty_anesthesia_enabled === 'boolean') {
           specialtyEnabled = parsed.specialty_anesthesia_enabled;
         }
       } catch {}
@@ -306,27 +289,7 @@ export const api = {
   },
 
   async register(data: any): Promise<{ user: User; token: string; email_sent?: boolean; dev_code?: string }> {
-    // Limpa caches e estados anteriores para garantir isolamento absoluto da nova conta
-    const legacyKeys = [
-      'vetgo_financial',
-      'vetgo_clinics',
-      'vetgo_surgeons',
-      'vetgo_anesthesias',
-      'vetgo_inventory',
-      'vetgo_consultations',
-      'vetgo_documents',
-      'vetgo_services',
-      'vetgo_tutors',
-      'vetgo_patients',
-      'vetgo_appointments'
-    ];
-    legacyKeys.forEach((k) => localStorage.removeItem(k));
-    Object.keys(localStorage).forEach((key) => {
-      if (key.startsWith('vetgo_financial_u') || key.startsWith('vetgo_inventory_u') || key.startsWith('vetgo_offline_') || key.startsWith('offline_queue_')) {
-        localStorage.removeItem(key);
-      }
-    });
-
+    // Preserva dados locais existentes para evitar perdas em reinicializações da Vercel / serverless
     const res = await fetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -733,40 +696,59 @@ export const api = {
     return user?.id ? `vetgo_appointments_u${user.id}` : 'vetgo_appointments';
   },
 
-  // Tutors with reliable server sync, tombstone tracking, and local-first persistence
+  // Tutors with multi-key recovery, auto-resync, and indestructible local-first persistence
   async getTutors(): Promise<Tutor[]> {
     const key = this.getTutorsStorageKey();
     const deletedKey = `${key}_deleted`;
 
     let deletedIds = new Set<number>();
     try {
-      const delRaw = localStorage.getItem(deletedKey);
+      const delRaw = localStorage.getItem(deletedKey) || localStorage.getItem('vetgo_tutors_deleted');
       if (delRaw) {
         deletedIds = new Set(JSON.parse(delRaw).map(Number));
       }
     } catch {}
 
-    let localList: Tutor[] = [];
-    const local = localStorage.getItem(key);
-    if (local) {
+    // Resgata tutores de TODAS as chaves locais existentes (isolamento resiliente contra redeploys)
+    const localMap = new Map<number, Tutor>();
+    const tutorKeys = new Set<string>([key, 'vetgo_tutors']);
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('vetgo_tutors') && !k.endsWith('_deleted')) {
+          tutorKeys.add(k);
+        }
+      }
+    } catch {}
+
+    tutorKeys.forEach((k) => {
       try {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed)) {
-          localList = parsed.filter((t) => t && t.id && !deletedIds.has(Number(t.id)));
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((t) => {
+              if (t && t.id && !deletedIds.has(Number(t.id))) {
+                localMap.set(Number(t.id), t);
+              }
+            });
+          }
         }
       } catch {}
-    }
+    });
+
+    const localList = Array.from(localMap.values());
 
     try {
       const serverList = await this.request<Tutor[]>('/tutors');
       if (Array.isArray(serverList)) {
         const validServerList = serverList.filter((t) => t && t.id && !deletedIds.has(Number(t.id)));
         const map = new Map<number, Tutor>();
-        // 1. Inicia com a lista local (mantém cadastros recentes locais)
+        // 1. Inicia com a lista local completa
         for (const loc of localList) {
           if (loc && loc.id) map.set(Number(loc.id), loc);
         }
-        // 2. Mescla itens do servidor preservando contagens e campos atualizados
+        // 2. Mescla itens do servidor
         for (const srv of validServerList) {
           const srvId = Number(srv.id);
           const existing = map.get(srvId);
@@ -782,11 +764,25 @@ export const api = {
           return tB - tA;
         });
 
+        // Salva na chave do usuário e na chave mestre
         localStorage.setItem(key, JSON.stringify(merged));
+        localStorage.setItem('vetgo_tutors', JSON.stringify(merged));
+
+        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio (ex: Vercel cold deployment)
+        const serverIdSet = new Set(validServerList.map((s) => Number(s.id)));
+        for (const loc of localList) {
+          if (loc && loc.id && !serverIdSet.has(Number(loc.id))) {
+            this.request('/tutors', {
+              method: 'POST',
+              body: JSON.stringify(loc)
+            }).catch(() => {});
+          }
+        }
+
         return merged;
       }
     } catch (err) {
-      console.warn('Erro ao carregar tutores do servidor, usando persistência local:', err);
+      console.warn('Erro ao carregar tutores do servidor, usando persistência local blindada:', err);
     }
 
     return localList;
@@ -827,13 +823,17 @@ export const api = {
       }
     } catch {}
 
-    // Salva imediatamente no espelho local antes de qualquer requisição subsequente
+    // Salva imediatamente no espelho local antes de qualquer requisição subsequente em ambas as chaves
     try {
-      const local = localStorage.getItem(key);
-      const list = local ? JSON.parse(local) : [];
-      const nextList = [tutorItem, ...list.filter((t: any) => Number(t.id) !== Number(tutorId))];
+      const existing = await this.getTutors();
+      const nextList = [tutorItem, ...existing.filter((t) => Number(t.id) !== Number(tutorId))];
       localStorage.setItem(key, JSON.stringify(nextList));
+      localStorage.setItem('vetgo_tutors', JSON.stringify(nextList));
     } catch {}
+
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
+    firestoreSync.saveDoc('tutors', String(tutorItem.id), { ...tutorItem, userId }).catch(() => {});
 
     return tutorItem;
   },
@@ -858,11 +858,15 @@ export const api = {
     } as Tutor;
 
     try {
-      const local = localStorage.getItem(key);
-      const list = local ? JSON.parse(local) : [];
+      const list = await this.getTutors();
       const nextList = list.map((t: any) => Number(t.id) === Number(id) ? { ...t, ...mergedTutor } : t);
       localStorage.setItem(key, JSON.stringify(nextList));
+      localStorage.setItem('vetgo_tutors', JSON.stringify(nextList));
     } catch {}
+
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
+    firestoreSync.saveDoc('tutors', String(id), { ...mergedTutor, userId }).catch(() => {});
 
     return mergedTutor;
   },
@@ -878,18 +882,19 @@ export const api = {
       if (!delList.includes(Number(id))) {
         delList.push(Number(id));
         localStorage.setItem(deletedKey, JSON.stringify(delList));
+        localStorage.setItem('vetgo_tutors_deleted', JSON.stringify(delList));
       }
     } catch {}
 
-    // 2. Remove imediatamente da lista local
+    // 2. Remove imediatamente das listas locais
     try {
-      const local = localStorage.getItem(key);
-      if (local) {
-        const list = JSON.parse(local);
-        const nextList = list.filter((t: any) => Number(t.id) !== Number(id));
-        localStorage.setItem(key, JSON.stringify(nextList));
-      }
+      const list = await this.getTutors();
+      const nextList = list.filter((t: any) => Number(t.id) !== Number(id));
+      localStorage.setItem(key, JSON.stringify(nextList));
+      localStorage.setItem('vetgo_tutors', JSON.stringify(nextList));
     } catch {}
+
+    firestoreSync.deleteDoc('tutors', String(id)).catch(() => {});
 
     // 3. Notifica o servidor
     try {
@@ -905,12 +910,10 @@ export const api = {
       method: 'PATCH'
     });
     try {
-      const local = localStorage.getItem(key);
-      if (local) {
-        const list = JSON.parse(local);
-        const nextList = list.map((t: any) => Number(t.id) === Number(id) ? { ...t, is_active: res.is_active } : t);
-        localStorage.setItem(key, JSON.stringify(nextList));
-      }
+      const list = await this.getTutors();
+      const nextList = list.map((t: any) => Number(t.id) === Number(id) ? { ...t, is_active: res.is_active } : t);
+      localStorage.setItem(key, JSON.stringify(nextList));
+      localStorage.setItem('vetgo_tutors', JSON.stringify(nextList));
     } catch {}
     return res;
   },
@@ -928,29 +931,48 @@ export const api = {
     }
   },
 
-  // Patients with reliable server sync, tombstone tracking, and local-first persistence
+  // Patients with multi-key recovery, auto-resync, and indestructible local-first persistence
   async getPatients(tutorId?: number): Promise<Patient[]> {
     const key = this.getPatientsStorageKey();
     const deletedKey = `${key}_deleted`;
 
     let deletedIds = new Set<number>();
     try {
-      const delRaw = localStorage.getItem(deletedKey);
+      const delRaw = localStorage.getItem(deletedKey) || localStorage.getItem('vetgo_patients_deleted');
       if (delRaw) {
         deletedIds = new Set(JSON.parse(delRaw).map(Number));
       }
     } catch {}
 
-    let localList: Patient[] = [];
-    const local = localStorage.getItem(key);
-    if (local) {
+    // Resgata pacientes de TODAS as chaves locais existentes
+    const localMap = new Map<number, Patient>();
+    const patientKeys = new Set<string>([key, 'vetgo_patients']);
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('vetgo_patients') && !k.endsWith('_deleted')) {
+          patientKeys.add(k);
+        }
+      }
+    } catch {}
+
+    patientKeys.forEach((k) => {
       try {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed)) {
-          localList = parsed.filter((p) => p && p.id && !deletedIds.has(Number(p.id)));
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((p) => {
+              if (p && p.id && !deletedIds.has(Number(p.id))) {
+                localMap.set(Number(p.id), p);
+              }
+            });
+          }
         }
       } catch {}
-    }
+    });
+
+    const localList = Array.from(localMap.values());
 
     const query = tutorId ? `?tutor_id=${tutorId}` : '';
     try {
@@ -977,6 +999,19 @@ export const api = {
         });
 
         localStorage.setItem(key, JSON.stringify(merged));
+        localStorage.setItem('vetgo_patients', JSON.stringify(merged));
+
+        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio
+        const serverIdSet = new Set(validServerList.map((s) => Number(s.id)));
+        for (const loc of localList) {
+          if (loc && loc.id && !serverIdSet.has(Number(loc.id))) {
+            this.request('/patients', {
+              method: 'POST',
+              body: JSON.stringify(loc)
+            }).catch(() => {});
+          }
+        }
+
         if (tutorId) {
           return merged.filter((p) => Number(p.tutor_id) === Number(tutorId));
         }
@@ -1027,11 +1062,15 @@ export const api = {
 
     // Salva imediatamente no espelho local antes de qualquer requisição subsequente
     try {
-      const local = localStorage.getItem(key);
-      const list = local ? JSON.parse(local) : [];
-      const nextList = [patientItem, ...list.filter((p: any) => Number(p.id) !== Number(patientId))];
+      const existing = await this.getPatients();
+      const nextList = [patientItem, ...existing.filter((p) => Number(p.id) !== Number(patientId))];
       localStorage.setItem(key, JSON.stringify(nextList));
+      localStorage.setItem('vetgo_patients', JSON.stringify(nextList));
     } catch {}
+
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
+    firestoreSync.saveDoc('patients', String(patientItem.id), { ...patientItem, userId }).catch(() => {});
 
     return patientItem;
   },
@@ -1056,11 +1095,15 @@ export const api = {
     } as Patient;
 
     try {
-      const local = localStorage.getItem(key);
-      const list = local ? JSON.parse(local) : [];
+      const list = await this.getPatients();
       const nextList = list.map((p: any) => Number(p.id) === Number(id) ? { ...p, ...mergedPatient } : p);
       localStorage.setItem(key, JSON.stringify(nextList));
+      localStorage.setItem('vetgo_patients', JSON.stringify(nextList));
     } catch {}
+
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
+    firestoreSync.saveDoc('patients', String(id), { ...mergedPatient, userId }).catch(() => {});
 
     return mergedPatient;
   },
@@ -1076,18 +1119,19 @@ export const api = {
       if (!delList.includes(Number(id))) {
         delList.push(Number(id));
         localStorage.setItem(deletedKey, JSON.stringify(delList));
+        localStorage.setItem('vetgo_patients_deleted', JSON.stringify(delList));
       }
     } catch {}
 
     // 2. Remove imediatamente da lista local
     try {
-      const local = localStorage.getItem(key);
-      if (local) {
-        const list = JSON.parse(local);
-        const nextList = list.filter((p: any) => Number(p.id) !== Number(id));
-        localStorage.setItem(key, JSON.stringify(nextList));
-      }
+      const list = await this.getPatients();
+      const nextList = list.filter((p: any) => Number(p.id) !== Number(id));
+      localStorage.setItem(key, JSON.stringify(nextList));
+      localStorage.setItem('vetgo_patients', JSON.stringify(nextList));
     } catch {}
+
+    firestoreSync.deleteDoc('patients', String(id)).catch(() => {});
 
     // 3. Notifica o servidor
     try {
@@ -1146,20 +1190,50 @@ export const api = {
   },
 
   async getClinics(): Promise<Clinic[]> {
+    let localList: Clinic[] = [];
+    const local = localStorage.getItem('vetgo_clinics');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) localList = parsed;
+      } catch {}
+    }
+
     try {
       const serverList = await this.request<Clinic[]>('/clinics');
       if (Array.isArray(serverList)) {
-        localStorage.setItem('vetgo_clinics', JSON.stringify(serverList));
-        return serverList;
+        const map = new Map<number, Clinic>();
+        for (const loc of localList) {
+          if (loc && loc.id) map.set(Number(loc.id), loc);
+        }
+        for (const srv of serverList) {
+          if (srv && srv.id) {
+            const srvId = Number(srv.id);
+            const existing = map.get(srvId);
+            map.set(srvId, existing ? { ...existing, ...srv } : srv);
+          }
+        }
+        const merged = Array.from(map.values());
+        localStorage.setItem('vetgo_clinics', JSON.stringify(merged));
+
+        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio
+        const serverIdSet = new Set(serverList.map((s) => Number(s.id)));
+        for (const loc of localList) {
+          if (loc && loc.id && !serverIdSet.has(Number(loc.id))) {
+            this.request('/clinics', {
+              method: 'POST',
+              body: JSON.stringify(loc)
+            }).catch(() => {});
+          }
+        }
+
+        return merged;
       }
     } catch {
       // Fallback
     }
 
-    const local = localStorage.getItem('vetgo_clinics');
-    if (local) return JSON.parse(local);
-
-    return [];
+    return localList;
   },
 
   async getClinic(id: number): Promise<Clinic | null> {
@@ -1168,6 +1242,8 @@ export const api = {
   },
 
   async createClinic(data: Partial<Clinic>): Promise<Clinic> {
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
     try {
       const created = await this.request<Clinic>('/clinics', {
         method: 'POST',
@@ -1177,6 +1253,7 @@ export const api = {
         const clinics = await this.getClinics();
         const nextList = [created, ...clinics.filter((c) => c.id !== created.id)];
         localStorage.setItem('vetgo_clinics', JSON.stringify(nextList));
+        firestoreSync.saveDoc('clinics', String(created.id), { ...created, userId }).catch(() => {});
         return created;
       }
     } catch (e) {
@@ -1184,7 +1261,6 @@ export const api = {
     }
 
     const clinics = await this.getClinics();
-    const user = this.getCachedUser();
     const nextNum = clinics.length + 1;
     const code = data.code || `CL-${String(nextNum).padStart(2, '0')}`;
     const newClinic: Clinic = {
@@ -1220,10 +1296,13 @@ export const api = {
     };
     clinics.unshift(newClinic);
     localStorage.setItem('vetgo_clinics', JSON.stringify(clinics));
+    firestoreSync.saveDoc('clinics', String(newClinic.id), { ...newClinic, userId }).catch(() => {});
     return newClinic;
   },
 
   async updateClinic(id: number, updates: Partial<Clinic>): Promise<Clinic> {
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
     try {
       const updated = await this.request<Clinic>(`/clinics/${id}`, {
         method: 'PUT',
@@ -1233,6 +1312,7 @@ export const api = {
         const clinics = await this.getClinics();
         const nextList = clinics.map((c) => c.id === id ? { ...c, ...updated } : c);
         localStorage.setItem('vetgo_clinics', JSON.stringify(nextList));
+        firestoreSync.saveDoc('clinics', String(id), { ...updated, userId }).catch(() => {});
         return updated;
       }
     } catch (e) {
@@ -1243,6 +1323,7 @@ export const api = {
     if (idx === -1) throw new Error('Clínica não encontrada');
     clinics[idx] = { ...clinics[idx], ...updates };
     localStorage.setItem('vetgo_clinics', JSON.stringify(clinics));
+    firestoreSync.saveDoc('clinics', String(id), { ...clinics[idx], userId }).catch(() => {});
     return clinics[idx];
   },
 
@@ -1255,32 +1336,59 @@ export const api = {
     const clinics = await this.getClinics();
     const filtered = clinics.filter((c) => c.id !== id);
     localStorage.setItem('vetgo_clinics', JSON.stringify(filtered));
+    firestoreSync.deleteDoc('clinics', String(id)).catch(() => {});
   },
 
   // -----------------------------------------------------------------
   // REQUISITO 2: CIRURGIÕES (identificador PR-xx)
   // -----------------------------------------------------------------
   async getSurgeons(clinicId?: number): Promise<Surgeon[]> {
+    let localList: Surgeon[] = [];
+    const local = localStorage.getItem('vetgo_surgeons');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) localList = parsed;
+      } catch {}
+    }
+
+    let result = localList;
     try {
       const serverList = await this.request<Surgeon[]>('/surgeons');
       if (Array.isArray(serverList)) {
-        localStorage.setItem('vetgo_surgeons', JSON.stringify(serverList));
-        if (clinicId) return serverList.filter((s) => (s.clinic_ids && s.clinic_ids.includes(clinicId)) || (s as any).primary_clinic_id === clinicId);
-        return serverList;
+        const map = new Map<number, Surgeon>();
+        for (const loc of localList) {
+          if (loc && loc.id) map.set(Number(loc.id), loc);
+        }
+        for (const srv of serverList) {
+          if (srv && srv.id) {
+            const srvId = Number(srv.id);
+            const existing = map.get(srvId);
+            map.set(srvId, existing ? { ...existing, ...srv } : srv);
+          }
+        }
+        const merged = Array.from(map.values());
+        localStorage.setItem('vetgo_surgeons', JSON.stringify(merged));
+
+        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio
+        const serverIdSet = new Set(serverList.map((s) => Number(s.id)));
+        for (const loc of localList) {
+          if (loc && loc.id && !serverIdSet.has(Number(loc.id))) {
+            this.request('/surgeons', {
+              method: 'POST',
+              body: JSON.stringify(loc)
+            }).catch(() => {});
+          }
+        }
+
+        result = merged;
       }
     } catch {
       // Fallback
     }
 
-    const local = localStorage.getItem('vetgo_surgeons');
-    let list: Surgeon[] = [];
-
-    if (local) {
-      list = JSON.parse(local);
-    }
-
     if (clinicId) {
-      return [...list].sort((a, b) => {
+      return [...result].sort((a, b) => {
         const aLinked = (a.clinic_ids || []).includes(clinicId);
         const bLinked = (b.clinic_ids || []).includes(clinicId);
         if (aLinked && !bLinked) return -1;
@@ -1289,10 +1397,12 @@ export const api = {
       });
     }
 
-    return list;
+    return result;
   },
 
   async createSurgeon(data: Partial<Surgeon>): Promise<Surgeon> {
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
     try {
       const created = await this.request<Surgeon>('/surgeons', {
         method: 'POST',
@@ -1302,6 +1412,7 @@ export const api = {
         const list = await this.getSurgeons();
         const nextList = [created, ...list.filter((s) => s.id !== created.id)];
         localStorage.setItem('vetgo_surgeons', JSON.stringify(nextList));
+        firestoreSync.saveDoc('surgeons', String(created.id), { ...created, userId }).catch(() => {});
         return created;
       }
     } catch (e) {
@@ -1309,7 +1420,6 @@ export const api = {
     }
 
     const list = await this.getSurgeons();
-    const user = this.getCachedUser();
     const nextNum = list.length + 1;
     const code = data.code || `PR-${Math.floor(10 + Math.random() * 89)}`;
 
@@ -1330,10 +1440,13 @@ export const api = {
     };
     list.unshift(newSurgeon);
     localStorage.setItem('vetgo_surgeons', JSON.stringify(list));
+    firestoreSync.saveDoc('surgeons', String(newSurgeon.id), { ...newSurgeon, userId }).catch(() => {});
     return newSurgeon;
   },
 
   async updateSurgeon(id: number, updates: Partial<Surgeon>): Promise<Surgeon> {
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
     try {
       const updated = await this.request<Surgeon>(`/surgeons/${id}`, {
         method: 'PUT',
@@ -1343,6 +1456,7 @@ export const api = {
         const list = await this.getSurgeons();
         const nextList = list.map((s) => s.id === id ? { ...s, ...updated } : s);
         localStorage.setItem('vetgo_surgeons', JSON.stringify(nextList));
+        firestoreSync.saveDoc('surgeons', String(id), { ...updated, userId }).catch(() => {});
         return updated;
       }
     } catch (e) {
@@ -1353,6 +1467,7 @@ export const api = {
     if (idx === -1) throw new Error('Cirurgião não encontrado');
     list[idx] = { ...list[idx], ...updates };
     localStorage.setItem('vetgo_surgeons', JSON.stringify(list));
+    firestoreSync.saveDoc('surgeons', String(id), { ...list[idx], userId }).catch(() => {});
     return list[idx];
   },
 
@@ -1365,37 +1480,52 @@ export const api = {
     const list = await this.getSurgeons();
     const filtered = list.filter((s) => s.id !== id);
     localStorage.setItem('vetgo_surgeons', JSON.stringify(filtered));
+    firestoreSync.deleteDoc('surgeons', String(id)).catch(() => {});
   },
 
   // -----------------------------------------------------------------
   // REQUISITOS 4 a 17: MÓDULO DE ANESTESIOLOGIA VETERINÁRIA
   // -----------------------------------------------------------------
   async getAnesthesias(filters?: { clinicId?: number; patientId?: number }): Promise<AnesthesiaRecord[]> {
+    let localList: AnesthesiaRecord[] = [];
+    const local = localStorage.getItem("vetgo_anesthesias");
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) localList = parsed;
+      } catch {}
+    }
+
+    let result = localList;
     try {
       const serverList = await this.request<AnesthesiaRecord[]>("/anesthesias");
       if (Array.isArray(serverList)) {
-        localStorage.setItem("vetgo_anesthesias", JSON.stringify(serverList));
-        let list = serverList;
-        if (filters?.clinicId) list = list.filter((a) => a.clinic_id === filters.clinicId);
-        if (filters?.patientId) list = list.filter((a) => a.patient_id === filters.patientId);
-        return list;
+        const map = new Map<number, AnesthesiaRecord>();
+        for (const loc of localList) {
+          if (loc && loc.id) map.set(Number(loc.id), loc);
+        }
+        for (const srv of serverList) {
+          if (srv && srv.id) {
+            const srvId = Number(srv.id);
+            const existing = map.get(srvId);
+            map.set(srvId, existing ? { ...existing, ...srv } : srv);
+          }
+        }
+        const merged = Array.from(map.values());
+        localStorage.setItem("vetgo_anesthesias", JSON.stringify(merged));
+        result = merged;
       }
     } catch {
       // Fallback
     }
 
-    const local = localStorage.getItem("vetgo_anesthesias");
-    let list: AnesthesiaRecord[] = [];
-    if (local) {
-      list = JSON.parse(local);
-    }
     if (filters?.clinicId) {
-      list = list.filter((a) => a.clinic_id === filters.clinicId);
+      result = result.filter((a) => a.clinic_id === filters.clinicId);
     }
     if (filters?.patientId) {
-      list = list.filter((a) => a.patient_id === filters.patientId);
+      result = result.filter((a) => a.patient_id === filters.patientId);
     }
-    return list;
+    return result;
   },
 
   async getAnesthesia(id: number): Promise<AnesthesiaRecord | null> {
@@ -1472,6 +1602,8 @@ export const api = {
 
     list.unshift(newRecord);
     localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
+    const userId = user?.id ? String(user.id) : 'vet_1';
+    firestoreSync.saveDoc('anesthesias', String(newRecord.id), { ...newRecord, userId }).catch(() => {});
 
     // Atualiza contadores na clínica
     const clinics = await this.getClinics();
@@ -1486,6 +1618,8 @@ export const api = {
   },
 
   async updateAnesthesia(id: number, updates: Partial<AnesthesiaRecord>): Promise<AnesthesiaRecord> {
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
     try {
       await this.request<AnesthesiaRecord>(`/anesthesias/${id}`, {
         method: 'PUT',
@@ -1499,6 +1633,7 @@ export const api = {
     if (idx === -1) throw new Error('Anestesia não encontrada');
     list[idx] = { ...list[idx], ...updates };
     localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
+    firestoreSync.saveDoc('anesthesias', String(id), { ...list[idx], userId }).catch(() => {});
     return list[idx];
   },
 
@@ -1841,6 +1976,10 @@ export const api = {
       localStorage.setItem(key, JSON.stringify(nextList));
     } catch {}
 
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
+    firestoreSync.saveDoc('appointments', String(newAppt.id), { ...newAppt, userId }).catch(() => {});
+
     return newAppt;
   },
 
@@ -1869,6 +2008,10 @@ export const api = {
       const nextList = list.map((a: any) => Number(a.id) === Number(id) ? { ...a, ...mergedAppt } : a);
       localStorage.setItem(key, JSON.stringify(nextList));
     } catch {}
+
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : 'vet_1';
+    firestoreSync.saveDoc('appointments', String(id), { ...mergedAppt, userId }).catch(() => {});
 
     return mergedAppt;
   },
@@ -3098,5 +3241,160 @@ export const api = {
       } catch {}
     }
     return { message: 'Pedido excluído com sucesso.' };
+  },
+
+  // -----------------------------------------------------------------
+  // SEGURANÇA E BLINDAGEM DE DADOS: BACKUP & RESTAURAÇÃO COMPLETA
+  // -----------------------------------------------------------------
+  async exportFullBackup(): Promise<string> {
+    const [tutors, patients, appointments, clinics, surgeons, anesthesias, financial] = await Promise.all([
+      this.getTutors().catch(() => []),
+      this.getPatients().catch(() => []),
+      this.getAppointments().catch(() => []),
+      this.getClinics().catch(() => []),
+      this.getSurgeons().catch(() => []),
+      this.getAnesthesias().catch(() => []),
+      this.getFinancialEntries().catch(() => []),
+    ]);
+
+    const backup = {
+      app: 'VetGo Pro',
+      version: '2.0',
+      exported_at: new Date().toISOString(),
+      user: this.getCachedUser(),
+      tutors,
+      patients,
+      appointments,
+      clinics,
+      surgeons,
+      anesthesias,
+      financial,
+    };
+
+    return JSON.stringify(backup, null, 2);
+  },
+
+  async restoreFullBackup(backupData: any): Promise<{ success: boolean; message: string; counts: { tutors: number; patients: number; clinics: number; surgeons: number; anesthesias: number } }> {
+    if (!backupData || typeof backupData !== 'object') {
+      throw new Error('Arquivo de backup inválido ou corrompido.');
+    }
+
+    const user = this.getCachedUser();
+    const tutorsKey = this.getTutorsStorageKey();
+    const patientsKey = this.getPatientsStorageKey();
+    const appointmentsKey = this.getAppointmentsStorageKey();
+    const finKey = user?.id ? `vetgo_financial_u${user.id}` : 'vetgo_financial';
+
+    let tutorsCount = 0;
+    let patientsCount = 0;
+    let clinicsCount = 0;
+    let surgeonsCount = 0;
+    let anesthesiasCount = 0;
+
+    if (Array.isArray(backupData.tutors) && backupData.tutors.length > 0) {
+      localStorage.setItem(tutorsKey, JSON.stringify(backupData.tutors));
+      localStorage.setItem('vetgo_tutors', JSON.stringify(backupData.tutors));
+      tutorsCount = backupData.tutors.length;
+      for (const t of backupData.tutors) {
+        this.request('/tutors', { method: 'POST', body: JSON.stringify(t) }).catch(() => {});
+      }
+    }
+
+    if (Array.isArray(backupData.patients) && backupData.patients.length > 0) {
+      localStorage.setItem(patientsKey, JSON.stringify(backupData.patients));
+      localStorage.setItem('vetgo_patients', JSON.stringify(backupData.patients));
+      patientsCount = backupData.patients.length;
+      for (const p of backupData.patients) {
+        this.request('/patients', { method: 'POST', body: JSON.stringify(p) }).catch(() => {});
+      }
+    }
+
+    if (Array.isArray(backupData.clinics) && backupData.clinics.length > 0) {
+      localStorage.setItem('vetgo_clinics', JSON.stringify(backupData.clinics));
+      clinicsCount = backupData.clinics.length;
+      for (const c of backupData.clinics) {
+        this.request('/clinics', { method: 'POST', body: JSON.stringify(c) }).catch(() => {});
+      }
+    }
+
+    if (Array.isArray(backupData.surgeons) && backupData.surgeons.length > 0) {
+      localStorage.setItem('vetgo_surgeons', JSON.stringify(backupData.surgeons));
+      surgeonsCount = backupData.surgeons.length;
+      for (const s of backupData.surgeons) {
+        this.request('/surgeons', { method: 'POST', body: JSON.stringify(s) }).catch(() => {});
+      }
+    }
+
+    if (Array.isArray(backupData.anesthesias) && backupData.anesthesias.length > 0) {
+      localStorage.setItem('vetgo_anesthesias', JSON.stringify(backupData.anesthesias));
+      anesthesiasCount = backupData.anesthesias.length;
+    }
+
+    if (Array.isArray(backupData.financial) && backupData.financial.length > 0) {
+      localStorage.setItem(finKey, JSON.stringify(backupData.financial));
+      localStorage.setItem('vetgo_financial', JSON.stringify(backupData.financial));
+    }
+
+    if (Array.isArray(backupData.appointments) && backupData.appointments.length > 0) {
+      localStorage.setItem(appointmentsKey, JSON.stringify(backupData.appointments));
+      localStorage.setItem('vetgo_appointments', JSON.stringify(backupData.appointments));
+    }
+
+    return {
+      success: true,
+      message: `Backup restaurado com sucesso! ${tutorsCount} tutores, ${patientsCount} pacientes, ${clinicsCount} clínicas, ${surgeonsCount} cirurgiões e ${anesthesiasCount} fichas anestésicas foram recuperados.`,
+      counts: {
+        tutors: tutorsCount,
+        patients: patientsCount,
+        clinics: clinicsCount,
+        surgeons: surgeonsCount,
+        anesthesias: anesthesiasCount
+      }
+    };
+  },
+
+  // Sincronização automática em nuvem com Firebase Firestore
+  async syncWithFirebaseCloud(): Promise<{ synced: boolean; count: number }> {
+    const user = this.getCachedUser();
+    const userId = user?.id ? String(user.id) : undefined;
+    let totalSynced = 0;
+    try {
+      const collectionsMap: { col: string; key: string }[] = [
+        { col: 'clinics', key: 'vetgo_clinics' },
+        { col: 'surgeons', key: 'vetgo_surgeons' },
+        { col: 'tutors', key: this.getTutorsStorageKey() },
+        { col: 'patients', key: this.getPatientsStorageKey() },
+        { col: 'anesthesias', key: 'vetgo_anesthesias' },
+        { col: 'appointments', key: this.getAppointmentsStorageKey() },
+      ];
+
+      for (const item of collectionsMap) {
+        const cloudDocs = await firestoreSync.fetchCollection(item.col, userId);
+        if (cloudDocs && cloudDocs.length > 0) {
+          const raw = localStorage.getItem(item.key);
+          let localList: any[] = [];
+          if (raw) {
+            try { localList = JSON.parse(raw); } catch {}
+          }
+          const map = new Map<string, any>();
+          for (const l of localList) {
+            if (l && l.id) map.set(String(l.id), l);
+          }
+          for (const c of cloudDocs) {
+            if (c && c.id) {
+              const ex = map.get(String(c.id));
+              map.set(String(c.id), ex ? { ...c, ...ex } : c);
+            }
+          }
+          const merged = Array.from(map.values());
+          localStorage.setItem(item.key, JSON.stringify(merged));
+          totalSynced += cloudDocs.length;
+        }
+      }
+      return { synced: true, count: totalSynced };
+    } catch (e) {
+      console.warn('[Firebase Cloud Sync] Aviso durante sincronização:', e);
+      return { synced: false, count: totalSynced };
+    }
   }
 };

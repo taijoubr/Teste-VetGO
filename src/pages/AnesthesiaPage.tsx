@@ -50,32 +50,31 @@ interface StandardAnestheticDrug {
   category: 'Indução' | 'MPA / Sedação' | 'Opióide' | 'Analgésico' | 'Emergência / Antídoto' | 'Antibiótico' | 'Bloqueio Local';
   stage: 'MPA' | 'INDUCAO' | 'MANUTENCAO' | 'RECUPERACAO' | 'OUTRO';
   concentration: number; // mg/ml
-  standard_dose: number; // mg/kg
   route: 'IV' | 'IM' | 'SC' | 'INALATORIA' | 'LOCAL' | 'EPIDURAL' | 'OUTRA';
 }
 
 const STANDARD_ANESTHETIC_DRUGS: StandardAnestheticDrug[] = [
-  { name: 'Propofol', category: 'Indução', stage: 'INDUCAO', concentration: 10, standard_dose: 4.0, route: 'IV' },
-  { name: 'Cetamina 10%', category: 'Indução', stage: 'INDUCAO', concentration: 100, standard_dose: 5.0, route: 'IV' },
-  { name: 'Cetamina 5%', category: 'Indução', stage: 'INDUCAO', concentration: 50, standard_dose: 5.0, route: 'IV' },
-  { name: 'Midazolam', category: 'MPA / Sedação', stage: 'MPA', concentration: 5, standard_dose: 0.2, route: 'IV' },
-  { name: 'Diazepam', category: 'MPA / Sedação', stage: 'MPA', concentration: 5, standard_dose: 0.3, route: 'IV' },
-  { name: 'Dexmedetomidina', category: 'MPA / Sedação', stage: 'MPA', concentration: 0.5, standard_dose: 0.005, route: 'IM' },
-  { name: 'Acepromazina 0.2%', category: 'MPA / Sedação', stage: 'MPA', concentration: 2, standard_dose: 0.03, route: 'IM' },
-  { name: 'Xilazina 2%', category: 'MPA / Sedação', stage: 'MPA', concentration: 20, standard_dose: 0.5, route: 'IM' },
-  { name: 'Fentanil', category: 'Opióide', stage: 'INDUCAO', concentration: 0.05, standard_dose: 0.005, route: 'IV' },
-  { name: 'Morfina', category: 'Opióide', stage: 'MPA', concentration: 10, standard_dose: 0.3, route: 'IM' },
-  { name: 'Metadona', category: 'Opióide', stage: 'MPA', concentration: 10, standard_dose: 0.3, route: 'IM' },
-  { name: 'Tramadol', category: 'Analgésico', stage: 'MPA', concentration: 50, standard_dose: 3.0, route: 'SC' },
-  { name: 'Lidocaína 2% (sem vaso)', category: 'Bloqueio Local', stage: 'INDUCAO', concentration: 20, standard_dose: 1.0, route: 'IV' },
-  { name: 'Bupivacaína 0.5%', category: 'Bloqueio Local', stage: 'INDUCAO', concentration: 5, standard_dose: 1.0, route: 'LOCAL' },
-  { name: 'Atropina', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 0.5, standard_dose: 0.04, route: 'SC' },
-  { name: 'Adrenalina / Epinefrina', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 1.0, standard_dose: 0.02, route: 'IV' },
-  { name: 'Atipamezol', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 5.0, standard_dose: 0.02, route: 'IM' },
-  { name: 'Naloxona', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 0.4, standard_dose: 0.04, route: 'IV' },
-  { name: 'Cefazolina', category: 'Antibiótico', stage: 'MPA', concentration: 100, standard_dose: 25.0, route: 'IV' },
-  { name: 'Dipirona 50%', category: 'Analgésico', stage: 'RECUPERACAO', concentration: 500, standard_dose: 25.0, route: 'IV' },
-  { name: 'Meloxicam 0.2%', category: 'Analgésico', stage: 'RECUPERACAO', concentration: 2, standard_dose: 0.2, route: 'SC' }
+  { name: 'Propofol', category: 'Indução', stage: 'INDUCAO', concentration: 10, route: 'IV' },
+  { name: 'Cetamina 10%', category: 'Indução', stage: 'INDUCAO', concentration: 100, route: 'IV' },
+  { name: 'Cetamina 5%', category: 'Indução', stage: 'INDUCAO', concentration: 50, route: 'IV' },
+  { name: 'Midazolam', category: 'MPA / Sedação', stage: 'MPA', concentration: 5, route: 'IV' },
+  { name: 'Diazepam', category: 'MPA / Sedação', stage: 'MPA', concentration: 5, route: 'IV' },
+  { name: 'Dexmedetomidina', category: 'MPA / Sedação', stage: 'MPA', concentration: 0.5, route: 'IM' },
+  { name: 'Acepromazina 0.2%', category: 'MPA / Sedação', stage: 'MPA', concentration: 2, route: 'IM' },
+  { name: 'Xilazina 2%', category: 'MPA / Sedação', stage: 'MPA', concentration: 20, route: 'IM' },
+  { name: 'Fentanil', category: 'Opióide', stage: 'INDUCAO', concentration: 0.05, route: 'IV' },
+  { name: 'Morfina', category: 'Opióide', stage: 'MPA', concentration: 10, route: 'IM' },
+  { name: 'Metadona', category: 'Opióide', stage: 'MPA', concentration: 10, route: 'IM' },
+  { name: 'Tramadol', category: 'Analgésico', stage: 'MPA', concentration: 50, route: 'SC' },
+  { name: 'Lidocaína 2% (sem vaso)', category: 'Bloqueio Local', stage: 'INDUCAO', concentration: 20, route: 'IV' },
+  { name: 'Bupivacaína 0.5%', category: 'Bloqueio Local', stage: 'INDUCAO', concentration: 5, route: 'LOCAL' },
+  { name: 'Atropina', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 0.5, route: 'SC' },
+  { name: 'Adrenalina / Epinefrina', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 1.0, route: 'IV' },
+  { name: 'Atipamezol', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 5.0, route: 'IM' },
+  { name: 'Naloxona', category: 'Emergência / Antídoto', stage: 'OUTRO', concentration: 0.4, route: 'IV' },
+  { name: 'Cefazolina', category: 'Antibiótico', stage: 'MPA', concentration: 100, route: 'IV' },
+  { name: 'Dipirona 50%', category: 'Analgésico', stage: 'RECUPERACAO', concentration: 500, route: 'IV' },
+  { name: 'Meloxicam 0.2%', category: 'Analgésico', stage: 'RECUPERACAO', concentration: 2, route: 'SC' }
 ];
 
 const STANDARD_FLUID_OPTIONS = [
@@ -91,21 +90,19 @@ const STANDARD_FLUID_OPTIONS = [
 
 interface PostOpPreset {
   name: string;
-  dose: number;
   route: string;
-  concentration?: number;
 }
 
 const POST_OP_PRESETS: PostOpPreset[] = [
-  { name: 'Dipirona 50%', dose: 25, route: 'IV ou SC', concentration: 500 },
-  { name: 'Meloxicam 0.2%', dose: 0.1, route: 'SC', concentration: 2 },
-  { name: 'Tramadol 5%', dose: 3.0, route: 'SC ou IV lento', concentration: 50 },
-  { name: 'Cetoprofeno 1%', dose: 1.0, route: 'SC', concentration: 10 },
-  { name: 'Metadona 1%', dose: 0.2, route: 'SC ou IM', concentration: 10 },
-  { name: 'Morfina 1%', dose: 0.2, route: 'IM', concentration: 10 },
-  { name: 'Cefazolina', dose: 30, route: 'IV', concentration: 100 },
-  { name: 'Ondansetrona', dose: 0.5, route: 'IV', concentration: 2 },
-  { name: 'Omeprazol', dose: 1.0, route: 'IV', concentration: 4 }
+  { name: 'Dipirona 50%', route: 'IV ou SC' },
+  { name: 'Meloxicam 0.2%', route: 'SC' },
+  { name: 'Tramadol 5%', route: 'SC ou IV lento' },
+  { name: 'Cetoprofeno 1%', route: 'SC' },
+  { name: 'Metadona 1%', route: 'SC ou IM' },
+  { name: 'Morfina 1%', route: 'IM' },
+  { name: 'Cefazolina', route: 'IV' },
+  { name: 'Ondansetrona', route: 'IV' },
+  { name: 'Omeprazol', route: 'IV' }
 ];
 
 const getDeviceCurrentTime = (): string => {
@@ -440,26 +437,25 @@ export const AnesthesiaPage: React.FC = () => {
     e.preventDefault();
     if (!activeAnesthesia) return;
 
-    const currentWeight = activeAnesthesia.pre_evaluation.weight_kg || 10;
-    const calcVolume = (currentWeight * drugForm.dose_mg_kg) / drugForm.concentration_mg_ml;
+    const administeredVol = Number(drugForm.administered_volume) || 0;
     const nowRealTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     // Regra Requisito 20: Comprimido fracionado baixa inteiro
     const isTablet = drugForm.presentation_type === 'COMPRIMIDO';
-    const consumedStock = isTablet ? Math.ceil(drugForm.administered_volume) : drugForm.administered_volume;
+    const consumedStock = isTablet ? Math.ceil(administeredVol) : administeredVol;
 
     const drugItem: ProtocolDrugItem = {
       id: `drug-${Date.now()}`,
       stage: drugForm.stage,
       drug_name: drugForm.drug_name,
       presentation_type: drugForm.presentation_type,
-      dose_mg_kg: drugForm.dose_mg_kg,
-      concentration_mg_ml: drugForm.concentration_mg_ml,
+      dose_mg_kg: Number(drugForm.dose_mg_kg) || 0,
+      concentration_mg_ml: Number(drugForm.concentration_mg_ml) || 0,
       route: drugForm.route,
-      calculated_volume_ml: calcVolume,
-      administered_volume: drugForm.administered_volume,
+      calculated_volume_ml: administeredVol,
+      administered_volume: administeredVol,
       consumed_stock_units: consumedStock,
-      billed_units: drugForm.administered_volume,
+      billed_units: administeredVol,
       administered_at_time: nowRealTime,
       anesthetic_elapsed_time: formatTimer(elapsedSeconds)
     };
@@ -1100,7 +1096,7 @@ export const AnesthesiaPage: React.FC = () => {
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Fármacos e Medicamentos Administrados</h3>
                   <p className="text-xs text-slate-500">
-                    Cálculo automático: Volume = (Peso × Dose) / Concentração.
+                    Registro de dosagens e volumes administrados manualmente.
                   </p>
                 </div>
                 <button
@@ -1123,7 +1119,7 @@ export const AnesthesiaPage: React.FC = () => {
                         <span className="text-slate-400">({drug.route})</span>
                       </div>
                       <p className="text-slate-600">
-                        Dose: <strong>{drug.dose_mg_kg} mg/kg</strong> • Conc: <strong>{drug.concentration_mg_ml} mg/ml</strong> • Vol. Calculado: <strong>{drug.calculated_volume_ml.toFixed(2)} ml</strong>
+                        Dose: <strong>{drug.dose_mg_kg} mg/kg</strong> • Conc: <strong>{drug.concentration_mg_ml} mg/ml</strong>
                       </p>
                     </div>
 
@@ -2058,16 +2054,12 @@ export const AnesthesiaPage: React.FC = () => {
                   onChange={(e) => {
                     const sel = STANDARD_ANESTHETIC_DRUGS.find((d) => d.name === e.target.value);
                     if (sel) {
-                      const weight = Number(activeAnesthesia?.pre_evaluation?.weight_kg) || 10;
-                      const calculatedVol = Number(((weight * sel.standard_dose) / sel.concentration).toFixed(2));
                       setDrugForm({
                         ...drugForm,
                         drug_name: sel.name,
                         stage: sel.stage as any,
                         concentration_mg_ml: sel.concentration,
-                        dose_mg_kg: sel.standard_dose,
                         route: sel.route as any,
-                        administered_volume: calculatedVol > 0 ? calculatedVol : 1.0,
                         presentation_type: 'LIQUIDO_ML'
                       });
                     }
@@ -2078,34 +2070,34 @@ export const AnesthesiaPage: React.FC = () => {
                   <optgroup label="Indutores">
                     {STANDARD_ANESTHETIC_DRUGS.filter((d) => d.category === 'Indução').map((d) => (
                       <option key={d.name} value={d.name}>
-                        {d.name} ({d.concentration} mg/ml) — Dose: {d.standard_dose} mg/kg {d.route}
+                        {d.name} ({d.concentration} mg/ml) — Via: {d.route}
                       </option>
                     ))}
                   </optgroup>
                   <optgroup label="MPA & Sedativos">
                     {STANDARD_ANESTHETIC_DRUGS.filter((d) => d.category === 'MPA / Sedação').map((d) => (
                       <option key={d.name} value={d.name}>
-                        {d.name} ({d.concentration} mg/ml) — Dose: {d.standard_dose} mg/kg {d.route}
+                        {d.name} ({d.concentration} mg/ml) — Via: {d.route}
                       </option>
                     ))}
                   </optgroup>
                   <optgroup label="Opióides & Analgésicos">
                     {STANDARD_ANESTHETIC_DRUGS.filter((d) => d.category === 'Opióide' || d.category === 'Analgésico').map((d) => (
                       <option key={d.name} value={d.name}>
-                        {d.name} ({d.concentration} mg/ml) — Dose: {d.standard_dose} mg/kg {d.route}
+                        {d.name} ({d.concentration} mg/ml) — Via: {d.route}
                       </option>
                     ))}
                   </optgroup>
                   <optgroup label="Bloqueio & Emergência">
                     {STANDARD_ANESTHETIC_DRUGS.filter((d) => d.category === 'Bloqueio Local' || d.category === 'Antibiótico' || d.category === 'Emergência / Antídoto').map((d) => (
                       <option key={d.name} value={d.name}>
-                        {d.name} ({d.concentration} mg/ml) — {d.category}
+                        {d.name} ({d.concentration} mg/ml) — Via: {d.route}
                       </option>
                     ))}
                   </optgroup>
                 </select>
                 <p className="text-[10px] text-blue-700">
-                  Calcula automaticamente o volume pelo peso ({activeAnesthesia?.pre_evaluation?.weight_kg || 10} kg). Você pode alterar qualquer campo livremente.
+                  Insira a dose (mg/kg) e o volume administrado manualmente conforme seu protocolo clínico.
                 </p>
               </div>
 
@@ -2577,41 +2569,35 @@ export const AnesthesiaPage: React.FC = () => {
                   <span className="text-[10px] text-amber-700 font-bold">⚡ Adição rápida com 1 clique</span>
                 </div>
 
-                {/* Chips de Adição Rápida Calculados pelo Peso */}
-                <div className="flex flex-wrap gap-1.5 mb-2 bg-amber-50/70 p-2 rounded-lg border border-amber-200/80">
-                  {POST_OP_PRESETS.map((preset) => {
-                    const weight = Number(activeAnesthesia?.pre_evaluation?.weight_kg) || 10;
-                    const totalMg = (weight * preset.dose).toFixed(1);
-                    const totalMl = preset.concentration ? (Number(totalMg) / preset.concentration).toFixed(2) : null;
-                    return (
-                      <button
-                        key={preset.name}
-                        type="button"
-                        onClick={() => {
-                          const itemText = `${preset.name} (${totalMg} mg${totalMl ? ` • ${totalMl} ml` : ''} - ${preset.route})`;
-                          const current = recoveryForm.post_op_medications?.trim() || '';
-                          const updated = current ? `${current}; ${itemText}` : itemText;
-                          setRecoveryForm({ ...recoveryForm, post_op_medications: updated });
-                        }}
-                        className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer hover:scale-102"
-                        title={`Clique para incluir ${preset.name} calculado para ${weight}kg`}
-                      >
-                        <span>+ {preset.name}</span>
-                        <span className="text-[9px] text-amber-700 font-mono font-normal">({totalMg}mg)</span>
-                      </button>
-                    );
-                  })}
+                {/* Chips de Inserção Rápida Sem Cálculo Automático */}
+                <div className="flex flex-wrap gap-1.5 mb-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                  {POST_OP_PRESETS.map((preset) => (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      onClick={() => {
+                        const itemText = `${preset.name} (${preset.route})`;
+                        const current = recoveryForm.post_op_medications?.trim() || '';
+                        const updated = current ? `${current}; ${itemText}` : itemText;
+                        setRecoveryForm({ ...recoveryForm, post_op_medications: updated });
+                      }}
+                      className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                      title={`Inserir ${preset.name} para preenchimento manual`}
+                    >
+                      <span>+ {preset.name}</span>
+                    </button>
+                  ))}
                 </div>
 
                 <textarea
                   rows={2}
                   value={recoveryForm.post_op_medications}
                   onChange={(e) => setRecoveryForm({ ...recoveryForm, post_op_medications: e.target.value })}
-                  placeholder="Ex: Tramadol 30mg SC; Dipirona 250mg IV lento; Meloxicam 1mg SC SID..."
+                  placeholder="Ex: Tramadol (dose/via/horário); Dipirona (dose/via); Meloxicam..."
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Os botões acima calculam automaticamente as doses em mg e ml pelo peso do paciente ({activeAnesthesia?.pre_evaluation?.weight_kg || 10} kg). Você pode editar livremente o texto.
+                  Insira manualmente as doses, vias e horários das medicações pós-operatórias conforme sua prescrição médica.
                 </p>
               </div>
 
