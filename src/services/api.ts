@@ -28,7 +28,9 @@ import {
   ClinicalServiceItem,
   Supplier,
   SupplierOrder,
-  PatientExam
+  PatientExam,
+  PublicVetProfile,
+  PublicConsultationRequest
 } from '../types';
 import { adminService } from './adminService';
 import { offlineStorage } from './offlineStorage';
@@ -3396,5 +3398,35 @@ export const api = {
       console.warn('[Firebase Cloud Sync] Aviso durante sincronização:', e);
       return { synced: false, count: totalSynced };
     }
+  },
+
+  // -------------------------------------------------------------
+  // PÁGINA PÚBLICA DE DIVULGAÇÃO & SOLICITAÇÃO DE CONSULTA
+  // -------------------------------------------------------------
+  async getPublicVetProfile(slug: string): Promise<PublicVetProfile> {
+    const res = await fetch(`${API_BASE_URL}/public/vet/${encodeURIComponent(slug)}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Página do veterinário não encontrada ou inativa.');
+    }
+    return res.json();
+  },
+
+  async submitPublicConsultationRequest(
+    slug: string,
+    data: PublicConsultationRequest
+  ): Promise<{ success: boolean; appointment_id: number; message: string; whatsapp_url?: string }> {
+    const res = await fetch(`${API_BASE_URL}/public/vet/${encodeURIComponent(slug)}/request-consultation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Não foi possível registrar a solicitação. Verifique os dados e tente novamente.');
+    }
+    return res.json();
   }
 };

@@ -52,7 +52,14 @@
       "email_verified": true,
       "reset_password_code": null,
       "reset_password_expires_at": null,
-      "password": "Nikolas13"
+      "password": "Nikolas13",
+      "public_profile_enabled": true,
+      "public_slug": "veterinario-teste",
+      "bio": "Médico Veterinário dedicado ao atendimento volante e domiciliar com foco no bem-estar, prevenção e conforto do paciente no ambiente familiar.",
+      "service_regions": "São Paulo - SP (Zona Sul, Pinheiros, Itaim, Moema, Jardins e Morumbi)",
+      "opening_hours": "Segunda a Sexta: 08:00 às 19:00 | Sábados: 09:00 às 14:00",
+      "custom_welcome_message": "Olá Dr.! Gostaria de solicitar informações para agendamento de consulta veterinária.",
+      "instagram": "@vet.teste.oficial"
     }
   ],
   "tutors": [
@@ -117,6 +124,20 @@
       "is_active": true,
       "created_at": "2026-10-03T21:58:21.672Z",
       "updated_at": "2026-10-03T21:58:21.672Z"
+    },
+    {
+      "id": 4,
+      "code": "TUT-0004",
+      "owner_id": 2,
+      "name": "Carlos Eduardo",
+      "phone": "11988887777",
+      "whatsapp": "11988887777",
+      "email": null,
+      "address": "Moema - SP",
+      "notes": "Cadastrado automaticamente via solicitação na página pública de divulgação.",
+      "is_active": true,
+      "created_at": "2026-10-24T13:38:54.025Z",
+      "updated_at": "2026-10-24T13:38:54.025Z"
     }
   ],
   "patients": [
@@ -146,9 +167,43 @@
       "is_active": true,
       "created_at": "2026-10-03T21:58:21.834Z",
       "updated_at": "2026-10-17T06:43:47.294Z"
+    },
+    {
+      "id": 2,
+      "code": "PAC-0002",
+      "owner_id": 2,
+      "tutor_id": 4,
+      "name": "Pipoca",
+      "species": "Canina",
+      "breed": "Poodle",
+      "gender": "Macho",
+      "approximate_age": null,
+      "notes": "Cadastrado via página pública do veterinário. Motivo inicial: Vacinação e consulta de rotina",
+      "is_active": true,
+      "is_neutered": false,
+      "created_at": "2026-10-24T13:38:54.025Z",
+      "updated_at": "2026-10-24T13:38:54.025Z"
     }
   ],
-  "appointments": [],
+  "appointments": [
+    {
+      "id": 1,
+      "owner_id": 2,
+      "tutor_id": 4,
+      "patient_id": 2,
+      "clinic_id": null,
+      "clinic_name": null,
+      "date_time": "2026-10-24T09:00:00",
+      "duration_minutes": 60,
+      "address": "Moema - SP",
+      "appointment_type": "DOMICILIAR",
+      "status": "AGENDADO",
+      "reason": "[Solicitação Web Pública] Vacinação e consulta de rotina",
+      "notes": "Período preferido: MANHA | Pet: Pipoca (Canina - Poodle) | Tutor WhatsApp: 11988887777",
+      "created_at": "2026-10-24T13:38:54.025Z",
+      "updated_at": "2026-10-24T13:38:54.025Z"
+    }
+  ],
   "consultations": [
     {
       "patient_id": 1,

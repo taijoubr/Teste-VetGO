@@ -856,6 +856,15 @@ app.put('/api/v1/users/profile', requireAuth, (req, res) => {
     'pix_key',
     'pix_receiver_name',
     'pix_city',
+    'public_profile_enabled',
+    'public_slug',
+    'bio',
+    'service_regions',
+    'opening_hours',
+    'custom_welcome_message',
+    'instagram',
+    'address_display',
+    'public_layout_theme',
   ];
 
   for (const key of allowed) {
@@ -1539,6 +1548,214 @@ app.get('/api/v1/public/patients/:id/card', (req, res) => {
     clinic_name: vet?.clinic_name || 'Atendimento Volante & Domiciliar',
     vaccines,
     verified_at: new Date().toISOString(),
+  });
+});
+
+// -------------------------------------------------------------
+// PUBLIC VETERINARIAN PROFILE & CONSULTATION BOOKING (NO AUTH REQUIRED)
+// -------------------------------------------------------------
+app.get('/api/v1/public/vet/:slug', (req, res) => {
+  const slug = String(req.params.slug || '').trim().toLowerCase();
+  if (!slug) {
+    return res.status(400).json({ detail: 'Identificador do veterinário não fornecido.' });
+  }
+
+  // Find user by public_slug, or generated slug from first_name-last_name, or by ID
+  const user = (db.users || []).find((u) => {
+    if (u.role !== 'VET' && u.role !== 'ADMIN') return false;
+    const userSlug = (u.public_slug || `${u.first_name || ''}-${u.last_name || ''}`).toLowerCase().replace(/[^a-z0-9]/g, '-');
+    return (
+      (u.public_slug && u.public_slug.toLowerCase() === slug) ||
+      userSlug === slug ||
+      String(u.id) === slug
+    );
+  });
+
+  if (!user) {
+    return res.status(404).json({ detail: 'Página do veterinário não encontrada.' });
+  }
+
+  // Se o veterinário desativou explicitamente a página pública
+  if (user.public_profile_enabled === false) {
+    return res.status(403).json({ detail: 'A página de divulgação deste profissional está temporariamente indisponível.' });
+  }
+
+  // Serviços ativos do sistema ou do veterinário
+  const allServices = (db.services || []).filter((s) => s.is_active !== false);
+  const vetServices = allServices.map((s) => ({
+    id: s.id,
+    name: s.name,
+    category: s.category || 'PROCEDIMENTO',
+    price: s.price || 0,
+    description: s.description || '',
+  }));
+
+  // Clínicas parceiras vinculadas
+  const clinics = (db.clinics || [])
+    .filter((c) => Number(c.owner_id) === Number(user.id) && c.is_active !== false)
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      address: c.address || '',
+      neighborhood: c.neighborhood || '',
+      city: c.city || '',
+    }));
+
+  res.json({
+    id: user.id,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    clinic_name: user.clinic_name || 'Atendimento Veterinário Volante & Domiciliar',
+    crmv: user.crmv || '',
+    crmv_uf: user.crmv_uf || '',
+    logo_url: user.logo_url || null,
+    bio: user.bio || 'Atendimento veterinário personalizado com dedicação, respeito e rigor técnico no conforto do seu lar ou em clínicas parceiras.',
+    service_regions: user.service_regions || 'Atendimento domiciliar na região metropolitana e clínicas conveniadas.',
+    opening_hours: user.opening_hours || 'Segunda a Sexta: 08:00 às 19:00 | Sábados: 09:00 às 14:00',
+    whatsapp: user.whatsapp || user.phone || '',
+    phone: user.phone || user.whatsapp || '',
+    instagram: user.instagram || '',
+    address_display: user.address_display || '',
+    custom_welcome_message: user.custom_welcome_message || 'Olá! Gostaria de solicitar um atendimento para meu pet.',
+    active_specialties: user.active_specialties || ['Clínica Médica Geral', 'Atendimento Domiciliar', 'Prevenção'],
+    specialty_anesthesia_enabled: Boolean(user.specialty_anesthesia_enabled),
+    public_slug: user.public_slug || `${user.first_name || ''}-${user.last_name || ''}`.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+    public_layout_theme: user.public_layout_theme || 'CLASSIC',
+    services: vetServices,
+    clinics: clinics,
+  });
+});
+
+app.post('/api/v1/public/vet/:slug/request-consultation', (req, res) => {
+  const slug = String(req.params.slug || '').trim().toLowerCase();
+  const data = req.body || {};
+
+  const user = (db.users || []).find((u) => {
+    if (u.role !== 'VET' && u.role !== 'ADMIN') return false;
+    const userSlug = (u.public_slug || `${u.first_name || ''}-${u.last_name || ''}`).toLowerCase().replace(/[^a-z0-9]/g, '-');
+    return (
+      (u.public_slug && u.public_slug.toLowerCase() === slug) ||
+      userSlug === slug ||
+      String(u.id) === slug
+    );
+  });
+
+  if (!user) {
+    return res.status(404).json({ detail: 'Veterinário não encontrado.' });
+  }
+
+  if (!data.tutor_name || !data.tutor_phone || !data.pet_name || !data.reason) {
+    return res.status(400).json({ detail: 'Por favor, preencha nome do tutor, WhatsApp, nome do pet e motivo da consulta.' });
+  }
+
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  if (!Array.isArray(db.patients)) db.patients = [];
+  if (!Array.isArray(db.appointments)) db.appointments = [];
+
+  // Localiza ou cadastra o tutor
+  const cleanPhone = String(data.tutor_phone).replace(/\D/g, '');
+  let tutor = db.tutors.find((t) => Number(t.owner_id) === Number(user.id) && t.phone && t.phone.replace(/\D/g, '') === cleanPhone);
+
+  if (!tutor) {
+    const nextTutorId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => Number(t.id) || 0)) + 1 : 1;
+    tutor = {
+      id: nextTutorId,
+      code: `TUT-${String(nextTutorId).padStart(4, '0')}`,
+      owner_id: Number(user.id),
+      name: data.tutor_name.trim(),
+      phone: data.tutor_phone.trim(),
+      whatsapp: data.tutor_phone.trim(),
+      email: data.tutor_email?.trim() || null,
+      address: data.address?.trim() || null,
+      notes: 'Cadastrado automaticamente via solicitação na página pública de divulgação.',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    db.tutors.push(tutor);
+  }
+
+  // Localiza ou cadastra o paciente (pet)
+  let patient = db.patients.find((p) => Number(p.owner_id) === Number(user.id) && Number(p.tutor_id) === Number(tutor.id) && p.name.trim().toLowerCase() === data.pet_name.trim().toLowerCase());
+
+  if (!patient) {
+    const nextPatientId = db.patients.length > 0 ? Math.max(...db.patients.map((p) => Number(p.id) || 0)) + 1 : 1;
+    patient = {
+      id: nextPatientId,
+      code: `PAC-${String(nextPatientId).padStart(4, '0')}`,
+      owner_id: Number(user.id),
+      tutor_id: Number(tutor.id),
+      name: data.pet_name.trim(),
+      species: data.pet_species || 'Canina',
+      breed: data.pet_breed?.trim() || 'SRD / Não informada',
+      gender: 'Macho',
+      approximate_age: data.pet_age?.trim() || null,
+      notes: `Cadastrado via página pública do veterinário. Motivo inicial: ${data.reason}`,
+      is_active: true,
+      is_neutered: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    db.patients.push(patient);
+  }
+
+  // Cria o agendamento
+  const nextApptId = db.appointments.length > 0 ? Math.max(...db.appointments.map((a) => Number(a.id) || 0)) + 1 : 1;
+  const requestedDate = data.preferred_date || new Date().toISOString().split('T')[0];
+  const timeMap = {
+    MANHA: '09:00',
+    TARDE: '14:30',
+    NOITE: '18:30',
+    QUALQUER: '10:00',
+  };
+  const chosenTime = timeMap[data.preferred_period as keyof typeof timeMap] || '10:00';
+  const fullDateTime = `${requestedDate}T${chosenTime}:00`;
+
+  const newAppt = {
+    id: nextApptId,
+    owner_id: Number(user.id),
+    tutor_id: Number(tutor.id),
+    patient_id: Number(patient.id),
+    clinic_id: null,
+    clinic_name: null,
+    date_time: fullDateTime,
+    duration_minutes: 60,
+    address: data.address || null,
+    appointment_type: data.consultation_type || 'DOMICILIAR',
+    status: 'AGENDADO',
+    reason: `[Solicitação Web Pública] ${data.reason}`,
+    notes: `Período preferido: ${data.preferred_period || 'Qualquer'} | Pet: ${data.pet_name} (${data.pet_species || 'Canina'}${data.pet_breed ? ` - ${data.pet_breed}` : ''}) | Tutor WhatsApp: ${data.tutor_phone}`,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  db.appointments.push(newAppt);
+  saveDB(db);
+
+  // Formata a URL do WhatsApp para envio direto pelo tutor
+  const vetRawPhone = (user.whatsapp || user.phone || '').replace(/\D/g, '');
+  const vetNumber = vetRawPhone.startsWith('55') ? vetRawPhone : `55${vetRawPhone}`;
+  const periodLabel = data.preferred_period === 'MANHA' ? 'Manhã' : data.preferred_period === 'TARDE' ? 'Tarde' : data.preferred_period === 'NOITE' ? 'Noite' : 'Qualquer horário';
+  
+  const waMessage = 
+    `Olá Dra./Dr. ${user.first_name}! 👋\n` +
+    `Acabei de solicitar uma consulta através da sua página no Vetgo:\n\n` +
+    `🐾 *Pet:* ${data.pet_name} (${data.pet_species || 'Canina'}${data.pet_breed ? ` - ${data.pet_breed}` : ''})\n` +
+    `👤 *Tutor:* ${data.tutor_name}\n` +
+    `📍 *Modalidade:* ${data.consultation_type === 'DOMICILIAR' ? 'Atendimento em Domicílio' : 'Em Clínica / Consultório'}\n` +
+    (data.address ? `🏠 *Endereço/Região:* ${data.address}\n` : '') +
+    `📅 *Data desejada:* ${requestedDate} (${periodLabel})\n` +
+    `🩺 *Motivo:* ${data.reason}\n\n` +
+    `Podemos confirmar o agendamento?`;
+
+  const encodedWa = encodeURIComponent(waMessage);
+  const whatsappUrl = vetRawPhone ? `https://wa.me/${vetNumber}?text=${encodedWa}` : null;
+
+  res.status(201).json({
+    success: true,
+    appointment_id: newAppt.id,
+    message: 'Solicitação registrada com sucesso! Você também pode confirmar diretamente com o profissional no WhatsApp.',
+    whatsapp_url: whatsappUrl,
   });
 });
 
@@ -3928,7 +4145,7 @@ async function startServer() {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR !== 'true',
+        hmr: false,
       },
       appType: 'spa',
     });

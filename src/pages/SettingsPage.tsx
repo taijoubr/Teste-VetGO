@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
 import {
@@ -17,6 +17,7 @@ import {
   UserCheck,
   Stethoscope,
   HeartPulse,
+  Heart,
   Sliders,
   Check,
   Info,
@@ -35,8 +36,12 @@ import {
   Database,
   Zap,
   WifiOff,
-  RefreshCw
+  RefreshCw,
+  Globe,
+  Copy,
+  Share2
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useSearchParams, Link } from 'react-router-dom';
 import { PushNotificationManager } from '../components/PushNotificationManager';
 import { usePWAInstall } from '../hooks/usePWAInstall';
@@ -121,6 +126,50 @@ export const SettingsPage: React.FC = () => {
     pix_city: user?.pix_city || 'SAO PAULO',
   });
 
+  // Página Pública de Divulgação State
+  const defaultSlug = (user?.public_slug || `${user?.first_name || ''}-${user?.last_name || ''}`).toLowerCase().replace(/[^a-z0-9]/g, '-');
+  const [publicForm, setPublicForm] = useState({
+    public_profile_enabled: user?.public_profile_enabled !== false,
+    public_slug: user?.public_slug || defaultSlug,
+    bio: user?.bio || 'Médico(a) Veterinário(a) dedicado(a) ao atendimento personalizado, preventivo e domiciliar, com foco no bem-estar e conforto do seu pet.',
+    service_regions: user?.service_regions || 'Atendimento domiciliar na cidade e região metropolitana, além de clínicas parceiras.',
+    opening_hours: user?.opening_hours || 'Segunda a Sexta: 08:00 às 19:00 | Sábados: 09:00 às 14:00',
+    custom_welcome_message: user?.custom_welcome_message || 'Olá Dr(a)! Gostaria de informações para agendar uma consulta para meu pet.',
+    instagram: user?.instagram || '',
+    address_display: user?.address_display || '',
+    public_layout_theme: (user?.public_layout_theme || 'CLASSIC') as 'CLASSIC' | 'BIOLINK' | 'HOME_CARE',
+  });
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [isSavingPublicPage, setIsSavingPublicPage] = useState(false);
+
+  useEffect(() => {
+    const fullPublicUrl = `${window.location.origin}/vet/${publicForm.public_slug}`;
+    QRCode.toDataURL(fullPublicUrl, { width: 300, margin: 2 })
+      .then((url) => setQrCodeDataUrl(url))
+      .catch(() => {});
+  }, [publicForm.public_slug]);
+
+  const handleSavePublicPage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingPublicPage(true);
+    try {
+      const cleanSlug = publicForm.public_slug.trim().toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+      await api.updateUserProfile({
+        ...publicForm,
+        public_slug: cleanSlug
+      });
+      await refreshUser();
+      setPublicForm((prev) => ({ ...prev, public_slug: cleanSlug }));
+      setSavedMessage('Página de divulgação atualizada com sucesso!');
+      setTimeout(() => setSavedMessage(null), 3500);
+    } catch {
+      setSavedMessage('Erro ao atualizar página de divulgação.');
+    } finally {
+      setIsSavingPublicPage(false);
+    }
+  };
+
   // Specialty Request State
   const [requestedSpecialty, setRequestedSpecialty] = useState('');
   const [specialtyDetails, setSpecialtyDetails] = useState('');
@@ -190,6 +239,7 @@ export const SettingsPage: React.FC = () => {
 
   const tabs = [
     { id: 'perfil', name: 'Perfil Pessoal', icon: UserIcon },
+    { id: 'pagina_publica', name: 'Página de Divulgação (Link Público)', icon: Globe },
     { id: 'servicos', name: 'Serviços & Exames', icon: Stethoscope },
     { id: 'especialidades', name: 'Especialidades & Módulos', icon: Activity },
     { id: 'profissional', name: 'Dados Profissionais', icon: Shield },
@@ -337,6 +387,393 @@ export const SettingsPage: React.FC = () => {
               Salvar Alterações
             </button>
           </form>
+        )}
+
+        {/* TAB: PÁGINA PÚBLICA DE DIVULGAÇÃO & AGENDAMENTO */}
+        {activeTab === 'pagina_publica' && (
+          <div className="space-y-6 max-w-3xl">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Globe className="w-5 h-5 text-emerald-700" />
+                Página Profissional de Divulgação (Link Público)
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Seu link oficial na web para divulgar no Instagram, WhatsApp e cartões de visita. Tutores podem consultar seus serviços, áreas de atendimento e solicitar agendamentos diretamente para você.
+              </p>
+            </div>
+
+            {/* Link Preview & Quick Actions Card */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                      Status da Página:
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        publicForm.public_profile_enabled
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : 'bg-slate-100 text-slate-600 border border-slate-200'
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          publicForm.public_profile_enabled ? 'bg-emerald-500' : 'bg-slate-400'
+                        }`}
+                      />
+                      {publicForm.public_profile_enabled ? 'Ativa & Acessível na Web' : 'Temporariamente Pausada'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Qualquer tutor ou clínica pode acessar seu perfil sem precisar de cadastro prévio.
+                  </p>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={publicForm.public_profile_enabled}
+                    onChange={(e) =>
+                      setPublicForm({ ...publicForm, public_profile_enabled: e.target.checked })
+                    }
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
+              {/* Link Box */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Endereço Web da sua Página Oficial:
+                </label>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="flex-1 flex items-center px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-700 overflow-hidden">
+                    <Globe className="w-3.5 h-3.5 text-emerald-600 mr-2 shrink-0" />
+                    <span className="truncate">
+                      {window.location.origin}/vet/{publicForm.public_slug || 'seunome'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fullUrl = `${window.location.origin}/vet/${publicForm.public_slug}`;
+                        navigator.clipboard.writeText(fullUrl);
+                        setCopiedLink(true);
+                        setTimeout(() => setCopiedLink(false), 2500);
+                      }}
+                      className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLink ? 'Copiado!' : 'Copiar Link'}</span>
+                    </button>
+
+                    <Link
+                      to={`/vet/${publicForm.public_slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl border border-emerald-700 text-emerald-800 hover:bg-emerald-50 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Visualizar</span>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+
+              {/* QR Code Section */}
+              {qrCodeDataUrl && (
+                <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center gap-4 bg-slate-50/80 p-3.5 rounded-xl">
+                  <img
+                    src={qrCodeDataUrl}
+                    alt="QR Code da Página Pública"
+                    className="w-24 h-24 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs shrink-0"
+                  />
+                  <div className="flex-1 text-center sm:text-left space-y-1">
+                    <h4 className="text-xs font-bold text-slate-900 flex items-center justify-center sm:justify-start gap-1.5">
+                      <QrCode className="w-3.5 h-3.5 text-emerald-700" />
+                      QR Code para Cartão de Visitas e Panfletos
+                    </h4>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Imprima este código em seus materiais físicos ou use nos stories do Instagram para que clientes apontem a câmera e abram sua página direto no celular.
+                    </p>
+                    <div className="pt-1">
+                      <a
+                        href={qrCodeDataUrl}
+                        download={`qrcode-vetgo-${publicForm.public_slug}.png`}
+                        className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-[11px] font-bold transition"
+                      >
+                        <Download className="w-3 h-3 text-slate-500" />
+                        <span>Baixar Imagem do QR Code (.PNG)</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Customization Form */}
+            <form onSubmit={handleSavePublicPage} className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-100 pb-2">
+                Personalização dos Dados da Página
+              </h4>
+
+              {/* Seletor Visual dos 3 Modelos de Layout */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-800">
+                    Escolha o Modelo de Layout da sua Página Pública:
+                  </label>
+                  <span className="text-[11px] text-emerald-700 font-medium">
+                    3 Modelos Disponíveis
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Modelo 1: Clínico Clássico */}
+                  <button
+                    type="button"
+                    onClick={() => setPublicForm({ ...publicForm, public_layout_theme: 'CLASSIC' })}
+                    className={`p-3.5 rounded-2xl border text-left transition relative cursor-pointer flex flex-col justify-between ${
+                      publicForm.public_layout_theme === 'CLASSIC'
+                        ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-600/20 shadow-xs'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                          <Stethoscope className="w-4 h-4" />
+                        </div>
+                        {publicForm.public_layout_theme === 'CLASSIC' ? (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Selecionado
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-slate-400">Clique para ativar</span>
+                        )}
+                      </div>
+                      <h5 className="text-xs font-bold text-slate-900">1. Clínico Clássico</h5>
+                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                        Institucional e sóbrio. Apresentação médica, bio completa, grade de serviços e formulário ao final.
+                      </p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] font-semibold text-slate-600">
+                      Ideal para: Clínicas, consultórios e autoridade médica
+                    </div>
+                  </button>
+
+                  {/* Modelo 2: BioLink Mobile-First */}
+                  <button
+                    type="button"
+                    onClick={() => setPublicForm({ ...publicForm, public_layout_theme: 'BIOLINK' })}
+                    className={`p-3.5 rounded-2xl border text-left transition relative cursor-pointer flex flex-col justify-between ${
+                      publicForm.public_layout_theme === 'BIOLINK'
+                        ? 'border-purple-600 bg-purple-50/70 ring-2 ring-purple-600/20 shadow-xs'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-800 flex items-center justify-center">
+                          <Smartphone className="w-4 h-4" />
+                        </div>
+                        {publicForm.public_layout_theme === 'BIOLINK' ? (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Selecionado
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-slate-400">Clique para ativar</span>
+                        )}
+                      </div>
+                      <h5 className="text-xs font-bold text-slate-900">2. BioLink Mobile-First</h5>
+                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                        Estilo link da bio do Instagram. Cartões verticais de ação rápida e modal limpo de agendamento.
+                      </p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] font-semibold text-slate-600">
+                      Ideal para: Instagram, TikTok e WhatsApp
+                    </div>
+                  </button>
+
+                  {/* Modelo 3: Visita Domiciliar */}
+                  <button
+                    type="button"
+                    onClick={() => setPublicForm({ ...publicForm, public_layout_theme: 'HOME_CARE' })}
+                    className={`p-3.5 rounded-2xl border text-left transition relative cursor-pointer flex flex-col justify-between ${
+                      publicForm.public_layout_theme === 'HOME_CARE'
+                        ? 'border-amber-600 bg-amber-50/70 ring-2 ring-amber-600/20 shadow-xs'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                          <Heart className="w-4 h-4" />
+                        </div>
+                        {publicForm.public_layout_theme === 'HOME_CARE' ? (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Selecionado
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-slate-400">Clique para ativar</span>
+                        )}
+                      </div>
+                      <h5 className="text-xs font-bold text-slate-900">3. Visita Domiciliar</h5>
+                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                        Acolhedor e focado no bem-estar em casa. Destaque para zero estresse do pet e agendamento prático.
+                      </p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] font-semibold text-slate-600">
+                      Ideal para: Atendimento volante e domiciliar
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Slug Customization */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Personalizar Final do Link (Slug) *
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 flex items-center border border-slate-300 rounded-xl overflow-hidden focus-within:border-emerald-600 focus-within:ring-1 focus-within:ring-emerald-600">
+                    <span className="bg-slate-100 px-3 py-2 text-xs font-mono text-slate-500 border-r border-slate-200 select-none">
+                      /vet/
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      placeholder="dr-carlos-silva"
+                      value={publicForm.public_slug}
+                      onChange={(e) =>
+                        setPublicForm({
+                          ...publicForm,
+                          public_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')
+                        })
+                      }
+                      className="w-full px-3 py-2 text-xs sm:text-sm outline-none font-mono text-slate-900 bg-white"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const suggested = `${user?.first_name || ''}-${user?.last_name || ''}`
+                        .toLowerCase()
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/[^a-z0-9]/g, '-');
+                      setPublicForm({ ...publicForm, public_slug: suggested });
+                    }}
+                    className="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-600 text-xs font-medium transition whitespace-nowrap cursor-pointer"
+                  >
+                    Sugerir do meu nome
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Use letras minúsculas, números e traços. Ex: <code className="text-emerald-700">dr-carlos</code> ou <code className="text-emerald-700">dra-carolina-mendes</code>
+                </p>
+              </div>
+
+              {/* Bio & Apresentação */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Apresentação & Sobre Você (Bio)
+                </label>
+                <textarea
+                  rows={4}
+                  value={publicForm.bio}
+                  onChange={(e) => setPublicForm({ ...publicForm, bio: e.target.value })}
+                  placeholder="Escreva sobre sua formação, experiência clínica, valores no atendimento e como cuida dos pacientes..."
+                  className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              {/* Regiões e Horários */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Regiões / Bairros Atendidos
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: São Paulo - Zona Sul, Pinheiros, Moema"
+                    value={publicForm.service_regions}
+                    onChange={(e) => setPublicForm({ ...publicForm, service_regions: e.target.value })}
+                    className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl outline-none focus:border-emerald-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Horários de Atendimento & Disponibilidade
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Seg a Sex: 08h às 19h | Sáb: 09h às 14h"
+                    value={publicForm.opening_hours}
+                    onChange={(e) => setPublicForm({ ...publicForm, opening_hours: e.target.value })}
+                    className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl outline-none focus:border-emerald-600"
+                  />
+                </div>
+              </div>
+
+              {/* Mensagem Padrão do WhatsApp & Instagram */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Instagram Profissional (@)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: @dra.carolinamendes.vet"
+                    value={publicForm.instagram}
+                    onChange={(e) => setPublicForm({ ...publicForm, instagram: e.target.value })}
+                    className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl outline-none focus:border-emerald-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Mensagem de Início de Conversa (WhatsApp)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Olá Dra! Gostaria de informações para agendar uma consulta."
+                    value={publicForm.custom_welcome_message}
+                    onChange={(e) =>
+                      setPublicForm({ ...publicForm, custom_welcome_message: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl outline-none focus:border-emerald-600"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isSavingPublicPage}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white transition flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  {isSavingPublicPage ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Salvando dados...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Salvar Configurações da Página Pública</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         )}
 
 

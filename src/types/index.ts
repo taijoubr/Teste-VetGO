@@ -28,6 +28,68 @@ export interface User {
   pix_key?: string;
   pix_receiver_name?: string;
   pix_city?: string;
+  // Página Pública de Divulgação & Agendamento
+  public_profile_enabled?: boolean;
+  public_slug?: string;
+  bio?: string;
+  service_regions?: string;
+  opening_hours?: string;
+  custom_welcome_message?: string;
+  instagram?: string;
+  address_display?: string;
+  public_layout_theme?: 'CLASSIC' | 'BIOLINK' | 'HOME_CARE';
+}
+
+export interface PublicVetProfile {
+  id: number;
+  first_name: string;
+  last_name: string;
+  clinic_name?: string;
+  crmv?: string;
+  crmv_uf?: string;
+  logo_url?: string;
+  bio?: string;
+  service_regions?: string;
+  opening_hours?: string;
+  whatsapp?: string;
+  phone?: string;
+  instagram?: string;
+  address_display?: string;
+  custom_welcome_message?: string;
+  active_specialties?: string[];
+  specialty_anesthesia_enabled?: boolean;
+  public_slug?: string;
+  public_layout_theme?: 'CLASSIC' | 'BIOLINK' | 'HOME_CARE';
+  services: {
+    id: number;
+    name: string;
+    category: string;
+    price: number;
+    description?: string;
+  }[];
+  clinics: {
+    id: number;
+    name: string;
+    address?: string;
+    neighborhood?: string;
+    city?: string;
+  }[];
+}
+
+export interface PublicConsultationRequest {
+  tutor_name: string;
+  tutor_phone: string;
+  tutor_email?: string;
+  pet_name: string;
+  pet_species: string;
+  pet_breed?: string;
+  pet_age?: string;
+  consultation_type: 'DOMICILIAR' | 'CLINICA';
+  address?: string;
+  preferred_date?: string;
+  preferred_period?: 'MANHA' | 'TARDE' | 'NOITE' | 'QUALQUER';
+  reason: string;
+  service_id?: number;
 }
 
 export interface PlanUsage {

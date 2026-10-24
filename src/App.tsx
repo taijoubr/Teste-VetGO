@@ -26,6 +26,7 @@ import { SuppliersPage } from './pages/SuppliersPage';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PublicPetCardPage } from './pages/PublicPetCardPage';
 import { PrintableMedicalRecordPage } from './pages/PrintableMedicalRecordPage';
+import { PublicVetProfilePage } from './pages/PublicVetProfilePage';
 import { Footer } from './components/Footer';
 import { CompleteProfileModal } from './components/CompleteProfileModal';
 
@@ -125,11 +126,13 @@ export function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Auth & Patient Card Routes */}
+          {/* Public Auth, Patient Card & Vet Public Profile Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/cadastro" element={<Register />} />
           <Route path="/carteirinha/:patientId" element={<PublicPetCardPage />} />
           <Route path="/prontuario/:patientId/print" element={<PrintableMedicalRecordPage />} />
+          <Route path="/vet/:slug" element={<PublicVetProfilePage />} />
+          <Route path="/v/:slug" element={<PublicVetProfilePage />} />
 
           {/* Protected Routes */}
           <Route

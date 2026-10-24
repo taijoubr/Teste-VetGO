@@ -3,6 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Suppress Vite HMR WebSocket connection errors in iframe environment
+      window.addEventListener('unhandledrejection', function(event) {
+        if (event && event.reason) {
+          var msg = String(event.reason.message || event.reason || '');
+          var stack = String(event.reason.stack || '');
+          if (msg.includes('WebSocket') || stack.includes('@vite/client') || msg.includes('without opened')) {
+            event.preventDefault();
+          }
+        }
+      });
+    </script>
     <title>Vetgo - Sistema de Gestão Veterinária</title>
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="description" content="Veterinária onde você precisa. Plataforma SaaS de gestão para médicos-veterinários autônomos e atendimentos volantes." />
