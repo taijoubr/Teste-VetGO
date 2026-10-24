@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
 import {
@@ -39,10 +39,11 @@ import {
   RefreshCw,
   Globe,
   Copy,
-  Share2
+  Share2,
+  Trash2
 } from 'lucide-react';
 import QRCode from 'qrcode';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { PushNotificationManager } from '../components/PushNotificationManager';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
@@ -52,8 +53,67 @@ export const SettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'perfil';
 
+  const navigate = useNavigate();
   const [pwaInstalledSuccess, setPwaInstalledSuccess] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
+  // Logo & Photo Upload State
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isDraggingLogo, setIsDraggingLogo] = useState(false);
+
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processLogoFile(file);
+    e.target.value = '';
+  };
+
+  const processLogoFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setSavedMessage('Formato inválido. Por favor, selecione uma imagem PNG ou JPG.');
+      setTimeout(() => setSavedMessage(null), 3500);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setSavedMessage('Arquivo muito grande. O limite máximo é de 5MB.');
+      setTimeout(() => setSavedMessage(null), 3500);
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64 = event.target?.result as string;
+        await api.updateUserProfile({ logo_url: base64 });
+        await refreshUser();
+        setSavedMessage('Logomarca / Foto enviada e salva com sucesso!');
+        setTimeout(() => setSavedMessage(null), 3500);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setSavedMessage('Erro ao processar imagem. Tente novamente.');
+      setTimeout(() => setSavedMessage(null), 3500);
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    setIsUploadingLogo(true);
+    try {
+      await api.updateUserProfile({ logo_url: null });
+      await refreshUser();
+      setSavedMessage('Logomarca removida com sucesso.');
+      setTimeout(() => setSavedMessage(null), 3000);
+    } catch {
+      setSavedMessage('Erro ao remover logomarca.');
+      setTimeout(() => setSavedMessage(null), 3000);
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
 
   // Backup & Restauração de Dados
   const [isExportingBackup, setIsExportingBackup] = useState(false);
@@ -471,15 +531,34 @@ export const SettingsPage: React.FC = () => {
                       <span>{copiedLink ? 'Copiado!' : 'Copiar Link'}</span>
                     </button>
 
-                    <Link
-                      to={`/vet/${publicForm.public_slug}`}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const cleanSlug = (publicForm.public_slug || 'veterinario-teste').trim().toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+                        try {
+                          await api.updateUserProfile({
+                            ...publicForm,
+                            public_slug: cleanSlug
+                          });
+                          await refreshUser();
+                        } catch {}
+                        navigate(`/vet/${cleanSlug}`);
+                      }}
+                      className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>Visualizar Página</span>
+                    </button>
+
+                    <a
+                      href={`/vet/${publicForm.public_slug || 'veterinario-teste'}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl border border-emerald-700 text-emerald-800 hover:bg-emerald-50 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="px-2.5 py-2 rounded-xl border border-slate-300 text-slate-600 hover:text-slate-900 hover:bg-slate-50 text-xs font-medium transition flex items-center justify-center cursor-pointer"
+                      title="Abrir em Nova Aba Externa"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                      <span>Visualizar</span>
-                    </Link>
+                    </a>
                   </div>
                 </div>
               </div>
@@ -1185,25 +1264,119 @@ export const SettingsPage: React.FC = () => {
         )}
 
         {activeTab === 'identidade' && (
-          <div className="space-y-4 max-w-lg">
-            <h3 className="text-sm font-bold text-slate-900 mb-2">Logomarca Profissional</h3>
-            <p className="text-xs text-slate-500">
-              Faça upload do seu logotipo para personalização dos documentos emitidos pelo sistema.
-            </p>
-
-            <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50">
-              <ImageIcon className="w-10 h-10 text-slate-400 mx-auto mb-2" />
-              <div className="text-xs font-semibold text-slate-700">
-                Arraste seu logo em PNG ou JPG até aqui
-              </div>
-              <div className="text-[11px] text-slate-400 mt-1">Recomendado: fundo transparente, até 2MB</div>
-              <button
-                type="button"
-                className="mt-3 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
-              >
-                Selecionar Arquivo
-              </button>
+          <div className="space-y-6 max-w-lg">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 mb-1">Logomarca & Foto Profissional</h3>
+              <p className="text-xs text-slate-500">
+                Sua foto ou logotipo oficial que aparece na sua página de divulgação pública, receitas, termos e prontuários clínicos.
+              </p>
             </div>
+
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              onChange={handleLogoFileChange}
+              className="hidden"
+            />
+
+            {/* Current Logo Preview */}
+            {user?.logo_url ? (
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <img
+                      src={user.logo_url}
+                      alt="Logomarca Profissional"
+                      className="w-20 h-20 rounded-2xl object-cover border-2 border-emerald-100 shadow-2xs"
+                    />
+                    <div className="absolute -bottom-1 -right-1 bg-emerald-600 text-white p-0.5 rounded-full border border-white">
+                      <Check className="w-3 h-3" />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+                      Logomarca Ativa
+                    </span>
+                    <h4 className="text-xs font-bold text-slate-900">
+                      Exibida no seu site e documentos oficiais
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Atualizada em tempo real na sua página de divulgação.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={isUploadingLogo}
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isUploadingLogo ? 'Carregando...' : 'Trocar Imagem'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    disabled={isUploadingLogo}
+                    className="px-3.5 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remover</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Dropzone for Upload */
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingLogo(true);
+                }}
+                onDragLeave={() => setIsDraggingLogo(false)}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  setIsDraggingLogo(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) await processLogoFile(file);
+                }}
+                onClick={() => logoInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-2xl p-8 text-center transition cursor-pointer ${
+                  isDraggingLogo
+                    ? 'border-emerald-600 bg-emerald-50/70 scale-[1.01]'
+                    : 'border-slate-300 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/20'
+                }`}
+              >
+                {isUploadingLogo ? (
+                  <div className="space-y-2">
+                    <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <p className="text-xs font-bold text-slate-700">Enviando e salvando imagem...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="w-12 h-12 bg-emerald-100 text-emerald-800 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
+                      <ImageIcon className="w-6 h-6" />
+                    </div>
+                    <div className="text-xs font-bold text-slate-800">
+                      Arraste seu logotipo ou clique para selecionar
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Formatos aceitos: PNG, JPG ou WEBP (até 5MB)
+                    </p>
+                    <div className="pt-2">
+                      <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-xs">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Selecionar Imagem do Dispositivo</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

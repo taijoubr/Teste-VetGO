@@ -229,6 +229,13 @@ export const PublicVetProfilePage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              to="/configuracoes?tab=pagina_publica"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
+            >
+              <span>← Painel / Ajustes</span>
+            </Link>
+
             <button
               onClick={handleShare}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 text-xs font-medium transition cursor-pointer"
