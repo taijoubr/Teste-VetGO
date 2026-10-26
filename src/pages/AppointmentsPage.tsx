@@ -54,6 +54,8 @@ export const AppointmentsPage: React.FC = () => {
   // Modal states
   const [showModal, setShowModal] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
+  const [appointmentToDelete, setAppointmentToDelete] = useState<Appointment | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'ALL' | AppointmentStatus>('ALL');
 
   // Form state
@@ -307,19 +309,52 @@ export const AppointmentsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteAppointment = async (apptId: number) => {
-    if (window.confirm('Tem certeza que deseja remover este agendamento da agenda?')) {
-      try {
-        await api.deleteAppointment(apptId);
-        await loadData();
-      } catch (e) {
-        console.error(e);
-      }
+  const handleApproveAppointment = async (appt: Appointment) => {
+    try {
+      await api.updateAppointment(appt.id, { status: 'AGENDADO' });
+      setActionFeedback(`Agendamento de ${appt.patient_name || 'paciente'} APROVADO com sucesso e adicionado à sua agenda!`);
+      setTimeout(() => setActionFeedback(null), 4000);
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      setActionFeedback('Erro ao aprovar agendamento.');
+    }
+  };
+
+  const handleRejectAppointment = async (appt: Appointment) => {
+    try {
+      await api.updateAppointment(appt.id, { status: 'CANCELADO' });
+      setActionFeedback(`Solicitação de ${appt.patient_name || 'paciente'} foi recusada.`);
+      setTimeout(() => setActionFeedback(null), 4000);
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      setActionFeedback('Erro ao recusar solicitação.');
+    }
+  };
+
+  const handleDeleteAppointment = (appt: Appointment) => {
+    setAppointmentToDelete(appt);
+  };
+
+  const confirmDeleteAppointment = async () => {
+    if (!appointmentToDelete) return;
+    try {
+      await api.deleteAppointment(appointmentToDelete.id);
+      setActionFeedback('Agendamento removido da agenda.');
+      setTimeout(() => setActionFeedback(null), 3000);
+      setAppointmentToDelete(null);
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      setActionFeedback('Erro ao remover agendamento.');
     }
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'PENDENTE':
+        return 'bg-amber-100 text-amber-900 border-amber-300 font-bold';
       case 'CONFIRMADO':
         return 'bg-emerald-100 text-emerald-800 border-emerald-300';
       case 'AGENDADO':
@@ -359,6 +394,11 @@ export const AppointmentsPage: React.FC = () => {
     return selectedDateStr === todayStr;
   }, [selectedDateStr]);
 
+  // Solicitações pendentes originadas do site público de divulgação
+  const pendingRequests = useMemo(() => {
+    return appointments.filter((a) => a.status === 'PENDENTE');
+  }, [appointments]);
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Top Header */}
@@ -373,7 +413,7 @@ export const AppointmentsPage: React.FC = () => {
                 Agenda Veterinária
               </h1>
               <p className="text-xs text-slate-500">
-                Calendário interativo com contagem diária de atendimentos e detalhamento instantâneo.
+                Calendário interativo com contagem diária de atendimentos e aprovação de solicitações do site.
               </p>
             </div>
           </div>
@@ -415,6 +455,129 @@ export const AppointmentsPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Feedback Toast */}
+      {actionFeedback && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center justify-between shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{actionFeedback}</span>
+          </div>
+          <button
+            onClick={() => setActionFeedback(null)}
+            className="p-1 text-emerald-700 hover:text-emerald-900 rounded"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Banner de Novas Solicitações do Site Público */}
+      {pendingRequests.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300/80 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 animate-in fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/60 pb-3">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0"></span>
+              <h2 className="text-sm sm:text-base font-bold text-amber-950 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                Novas Solicitações de Agendamento do Site Público
+              </h2>
+            </div>
+            <span className="px-2.5 py-1 rounded-full bg-amber-200/80 text-amber-900 text-xs font-black self-start sm:self-auto">
+              {pendingRequests.length} {pendingRequests.length === 1 ? 'pendente de aprovação' : 'pendentes de aprovação'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            {pendingRequests.map((req) => {
+              const tutorObj = tutors.find((t) => t.id === req.tutor_id);
+              const tutorPhone = tutorObj?.phone || '';
+              const cleanTutorPhone = tutorPhone.replace(/\D/g, '');
+              const waUrl = cleanTutorPhone ? `https://wa.me/55${cleanTutorPhone}` : null;
+              const dateFormatted = req.date_time ? new Date(req.date_time).toLocaleDateString('pt-BR') : '';
+
+              return (
+                <div
+                  key={req.id}
+                  className="bg-white rounded-xl p-3.5 border border-amber-200 shadow-2xs space-y-2.5 flex flex-col justify-between"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-start justify-between gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <PawPrint className="w-4 h-4 text-emerald-700 shrink-0" />
+                        <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                          {req.patient_name || 'Pet'}
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          ({req.patient_species || 'Canina'})
+                        </span>
+                      </div>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
+                        Aguardando Aprovação
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-slate-600 space-y-0.5">
+                      <p>
+                        <strong className="text-slate-800">Tutor:</strong> {req.tutor_name || 'Não informado'}
+                      </p>
+                      <p className="flex items-center gap-1">
+                        <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Data sugerida: <strong>{dateFormatted || 'A combinar'}</strong></span>
+                      </p>
+                      {req.address && (
+                        <p className="flex items-start gap-1 text-[11px] text-slate-500">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <span className="truncate">{req.address}</span>
+                        </p>
+                      )}
+                      {req.reason && (
+                        <p className="text-[11px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 mt-1 line-clamp-2">
+                          <strong>Motivo:</strong> {req.reason.replace('[Solicitação Web Pública]', '').trim()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    {waUrl && (
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 rounded-lg border border-emerald-300 hover:bg-emerald-50 text-emerald-700 text-[11px] font-bold flex items-center gap-1"
+                        title="Conversar no WhatsApp"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>WhatsApp</span>
+                      </a>
+                    )}
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleRejectAppointment(req)}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 text-xs font-bold transition cursor-pointer"
+                        title="Recusar solicitação"
+                      >
+                        Recusar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApproveAppointment(req)}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1"
+                        title="Aprovar e adicionar à agenda oficial"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Aprovar</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
@@ -689,6 +852,7 @@ export const AppointmentsPage: React.FC = () => {
                                 appt.status
                               )}`}
                             >
+                              <option value="PENDENTE">Pendente</option>
                               <option value="AGENDADO">Agendado</option>
                               <option value="CONFIRMADO">Confirmado</option>
                               <option value="EM_ATENDIMENTO">Em Atendimento</option>
@@ -697,6 +861,33 @@ export const AppointmentsPage: React.FC = () => {
                             </select>
                           </div>
                         </div>
+
+                        {/* Banner de Aprovação Rápida se for solicitação pendente */}
+                        {appt.status === 'PENDENTE' && (
+                          <div className="p-2.5 bg-amber-50 border border-amber-200/90 rounded-xl flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 text-amber-900 text-xs font-bold">
+                              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span>Solicitação do site aguardando aprovação</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 ml-auto">
+                              <button
+                                type="button"
+                                onClick={() => handleRejectAppointment(appt)}
+                                className="px-2 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-rose-700 bg-white border border-slate-200 cursor-pointer transition shadow-2xs"
+                              >
+                                Recusar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleApproveAppointment(appt)}
+                                className="px-2.5 py-1 rounded-lg text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 cursor-pointer transition shadow-2xs flex items-center gap-1"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Aprovar</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Detalhes: Paciente & Tutor */}
                         <div className="space-y-1 text-xs">
@@ -790,7 +981,7 @@ export const AppointmentsPage: React.FC = () => {
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => handleDeleteAppointment(appt.id)}
+                              onClick={() => handleDeleteAppointment(appt)}
                               className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
                               title="Remover agendamento"
                             >
@@ -816,7 +1007,7 @@ export const AppointmentsPage: React.FC = () => {
               <Filter className="w-4 h-4 text-slate-500" />
               <span className="text-xs font-bold text-slate-700">Filtrar por Status:</span>
               <div className="flex items-center gap-1 flex-wrap">
-                {(['ALL', 'AGENDADO', 'CONFIRMADO', 'EM_ATENDIMENTO', 'CONCLUIDO', 'CANCELADO'] as const).map(
+                {(['ALL', 'PENDENTE', 'AGENDADO', 'CONFIRMADO', 'EM_ATENDIMENTO', 'CONCLUIDO', 'CANCELADO'] as const).map(
                   (st) => (
                     <button
                       key={st}
@@ -827,7 +1018,7 @@ export const AppointmentsPage: React.FC = () => {
                           : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
-                      {st === 'ALL' ? 'Todos' : st}
+                      {st === 'ALL' ? 'Todos' : st === 'PENDENTE' ? 'Pendentes' : st}
                     </button>
                   )
                 )}
@@ -919,7 +1110,29 @@ export const AppointmentsPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 self-end sm:self-center">
+                    <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
+                      {appt.status === 'PENDENTE' && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleRejectAppointment(appt)}
+                            className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-rose-700 bg-white border border-slate-200 cursor-pointer transition shadow-2xs"
+                            title="Recusar solicitação"
+                          >
+                            Recusar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApproveAppointment(appt)}
+                            className="px-3 py-1 rounded-lg text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 cursor-pointer transition shadow-2xs flex items-center gap-1"
+                            title="Aprovar e adicionar à agenda oficial"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Aprovar</span>
+                          </button>
+                        </div>
+                      )}
+
                       <select
                         value={appt.status}
                         onChange={(e) => handleUpdateStatus(appt.id, e.target.value as AppointmentStatus)}
@@ -927,6 +1140,7 @@ export const AppointmentsPage: React.FC = () => {
                           appt.status
                         )}`}
                       >
+                        <option value="PENDENTE">Pendente</option>
                         <option value="AGENDADO">Agendado</option>
                         <option value="CONFIRMADO">Confirmado</option>
                         <option value="EM_ATENDIMENTO">Em Atendimento</option>
@@ -942,7 +1156,7 @@ export const AppointmentsPage: React.FC = () => {
                         <Edit3 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDeleteAppointment(appt.id)}
+                        onClick={() => handleDeleteAppointment(appt)}
                         className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
                         title="Excluir"
                       >
@@ -1054,6 +1268,7 @@ export const AppointmentsPage: React.FC = () => {
                     onChange={(e) => setForm({ ...form, status: e.target.value as AppointmentStatus })}
                     className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg outline-none bg-white"
                   >
+                    <option value="PENDENTE">Pendente de Aprovação</option>
                     <option value="AGENDADO">Agendado</option>
                     <option value="CONFIRMADO">Confirmado</option>
                     <option value="EM_ATENDIMENTO">Em Atendimento</option>
@@ -1137,6 +1352,39 @@ export const AppointmentsPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão de Agendamento */}
+      {appointmentToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-100">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h4 className="text-sm font-bold text-slate-900">Remover Agendamento?</h4>
+              <p className="text-xs text-slate-600">
+                Tem certeza que deseja remover o agendamento de <span className="font-semibold text-slate-900">{appointmentToDelete.patient_name || 'Paciente'}</span> da sua agenda?
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAppointmentToDelete(null)}
+                className="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteAppointment}
+                className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                Sim, Remover
+              </button>
+            </div>
           </div>
         </div>
       )}

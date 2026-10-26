@@ -38,6 +38,9 @@ export const ServicesPage: React.FC = () => {
     price: 50,
     description: '',
     is_active: true,
+    show_on_public_page: true,
+    public_description: '',
+    photo_url: '',
     linked_inventory_item_id: undefined as number | undefined,
     linked_inventory_item_name: '',
     linked_inventory_quantity: 1,
@@ -73,6 +76,9 @@ export const ServicesPage: React.FC = () => {
       price: 50,
       description: '',
       is_active: true,
+      show_on_public_page: true,
+      public_description: '',
+      photo_url: '',
       linked_inventory_item_id: undefined,
       linked_inventory_item_name: '',
       linked_inventory_quantity: 1,
@@ -89,6 +95,9 @@ export const ServicesPage: React.FC = () => {
       price: svc.price,
       description: svc.description || '',
       is_active: svc.is_active,
+      show_on_public_page: svc.show_on_public_page !== false,
+      public_description: svc.public_description || '',
+      photo_url: svc.photo_url || '',
       linked_inventory_item_id: svc.linked_inventory_item_id,
       linked_inventory_item_name: svc.linked_inventory_item_name || '',
       linked_inventory_quantity: svc.linked_inventory_quantity || 1,
@@ -316,9 +325,16 @@ export const ServicesPage: React.FC = () => {
               </div>
 
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className={`text-[10px] font-semibold ${svc.is_active ? 'text-emerald-700' : 'text-slate-400'}`}>
-                  {svc.is_active ? '● Ativo no Orçamento' : '○ Inativo'}
-                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={`text-[10px] font-semibold ${svc.is_active ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    {svc.is_active ? '● Ativo' : '○ Inativo'}
+                  </span>
+                  {svc.show_on_public_page !== false && (
+                    <span className="text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200/80 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                      <span>🌐 No Site</span>
+                    </span>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-1">
                   <button
@@ -511,6 +527,54 @@ export const ServicesPage: React.FC = () => {
                     <p className="text-[11px] text-slate-500 leading-tight">
                       💡 <strong>Como funciona:</strong> Ao incluir este serviço em uma consulta ou orçamento, o sistema saberá exatamente qual medicamento abater (ex: 0,5 mL ou 1 dose de Zoletil/Meloxicam) e dará a baixa automática na maleta volante do veterinário.
                     </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Exibição na Página Pública de Divulgação */}
+              <div className="p-3.5 bg-emerald-50/60 border border-emerald-200/80 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                    🌐 Exibição na Página Pública (Site para Tutores)
+                  </span>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-emerald-900">
+                    <input
+                      type="checkbox"
+                      checked={formData.show_on_public_page}
+                      onChange={(e) => setFormData({ ...formData, show_on_public_page: e.target.checked })}
+                      className="rounded border-emerald-300 text-emerald-700 focus:ring-emerald-600 cursor-pointer"
+                    />
+                    <span>Exibir no Site</span>
+                  </label>
+                </div>
+
+                {formData.show_on_public_page && (
+                  <div className="space-y-2.5 pt-2 border-t border-emerald-200/60">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-emerald-900 mb-0.5">
+                        Descrição Comercial para os Tutores (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Avaliação completa com ausculta, palpação e receita no WhatsApp"
+                        value={formData.public_description}
+                        onChange={(e) => setFormData({ ...formData, public_description: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-xs border border-emerald-200 rounded-lg outline-none bg-white focus:border-emerald-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-emerald-900 mb-0.5">
+                        Foto Ilustrativa do Serviço (URL opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://images.unsplash.com/..."
+                        value={formData.photo_url}
+                        onChange={(e) => setFormData({ ...formData, photo_url: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-xs border border-emerald-200 rounded-lg outline-none bg-white font-mono focus:border-emerald-600"
+                      />
+                    </div>
                   </div>
                 )}
               </div>

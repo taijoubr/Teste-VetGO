@@ -37,7 +37,17 @@ export interface User {
   custom_welcome_message?: string;
   instagram?: string;
   address_display?: string;
-  public_layout_theme?: 'CLASSIC' | 'BIOLINK' | 'HOME_CARE';
+  public_layout_theme?: 'CLASSIC' | 'MODERN' | 'BIOLINK' | 'HOME_CARE';
+  hero_image_url?: string;
+  banner_image_url?: string;
+  about_image_url?: string;
+  show_availability_calendar?: boolean;
+  availability_mode?: 'SPECIFIC_DATES' | 'WEEKDAYS' | 'ALL_REQUESTABLE';
+  available_dates?: string[];
+  available_weekdays?: number[];
+  blocked_dates?: string[];
+  available_slots?: string[];
+  availability_notice?: string;
 }
 
 export interface PublicVetProfile {
@@ -59,13 +69,26 @@ export interface PublicVetProfile {
   active_specialties?: string[];
   specialty_anesthesia_enabled?: boolean;
   public_slug?: string;
-  public_layout_theme?: 'CLASSIC' | 'BIOLINK' | 'HOME_CARE';
+  public_layout_theme?: 'CLASSIC' | 'MODERN' | 'BIOLINK' | 'HOME_CARE';
+  hero_image_url?: string;
+  banner_image_url?: string;
+  about_image_url?: string;
+  show_availability_calendar?: boolean;
+  availability_mode?: 'SPECIFIC_DATES' | 'WEEKDAYS' | 'ALL_REQUESTABLE';
+  available_dates?: string[];
+  available_weekdays?: number[];
+  blocked_dates?: string[];
+  available_slots?: string[];
+  availability_notice?: string;
   services: {
     id: number;
     name: string;
     category: string;
     price: number;
     description?: string;
+    public_description?: string;
+    photo_url?: string;
+    show_on_public_page?: boolean;
   }[];
   clinics: {
     id: number;
@@ -417,7 +440,7 @@ export interface AnesthesiaRecord {
 // -------------------------------------------------------------
 // APPOINTMENTS & CONSULTATIONS
 // -------------------------------------------------------------
-export type AppointmentStatus = 'AGENDADO' | 'CONFIRMADO' | 'EM_ATENDIMENTO' | 'CONCLUIDO' | 'CANCELADO';
+export type AppointmentStatus = 'AGENDADO' | 'CONFIRMADO' | 'EM_ATENDIMENTO' | 'CONCLUIDO' | 'CANCELADO' | 'PENDENTE';
 export type AppointmentType = 'Domiciliar / Volante' | 'Consultório / Clínica Parceira' | 'Emergência' | 'Retorno' | 'Vacinação' | 'Procedimento' | 'Anestesia' | 'Outro';
 
 export interface Appointment {
@@ -498,6 +521,9 @@ export interface ClinicalServiceItem {
   linked_inventory_item_name?: string;
   linked_inventory_quantity?: number;
   auto_deduct_stock?: boolean;
+  public_description?: string;
+  photo_url?: string;
+  show_on_public_page?: boolean;
   created_at?: string;
 }
 

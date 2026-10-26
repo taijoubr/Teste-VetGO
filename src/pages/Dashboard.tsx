@@ -26,6 +26,7 @@ import { Link } from 'react-router-dom';
 export const Dashboard: React.FC = () => {
   const { user, isVet } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -54,10 +55,14 @@ export const Dashboard: React.FC = () => {
   const loadDashboard = async () => {
     try {
       setLoading(true);
-      const data = await api.getDashboardStats();
+      const [data, appts] = await Promise.all([
+        api.getDashboardStats(),
+        api.getAppointments().catch(() => [])
+      ]);
       if (data) {
         setStats(data);
       }
+      setPendingCount((appts || []).filter((a) => a.status === 'PENDENTE').length);
     } catch (e) {
       console.error('Erro ao carregar métricas do painel:', e);
     } finally {
@@ -174,6 +179,30 @@ export const Dashboard: React.FC = () => {
             className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition shrink-0 text-center"
           >
             Completar Dados Profissionais →
+          </Link>
+        </div>
+      )}
+
+      {/* Alerta de Solicitações do Site Público Pendentes de Aprovação */}
+      {isVet && pendingCount > 0 && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0"></span>
+            <div>
+              <p className="text-xs font-bold flex items-center gap-1.5 text-amber-950">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                {pendingCount} {pendingCount === 1 ? 'Nova solicitação de agendamento recebida pelo seu site público!' : 'Novas solicitações de agendamento recebidas pelo seu site público!'}
+              </p>
+              <p className="text-[11px] text-amber-800">
+                Tutores escolheram data e solicitaram atendimento. Revise os detalhes e aprove para incluir na sua agenda oficial.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/agenda"
+            className="px-3.5 py-1.5 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold rounded-lg transition shrink-0 text-center shadow-2xs whitespace-nowrap"
+          >
+            Ver e Aprovar na Agenda →
           </Link>
         </div>
       )}

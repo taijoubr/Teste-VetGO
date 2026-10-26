@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../services/api';
 import { AppLogo } from './AppLogo';
 import { PWAInstallSidebarCard } from './PWAInstallButton';
 import {
@@ -30,6 +31,27 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
   const isAnesthesiaEnabled = Boolean(user?.specialty_anesthesia_enabled);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPending = async () => {
+      try {
+        const appts = await api.getAppointments();
+        if (isMounted) {
+          const count = appts.filter((a) => a.status === 'PENDENTE').length;
+          setPendingCount(count);
+        }
+      } catch {}
+    };
+
+    fetchPending();
+    const interval = setInterval(fetchPending, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const anesthesiaNavItems = [
     { name: 'Fichas Anestésicas', path: '/anestesia', icon: Activity },
@@ -139,7 +161,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   }
                 >
                   <item.icon className="w-4 h-4 text-emerald-700 shrink-0" />
-                  <span>{item.name}</span>
+                  <span className="flex-1">{item.name}</span>
+                  {item.path === '/agenda' && pendingCount > 0 && (
+                    <span
+                      title={`${pendingCount} solicitação(ões) pendente(s)`}
+                      className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white animate-pulse shrink-0"
+                    >
+                      {pendingCount}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </nav>

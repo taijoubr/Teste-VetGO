@@ -40,12 +40,29 @@ import {
   Globe,
   Copy,
   Share2,
-  Trash2
+  Trash2,
+  Plus,
+  Edit2,
+  Camera,
+  Eye,
+  EyeOff,
+  DollarSign,
+  Syringe,
+  TestTube,
+  Tag,
+  ChevronRight,
+  ChevronLeft,
+  Calendar,
+  CalendarDays,
+  Clock,
+  Ban,
+  X
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { PushNotificationManager } from '../components/PushNotificationManager';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { ClinicalServiceItem } from '../types';
 
 export const SettingsPage: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -197,11 +214,206 @@ export const SettingsPage: React.FC = () => {
     custom_welcome_message: user?.custom_welcome_message || 'Olá Dr(a)! Gostaria de informações para agendar uma consulta para meu pet.',
     instagram: user?.instagram || '',
     address_display: user?.address_display || '',
-    public_layout_theme: (user?.public_layout_theme || 'CLASSIC') as 'CLASSIC' | 'BIOLINK' | 'HOME_CARE',
+    public_layout_theme: (user?.public_layout_theme || 'CLASSIC') as 'CLASSIC' | 'MODERN' | 'BIOLINK' | 'HOME_CARE',
+    hero_image_url: user?.hero_image_url || '',
+    banner_image_url: user?.banner_image_url || '',
+    about_image_url: user?.about_image_url || user?.logo_url || '',
+    show_availability_calendar: user?.show_availability_calendar !== false,
+    availability_mode: (user?.availability_mode || 'SPECIFIC_DATES') as 'SPECIFIC_DATES' | 'WEEKDAYS' | 'ALL_REQUESTABLE',
+    available_dates: (user?.available_dates || []) as string[],
+    available_weekdays: (user?.available_weekdays || [1, 2, 3, 4, 5]) as number[],
+    blocked_dates: (user?.blocked_dates || []) as string[],
+    available_slots: (user?.available_slots || ['08:00', '10:00', '14:00', '16:00']) as string[],
+    availability_notice: user?.availability_notice || '',
   });
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [isSavingPublicPage, setIsSavingPublicPage] = useState(false);
+
+  // Calendário Interativo de Disponibilidade no Painel
+  const [calPickerDate, setCalPickerDate] = useState<Date>(() => new Date());
+  const [calClickMode, setCalClickMode] = useState<'AVAILABLE' | 'BLOCKED'>('AVAILABLE');
+  const [customSlotInput, setCustomSlotInput] = useState<string>('');
+
+  // Photo Upload Refs
+  const heroFileInputRef = useRef<HTMLInputElement>(null);
+  const aboutFileInputRef = useRef<HTMLInputElement>(null);
+  const bannerFileInputRef = useRef<HTMLInputElement>(null);
+  const servicePhotoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadHeroPhoto = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setSavedMessage('Por favor, selecione uma imagem PNG ou JPG.');
+      setTimeout(() => setSavedMessage(null), 3000);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPublicForm((prev) => ({ ...prev, hero_image_url: e.target?.result as string }));
+      setSavedMessage('Foto de atendimento selecionada! Lembre-se de salvar.');
+      setTimeout(() => setSavedMessage(null), 3500);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUploadAboutPhoto = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPublicForm((prev) => ({ ...prev, about_image_url: e.target?.result as string }));
+      setSavedMessage('Foto de perfil/sobre mim selecionada! Lembre-se de salvar.');
+      setTimeout(() => setSavedMessage(null), 3500);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUploadBannerPhoto = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPublicForm((prev) => ({ ...prev, banner_image_url: e.target?.result as string }));
+      setSavedMessage('Foto de capa do BioLink selecionada! Lembre-se de salvar.');
+      setTimeout(() => setSavedMessage(null), 3500);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Public Services Management State
+  const [publicServices, setPublicServices] = useState<ClinicalServiceItem[]>([]);
+  const [loadingPublicServices, setLoadingPublicServices] = useState(false);
+  const [showServiceModal, setShowServiceModal] = useState(false);
+  const [editingPublicService, setEditingPublicService] = useState<ClinicalServiceItem | null>(null);
+  const [serviceFormData, setServiceFormData] = useState({
+    name: '',
+    category: 'CONSULTA' as ClinicalServiceItem['category'],
+    price: 150,
+    public_description: '',
+    photo_url: '',
+    show_on_public_page: true,
+  });
+
+  const loadPublicServices = async () => {
+    try {
+      setLoadingPublicServices(true);
+      const list = await api.getServices();
+      setPublicServices(list);
+    } catch (e) {
+      console.warn('Erro ao carregar serviços públicos:', e);
+    } finally {
+      setLoadingPublicServices(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'pagina_publica') {
+      loadPublicServices();
+    }
+  }, [activeTab]);
+
+  const handleOpenAddService = () => {
+    setEditingPublicService(null);
+    setServiceFormData({
+      name: '',
+      category: 'CONSULTA',
+      price: 150,
+      public_description: '',
+      photo_url: '',
+      show_on_public_page: true,
+    });
+    setShowServiceModal(true);
+  };
+
+  const handleOpenEditService = (svc: ClinicalServiceItem) => {
+    setEditingPublicService(svc);
+    setServiceFormData({
+      name: svc.name,
+      category: svc.category,
+      price: svc.price,
+      public_description: svc.public_description || svc.description || '',
+      photo_url: svc.photo_url || '',
+      show_on_public_page: svc.show_on_public_page !== false,
+    });
+    setShowServiceModal(true);
+  };
+
+  const handleSaveService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!serviceFormData.name.trim()) return;
+
+    try {
+      if (editingPublicService) {
+        await api.updateService(editingPublicService.id, {
+          ...editingPublicService,
+          name: serviceFormData.name,
+          category: serviceFormData.category,
+          price: serviceFormData.price,
+          public_description: serviceFormData.public_description,
+          description: serviceFormData.public_description || editingPublicService.description,
+          photo_url: serviceFormData.photo_url,
+          show_on_public_page: serviceFormData.show_on_public_page,
+        });
+        setSavedMessage(`Serviço "${serviceFormData.name}" atualizado com sucesso!`);
+      } else {
+        await api.createService({
+          name: serviceFormData.name,
+          category: serviceFormData.category,
+          price: serviceFormData.price,
+          public_description: serviceFormData.public_description,
+          description: serviceFormData.public_description,
+          photo_url: serviceFormData.photo_url,
+          show_on_public_page: serviceFormData.show_on_public_page,
+          is_active: true,
+        });
+        setSavedMessage(`Serviço "${serviceFormData.name}" adicionado ao seu site com sucesso!`);
+      }
+      setShowServiceModal(false);
+      await loadPublicServices();
+      setTimeout(() => setSavedMessage(null), 3000);
+    } catch {
+      setSavedMessage('Erro ao salvar serviço. Tente novamente.');
+      setTimeout(() => setSavedMessage(null), 3000);
+    }
+  };
+
+  const handleToggleServicePublic = async (svc: ClinicalServiceItem) => {
+    const updatedStatus = svc.show_on_public_page === false;
+    try {
+      await api.updateService(svc.id, { show_on_public_page: updatedStatus });
+      setPublicServices((prev) =>
+        prev.map((s) => (s.id === svc.id ? { ...s, show_on_public_page: updatedStatus } : s))
+      );
+      setSavedMessage(
+        `Serviço "${svc.name}" ${updatedStatus ? 'agora é exibido no seu site público!' : 'foi ocultado do seu site público.'}`
+      );
+      setTimeout(() => setSavedMessage(null), 3000);
+    } catch {
+      setSavedMessage('Erro ao atualizar status do serviço.');
+    }
+  };
+
+  // Service Deletion Confirmation State
+  const [serviceToDelete, setServiceToDelete] = useState<ClinicalServiceItem | null>(null);
+  const [isDeletingService, setIsDeletingService] = useState(false);
+
+  const handleDeleteService = (svc: ClinicalServiceItem) => {
+    setServiceToDelete(svc);
+  };
+
+  const confirmDeleteService = async () => {
+    if (!serviceToDelete) return;
+    setIsDeletingService(true);
+    try {
+      await api.deleteService(serviceToDelete.id);
+      setPublicServices((prev) => prev.filter((s) => s.id !== serviceToDelete.id));
+      setSavedMessage(`Serviço "${serviceToDelete.name}" removido com sucesso.`);
+      setTimeout(() => setSavedMessage(null), 3000);
+      setServiceToDelete(null);
+    } catch {
+      setSavedMessage('Erro ao excluir serviço.');
+    } finally {
+      setIsDeletingService(false);
+    }
+  };
 
   useEffect(() => {
     const fullPublicUrl = `${window.location.origin}/vet/${publicForm.public_slug}`;
@@ -612,7 +824,7 @@ export const SettingsPage: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Modelo 1: Clínico Clássico */}
+                  {/* Modelo 1: Profissional / Clínico */}
                   <button
                     type="button"
                     onClick={() => setPublicForm({ ...publicForm, public_layout_theme: 'CLASSIC' })}
@@ -624,8 +836,8 @@ export const SettingsPage: React.FC = () => {
                   >
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                          <Stethoscope className="w-4 h-4" />
+                        <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                          1
                         </div>
                         {publicForm.public_layout_theme === 'CLASSIC' ? (
                           <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
@@ -635,82 +847,402 @@ export const SettingsPage: React.FC = () => {
                           <span className="text-[10px] font-medium text-slate-400">Clique para ativar</span>
                         )}
                       </div>
-                      <h5 className="text-xs font-bold text-slate-900">1. Clínico Clássico</h5>
+                      <h5 className="text-xs font-bold text-slate-900">Modelo 1 — Profissional / Clínico</h5>
                       <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                        Institucional e sóbrio. Apresentação médica, bio completa, grade de serviços e formulário ao final.
+                        Mais sóbrio e institucional. Transmite confiança e profissionalismo.
                       </p>
                     </div>
                     <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] font-semibold text-slate-600">
-                      Ideal para: Clínicas, consultórios e autoridade médica
+                      Grade completa de serviços, bio e autoridade
                     </div>
                   </button>
 
-                  {/* Modelo 2: BioLink Mobile-First */}
+                  {/* Modelo 2: Moderno / Visual */}
+                  <button
+                    type="button"
+                    onClick={() => setPublicForm({ ...publicForm, public_layout_theme: 'MODERN' })}
+                    className={`p-3.5 rounded-2xl border text-left transition relative cursor-pointer flex flex-col justify-between ${
+                      publicForm.public_layout_theme === 'MODERN' || publicForm.public_layout_theme === 'HOME_CARE'
+                        ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-600/20 shadow-xs'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                          2
+                        </div>
+                        {publicForm.public_layout_theme === 'MODERN' || publicForm.public_layout_theme === 'HOME_CARE' ? (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Selecionado
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-slate-400">Clique para ativar</span>
+                        )}
+                      </div>
+                      <h5 className="text-xs font-bold text-slate-900">Modelo 2 — Moderno / Visual</h5>
+                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                        Mais chamativo e moderno. Ideal para divulgação e redes sociais.
+                      </p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] font-semibold text-slate-600">
+                      Hero acolhedor, cards fotográficos e WhatsApp
+                    </div>
+                  </button>
+
+                  {/* Modelo 3: Perfil / Cartão Profissional */}
                   <button
                     type="button"
                     onClick={() => setPublicForm({ ...publicForm, public_layout_theme: 'BIOLINK' })}
                     className={`p-3.5 rounded-2xl border text-left transition relative cursor-pointer flex flex-col justify-between ${
                       publicForm.public_layout_theme === 'BIOLINK'
-                        ? 'border-purple-600 bg-purple-50/70 ring-2 ring-purple-600/20 shadow-xs'
+                        ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-600/20 shadow-xs'
                         : 'border-slate-200 hover:border-slate-300 bg-white'
                     }`}
                   >
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-800 flex items-center justify-center">
-                          <Smartphone className="w-4 h-4" />
+                        <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                          3
                         </div>
                         {publicForm.public_layout_theme === 'BIOLINK' ? (
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
                             <Check className="w-3 h-3" /> Selecionado
                           </span>
                         ) : (
                           <span className="text-[10px] font-medium text-slate-400">Clique para ativar</span>
                         )}
                       </div>
-                      <h5 className="text-xs font-bold text-slate-900">2. BioLink Mobile-First</h5>
+                      <h5 className="text-xs font-bold text-slate-900">Modelo 3 — Perfil / Cartão profissional</h5>
                       <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                        Estilo link da bio do Instagram. Cartões verticais de ação rápida e modal limpo de agendamento.
+                        Mais compacto e direto. Ideal para link na bio do Instagram.
                       </p>
                     </div>
                     <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] font-semibold text-slate-600">
-                      Ideal para: Instagram, TikTok e WhatsApp
-                    </div>
-                  </button>
-
-                  {/* Modelo 3: Visita Domiciliar */}
-                  <button
-                    type="button"
-                    onClick={() => setPublicForm({ ...publicForm, public_layout_theme: 'HOME_CARE' })}
-                    className={`p-3.5 rounded-2xl border text-left transition relative cursor-pointer flex flex-col justify-between ${
-                      publicForm.public_layout_theme === 'HOME_CARE'
-                        ? 'border-amber-600 bg-amber-50/70 ring-2 ring-amber-600/20 shadow-xs'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
-                          <Heart className="w-4 h-4" />
-                        </div>
-                        {publicForm.public_layout_theme === 'HOME_CARE' ? (
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
-                            <Check className="w-3 h-3" /> Selecionado
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-medium text-slate-400">Clique para ativar</span>
-                        )}
-                      </div>
-                      <h5 className="text-xs font-bold text-slate-900">3. Visita Domiciliar</h5>
-                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                        Acolhedor e focado no bem-estar em casa. Destaque para zero estresse do pet e agendamento prático.
-                      </p>
-                    </div>
-                    <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] font-semibold text-slate-600">
-                      Ideal para: Atendimento volante e domiciliar
+                      Botões rápidos, calendário de horários e avaliações
                     </div>
                   </button>
                 </div>
+              </div>
+
+              {/* ----------------------------------------------------------------- */}
+              {/* GERENCIADOR DE FOTOS E IMAGENS DA PÁGINA PÚBLICA                 */}
+              {/* ----------------------------------------------------------------- */}
+              <div className="pt-4 border-t border-slate-200/90 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-emerald-700" />
+                      Fotos e Imagens da Página Pública
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Personalize a sua foto profissional, a foto principal de atendimento e o banner de capa.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Foto 1: Perfil / Sobre Mim */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-900 block">
+                        1. Foto de Perfil / Sobre Mim
+                      </span>
+                      <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                        Aparece no bloco "Sobre mim" e no avatar com selo verificado do Modelo 3.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 py-1">
+                      <img
+                        src={publicForm.about_image_url || publicForm.about_image_url || user?.logo_url || 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=300&q=80'}
+                        alt="Foto do Veterinário"
+                        className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-600/30 shadow-xs bg-white shrink-0"
+                      />
+                      <div className="space-y-1.5 flex-1">
+                        <input
+                          type="file"
+                          ref={aboutFileInputRef}
+                          accept="image/png, image/jpeg, image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleUploadAboutPhoto(f);
+                            e.target.value = '';
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => aboutFileInputRef.current?.click()}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Upload className="w-3 h-3 text-slate-500" />
+                          <span>Enviar Minha Foto</span>
+                        </button>
+                        {publicForm.about_image_url && (
+                          <button
+                            type="button"
+                            onClick={() => setPublicForm({ ...publicForm, about_image_url: '' })}
+                            className="w-full text-center text-[10px] text-rose-600 hover:underline cursor-pointer block"
+                          >
+                            Restaurar padrão
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Foto 2: Foto Principal / Hero Banner */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-900 block">
+                        2. Foto Principal de Atendimento (Hero)
+                      </span>
+                      <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                        Destaque do topo nos Modelos 1 e 2 (mostra o carinho com cães e gatos).
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="h-20 w-full rounded-xl overflow-hidden border border-slate-200 relative">
+                        <img
+                          src={publicForm.hero_image_url || 'https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?auto=format&fit=crop&w=600&q=80'}
+                          alt="Foto Hero"
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
+                          {publicForm.hero_image_url ? 'Personalizada' : 'Padrão'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="file"
+                          ref={heroFileInputRef}
+                          accept="image/png, image/jpeg, image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleUploadHeroPhoto(f);
+                            e.target.value = '';
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => heroFileInputRef.current?.click()}
+                          className="flex-1 px-2 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Upload className="w-3 h-3 text-slate-500" />
+                          <span>Enviar Foto</span>
+                        </button>
+
+                        {publicForm.hero_image_url && (
+                          <button
+                            type="button"
+                            onClick={() => setPublicForm({ ...publicForm, hero_image_url: '' })}
+                            className="px-2 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-medium transition cursor-pointer"
+                            title="Restaurar foto padrão"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Foto 3: Banner de Capa (BioLink / Modelo 3) */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-900 block">
+                        3. Banner de Capa (BioLink / Modelo 3)
+                      </span>
+                      <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                        Foto panorâmica de cabeçalho no estilo cartão profissional de link na bio.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="h-20 w-full rounded-xl overflow-hidden border border-slate-200 relative">
+                        <img
+                          src={publicForm.banner_image_url || 'https://images.unsplash.com/photo-1548767797-d8c844163c4c?auto=format&fit=crop&w=600&q=80'}
+                          alt="Banner Capa"
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
+                          {publicForm.banner_image_url ? 'Personalizada' : 'Padrão'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="file"
+                          ref={bannerFileInputRef}
+                          accept="image/png, image/jpeg, image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleUploadBannerPhoto(f);
+                            e.target.value = '';
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => bannerFileInputRef.current?.click()}
+                          className="flex-1 px-2 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Upload className="w-3 h-3 text-slate-500" />
+                          <span>Enviar Capa</span>
+                        </button>
+
+                        {publicForm.banner_image_url && (
+                          <button
+                            type="button"
+                            onClick={() => setPublicForm({ ...publicForm, banner_image_url: '' })}
+                            className="px-2 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-medium transition cursor-pointer"
+                            title="Restaurar capa padrão"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ----------------------------------------------------------------- */}
+              {/* GERENCIADOR DE SERVIÇOS EXIBIDOS NA PÁGINA PÚBLICA               */}
+              {/* ----------------------------------------------------------------- */}
+              <div className="pt-4 border-t border-slate-200/90 space-y-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Stethoscope className="w-4 h-4 text-emerald-700" />
+                      Serviços Prestados Exibidos no Site ({publicServices.filter(s => s.show_on_public_page !== false).length} Ativos)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Informe aos tutores quais serviços você presta (valores não são exibidos no site).
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleOpenAddService}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Novo Serviço no Site</span>
+                    </button>
+                    <Link
+                      to="/servicos"
+                      className="px-2.5 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium transition"
+                    >
+                      Catálogo Geral
+                    </Link>
+                  </div>
+                </div>
+
+                {loadingPublicServices ? (
+                  <div className="py-6 text-center text-xs text-slate-500">
+                    <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    Carregando serviços...
+                  </div>
+                ) : publicServices.length === 0 ? (
+                  <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl text-center space-y-2">
+                    <p className="text-xs font-semibold text-emerald-950">
+                      Você ainda não cadastrou serviços específicos. O site está exibindo os serviços padrão de modelo.
+                    </p>
+                    <p className="text-[11px] text-emerald-800">
+                      Clique em <strong>"+ Novo Serviço no Site"</strong> para adicionar seus atendimentos!
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleOpenAddService}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Cadastrar Meu Primeiro Atendimento
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {publicServices.map((svc) => {
+                      const isPublic = svc.show_on_public_page !== false;
+                      return (
+                        <div
+                          key={svc.id}
+                          className={`p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
+                            isPublic
+                              ? 'bg-white border-slate-200/90 shadow-2xs'
+                              : 'bg-slate-50 border-slate-200 opacity-60'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                              isPublic ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-slate-200 text-slate-500'
+                            }`}>
+                              {svc.category === 'VACINA' ? (
+                                <Syringe className="w-4 h-4" />
+                              ) : svc.category === 'EXAME' ? (
+                                <TestTube className="w-4 h-4" />
+                              ) : (
+                                <Stethoscope className="w-4 h-4" />
+                              )}
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <h5 className="text-xs font-bold text-slate-900 truncate">
+                                  {svc.name}
+                                </h5>
+                                <span className="text-[9px] font-semibold text-emerald-800 bg-emerald-100/70 px-1.5 py-0.5 rounded shrink-0">
+                                  {svc.category}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 truncate">
+                                {svc.public_description || svc.description || 'Atendimento domiciliar ou volante com suporte completo.'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleServicePublic(svc)}
+                              className={`p-1.5 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1 ${
+                                isPublic
+                                  ? 'bg-emerald-100/70 text-emerald-800 hover:bg-emerald-200'
+                                  : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                              }`}
+                              title={isPublic ? 'Ocultar do site público' : 'Exibir no site público'}
+                            >
+                              {isPublic ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditService(svc)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+                              title="Editar serviço"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteService(svc)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition cursor-pointer"
+                              title="Excluir serviço"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Slug Customization */}
@@ -832,6 +1364,571 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Gerenciador Avançado de Calendário & Disponibilidade no Site */}
+              <div className="bg-slate-50/90 border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                        <CalendarDays className="w-4 h-4" />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900">
+                        Calendário de Disponibilidade & Agendamento no Site
+                      </h4>
+                    </div>
+                    <p className="text-xs text-slate-500 max-w-xl leading-relaxed">
+                      Defina como os tutores visualizam suas datas no site público. Você pode escolher dias específicos com vagas confirmadas, dias fixos da semana ou deixar datas abertas para verificar agendamento sob consulta.
+                    </p>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={publicForm.show_availability_calendar}
+                      onChange={(e) =>
+                        setPublicForm({ ...publicForm, show_availability_calendar: e.target.checked })
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {publicForm.show_availability_calendar ? (
+                  <div className="space-y-6 animate-fade-in">
+                    {/* Seletor de Modo de Disponibilidade */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-2.5">
+                        Como você deseja informar sua disponibilidade?
+                      </label>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Opção 1: Datas Específicas / Vagas Abertas */}
+                        <div
+                          onClick={() => setPublicForm({ ...publicForm, availability_mode: 'SPECIFIC_DATES' })}
+                          className={`p-4 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between space-y-2 ${
+                            publicForm.availability_mode === 'SPECIFIC_DATES'
+                              ? 'border-emerald-600 bg-emerald-50/60 shadow-xs'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                                Datas Específicas
+                              </span>
+                              {publicForm.availability_mode === 'SPECIFIC_DATES' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                                  Ativo
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-600 leading-relaxed">
+                              Você seleciona exatamente quais dias têm <strong>vagas confirmadas</strong> (verde). Os demais dias aparecem como <strong>sob consulta</strong> para verificação.
+                            </p>
+                          </div>
+                          <span className="text-[10px] font-semibold text-emerald-800 block pt-1">
+                            Ideal para volantes e plantões
+                          </span>
+                        </div>
+
+                        {/* Opção 2: Dias da Semana Fixos */}
+                        <div
+                          onClick={() => setPublicForm({ ...publicForm, availability_mode: 'WEEKDAYS' })}
+                          className={`p-4 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between space-y-2 ${
+                            publicForm.availability_mode === 'WEEKDAYS'
+                              ? 'border-emerald-600 bg-emerald-50/60 shadow-xs'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-teal-500 inline-block"></span>
+                                Dias Fixos da Semana
+                              </span>
+                              {publicForm.availability_mode === 'WEEKDAYS' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                                  Ativo
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-600 leading-relaxed">
+                              Atendimento recorrente em dias programados (ex: Segundas, Quartas e Sextas). Você pode bloquear feriados ou folgas pontuais.
+                            </p>
+                          </div>
+                          <span className="text-[10px] font-semibold text-teal-800 block pt-1">
+                            Para rotinas regulares
+                          </span>
+                        </div>
+
+                        {/* Opção 3: Sob Consulta Geral */}
+                        <div
+                          onClick={() => setPublicForm({ ...publicForm, availability_mode: 'ALL_REQUESTABLE' })}
+                          className={`p-4 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between space-y-2 ${
+                            publicForm.availability_mode === 'ALL_REQUESTABLE'
+                              ? 'border-emerald-600 bg-emerald-50/60 shadow-xs'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-slate-400 inline-block"></span>
+                                Sob Consulta (Geral)
+                              </span>
+                              {publicForm.availability_mode === 'ALL_REQUESTABLE' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                                  Ativo
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-600 leading-relaxed">
+                              Qualquer data pode ser clicada pelo tutor para <strong>verificar agendamento</strong>. O horário é alinhado de acordo com a sua rota.
+                            </p>
+                          </div>
+                          <span className="text-[10px] font-semibold text-slate-700 block pt-1">
+                            Máxima flexibilidade de agenda
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* MODO 2: Seleção dos Dias da Semana */}
+                    {publicForm.availability_mode === 'WEEKDAYS' && (
+                      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-3">
+                        <label className="block text-xs font-bold text-slate-800">
+                          Selecione seus dias habituais de atendimento:
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { day: 0, label: 'Domingo', short: 'Dom' },
+                            { day: 1, label: 'Segunda-feira', short: 'Seg' },
+                            { day: 2, label: 'Terça-feira', short: 'Ter' },
+                            { day: 3, label: 'Quarta-feira', short: 'Qua' },
+                            { day: 4, label: 'Quinta-feira', short: 'Qui' },
+                            { day: 5, label: 'Sexta-feira', short: 'Sex' },
+                            { day: 6, label: 'Sábado', short: 'Sáb' },
+                          ].map((item) => {
+                            const isChecked = (publicForm.available_weekdays || []).includes(item.day);
+                            return (
+                              <button
+                                key={item.day}
+                                type="button"
+                                onClick={() => {
+                                  const current = publicForm.available_weekdays || [];
+                                  const updated = isChecked
+                                    ? current.filter((d) => d !== item.day)
+                                    : [...current, item.day];
+                                  setPublicForm({ ...publicForm, available_weekdays: updated });
+                                }}
+                                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                                  isChecked
+                                    ? 'bg-emerald-700 text-white shadow-xs'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                {isChecked && <Check className="w-3.5 h-3.5" />}
+                                <span>{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          Nestes dias da semana, o site exibirá "Vagas Confirmadas". Os demais dias serão exibidos como "Sob Consulta".
+                        </p>
+                      </div>
+                    )}
+
+                    {/* MODO 1 ou MODO 2/3: Calendário Interativo para Escolher Vagas ou Bloqueios */}
+                    <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                        <div>
+                          <h5 className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-emerald-700" />
+                            {publicForm.availability_mode === 'SPECIFIC_DATES'
+                              ? 'Selecione no calendário as datas com Vagas ou Folgas:'
+                              : 'Bloquear datas específicas (feriados, férias ou folgas):'}
+                          </h5>
+                          <span className="text-[11px] text-slate-500">
+                            {publicForm.availability_mode === 'SPECIFIC_DATES'
+                              ? 'Clique em uma data para alternar seu status conforme o modo selecionado.'
+                              : 'Clique nos dias que você NÃO atenderá para bloquear o agendamento.'}
+                          </span>
+                        </div>
+
+                        {/* Modos do Clique no Calendário */}
+                        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                          {publicForm.availability_mode === 'SPECIFIC_DATES' && (
+                            <button
+                              type="button"
+                              onClick={() => setCalClickMode('AVAILABLE')}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                                calClickMode === 'AVAILABLE'
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'text-slate-700 hover:text-slate-900'
+                              }`}
+                            >
+                              <span className="w-2 h-2 rounded-full bg-emerald-300"></span>
+                              <span>Vaga Aberta (🟢)</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCalClickMode('BLOCKED')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                              calClickMode === 'BLOCKED'
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : 'text-slate-700 hover:text-slate-900'
+                            }`}
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                            <span>Bloquear/Folga (🚫)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Header do Mês do Calendário */}
+                      {(() => {
+                        const year = calPickerDate.getFullYear();
+                        const month = calPickerDate.getMonth();
+                        const monthName = calPickerDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+                        const firstDayIndex = new Date(year, month, 1).getDay();
+                        const daysInCurrentMonth = new Date(year, month + 1, 0).getDate();
+
+                        const handleDateClick = (dateStr: string) => {
+                          const currentAvailable = publicForm.available_dates || [];
+                          const currentBlocked = publicForm.blocked_dates || [];
+
+                          if (calClickMode === 'AVAILABLE') {
+                            if (currentAvailable.includes(dateStr)) {
+                              // Remove da disponibilidade
+                              setPublicForm({
+                                ...publicForm,
+                                available_dates: currentAvailable.filter((d) => d !== dateStr),
+                              });
+                            } else {
+                              // Adiciona à disponibilidade e remove de bloqueados
+                              setPublicForm({
+                                ...publicForm,
+                                available_dates: [...currentAvailable, dateStr],
+                                blocked_dates: currentBlocked.filter((d) => d !== dateStr),
+                              });
+                            }
+                          } else {
+                            // Modo BLOCKED
+                            if (currentBlocked.includes(dateStr)) {
+                              setPublicForm({
+                                ...publicForm,
+                                blocked_dates: currentBlocked.filter((d) => d !== dateStr),
+                              });
+                            } else {
+                              setPublicForm({
+                                ...publicForm,
+                                blocked_dates: [...currentBlocked, dateStr],
+                                available_dates: currentAvailable.filter((d) => d !== dateStr),
+                              });
+                            }
+                          }
+                        };
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800 capitalize flex items-center gap-2">
+                                <CalendarDays className="w-4 h-4 text-emerald-700" />
+                                {monthName}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setCalPickerDate(new Date(year, month - 1, 1))}
+                                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                                  title="Mês Anterior"
+                                >
+                                  <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCalPickerDate(new Date())}
+                                  className="px-2.5 py-1 text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                                >
+                                  Hoje
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCalPickerDate(new Date(year, month + 1, 1))}
+                                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                                  title="Próximo Mês"
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Grid do Mês */}
+                            <div className="grid grid-cols-7 gap-1.5 text-center text-xs">
+                              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => (
+                                <div key={day} className="py-1 font-bold text-slate-400 text-[11px]">
+                                  {day}
+                                </div>
+                              ))}
+
+                              {/* Espaços em branco antes do dia 1 */}
+                              {[...Array(firstDayIndex)].map((_, i) => (
+                                <div key={`empty-${i}`} className="py-2.5"></div>
+                              ))}
+
+                              {/* Dias do mês */}
+                              {[...Array(daysInCurrentMonth)].map((_, i) => {
+                                const d = i + 1;
+                                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                                const isAvailable = (publicForm.available_dates || []).includes(dateStr);
+                                const isBlocked = (publicForm.blocked_dates || []).includes(dateStr);
+
+                                let cellBg = 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100';
+                                let badgeText = 'Sob Consulta';
+                                let badgeClass = 'text-slate-400';
+
+                                if (isBlocked) {
+                                  cellBg = 'bg-rose-50 border-rose-300 text-rose-800 font-bold';
+                                  badgeText = '🚫 Folga';
+                                  badgeClass = 'text-rose-600 font-bold';
+                                } else if (isAvailable) {
+                                  cellBg = 'bg-emerald-100/80 border-emerald-500 text-emerald-950 font-bold shadow-2xs';
+                                  badgeText = '🟢 Com Vaga';
+                                  badgeClass = 'text-emerald-700 font-bold';
+                                } else if (publicForm.availability_mode === 'WEEKDAYS') {
+                                  const dayOfWeek = new Date(year, month, d).getDay();
+                                  if ((publicForm.available_weekdays || []).includes(dayOfWeek)) {
+                                    cellBg = 'bg-teal-50 border-teal-300 text-teal-950 font-semibold';
+                                    badgeText = 'Recorrente';
+                                    badgeClass = 'text-teal-700 font-semibold';
+                                  }
+                                }
+
+                                return (
+                                  <button
+                                    key={dateStr}
+                                    type="button"
+                                    onClick={() => handleDateClick(dateStr)}
+                                    className={`py-2 px-1 rounded-xl border transition flex flex-col items-center justify-between min-h-[58px] cursor-pointer group ${cellBg}`}
+                                  >
+                                    <span className="text-xs font-bold leading-none">{d}</span>
+                                    <span className={`text-[9px] leading-tight block truncate w-full px-0.5 ${badgeClass}`}>
+                                      {badgeText}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Ações Rápidas de Seleção */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                              <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                                <span className="flex items-center gap-1">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                                  Vagas Confirmadas
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block"></span>
+                                  Sob Consulta
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
+                                  Folga / Bloqueado
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {publicForm.availability_mode === 'SPECIFIC_DATES' && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const next7: string[] = [];
+                                        const now = new Date();
+                                        for (let i = 0; i < 7; i++) {
+                                          const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+                                          const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+                                          next7.push(ds);
+                                        }
+                                        const union = Array.from(new Set([...(publicForm.available_dates || []), ...next7]));
+                                        setPublicForm({
+                                          ...publicForm,
+                                          available_dates: union,
+                                          blocked_dates: (publicForm.blocked_dates || []).filter((b) => !next7.includes(b)),
+                                        });
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-slate-700 cursor-pointer"
+                                    >
+                                      + Próximos 7 dias
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setPublicForm({
+                                          ...publicForm,
+                                          available_dates: [],
+                                          blocked_dates: [],
+                                        });
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-rose-600 cursor-pointer"
+                                    >
+                                      Limpar seleção
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Gerenciador de Horários / Vagas do Dia */}
+                    <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-3.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                        <div>
+                          <h5 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                            <Clock className="w-4 h-4 text-emerald-700" />
+                            Horários Disponíveis para Agendamento
+                          </h5>
+                          <p className="text-[11px] text-slate-500">
+                            Estes horários serão exibidos quando o tutor clicar em uma data com vagas no seu site.
+                          </p>
+                        </div>
+
+                        {/* Presets de Horários */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPublicForm({
+                                ...publicForm,
+                                available_slots: ['08:00', '09:30', '11:00', '14:00', '15:30', '17:00', '18:30'],
+                              })
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold cursor-pointer"
+                          >
+                            Padrão Comercial
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPublicForm({
+                                ...publicForm,
+                                available_slots: ['08:00', '09:00', '10:00', '11:00', '12:00'],
+                              })
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold cursor-pointer"
+                          >
+                            Manhã
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPublicForm({
+                                ...publicForm,
+                                available_slots: ['13:30', '15:00', '16:30', '18:00', '19:30'],
+                              })
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold cursor-pointer"
+                          >
+                            Tarde / Noite
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Chips de Horários */}
+                      <div className="flex flex-wrap gap-2 items-center">
+                        {(publicForm.available_slots || []).map((slot) => (
+                          <span
+                            key={slot}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold shadow-2xs"
+                          >
+                            <Clock className="w-3 h-3 text-emerald-700" />
+                            <span>{slot}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (publicForm.available_slots || []).filter((s) => s !== slot);
+                                setPublicForm({ ...publicForm, available_slots: updated });
+                              }}
+                              className="ml-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+
+                        {/* Adicionar Horário Customizado */}
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Ex: 10:30"
+                            maxLength={5}
+                            value={customSlotInput}
+                            onChange={(e) => setCustomSlotInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const val = customSlotInput.trim();
+                                if (val && !(publicForm.available_slots || []).includes(val)) {
+                                  setPublicForm({
+                                    ...publicForm,
+                                    available_slots: [...(publicForm.available_slots || []), val].sort(),
+                                  });
+                                  setCustomSlotInput('');
+                                }
+                              }
+                            }}
+                            className="w-24 px-2.5 py-1.5 text-xs border border-slate-300 rounded-xl outline-none font-mono focus:border-emerald-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = customSlotInput.trim();
+                              if (val && !(publicForm.available_slots || []).includes(val)) {
+                                setPublicForm({
+                                  ...publicForm,
+                                  available_slots: [...(publicForm.available_slots || []), val].sort(),
+                                });
+                                setCustomSlotInput('');
+                              }
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+                          >
+                            + Adicionar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Aviso ou Orientação Exibida no Calendário */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Aviso ou Regras de Atendimento Exibidas aos Tutores (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Atendimentos em domicílio sujeitos à confirmação de rota. Tolerância de 20 min no deslocamento."
+                        value={publicForm.availability_notice}
+                        onChange={(e) => setPublicForm({ ...publicForm, availability_notice: e.target.value })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl outline-none focus:border-emerald-600"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl flex items-center gap-2.5 text-xs text-amber-900">
+                    <Info className="w-4 h-4 shrink-0 text-amber-700" />
+                    <span>
+                      Calendário desativado. Os tutores solicitarão agendamento diretamente pelo formulário simples ou pelo WhatsApp.
+                    </span>
+                  </div>
+                )}
+              </div>
+
               <div className="pt-2">
                 <button
                   type="submit"
@@ -852,6 +1949,175 @@ export const SettingsPage: React.FC = () => {
                 </button>
               </div>
             </form>
+
+            {/* Modal de Criação / Edição de Serviço para a Página Pública */}
+            {showServiceModal && (
+              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4 text-emerald-700" />
+                      {editingPublicService ? 'Editar Serviço do Site' : 'Novo Serviço para o Site'}
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowServiceModal(false)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveService} className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Nome do Atendimento / Procedimento *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: Consulta Clínica Domiciliar, Vacina V10, Ultrassom..."
+                        value={serviceFormData.name}
+                        onChange={(e) => setServiceFormData({ ...serviceFormData, name: e.target.value })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl outline-none focus:border-emerald-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Categoria do Atendimento *
+                      </label>
+                      <select
+                        value={serviceFormData.category}
+                        onChange={(e) => setServiceFormData({ ...serviceFormData, category: e.target.value as any })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl outline-none bg-white font-medium"
+                      >
+                        <option value="CONSULTA">Consulta Clínica</option>
+                        <option value="PROCEDIMENTO">Procedimento</option>
+                        <option value="VACINA">Vacinação</option>
+                        <option value="EXAME">Exame Laboratorial / Imagem</option>
+                        <option value="OUTROS">Outros Serviços</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Descrição para os Tutores (O que está incluso)
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="Ex: Avaliação completa com ausculta, palpação, anamnese e prescrição digital enviada por WhatsApp."
+                        value={serviceFormData.public_description}
+                        onChange={(e) => setServiceFormData({ ...serviceFormData, public_description: e.target.value })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl outline-none focus:border-emerald-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Foto Ilustrativa do Serviço (Opcional - link ou upload)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="https://..."
+                          value={serviceFormData.photo_url}
+                          onChange={(e) => setServiceFormData({ ...serviceFormData, photo_url: e.target.value })}
+                          className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl outline-none"
+                        />
+                        <input
+                          type="file"
+                          ref={servicePhotoInputRef}
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) {
+                              const r = new FileReader();
+                              r.onload = (ev) => {
+                                setServiceFormData(prev => ({ ...prev, photo_url: ev.target?.result as string }));
+                              };
+                              r.readAsDataURL(f);
+                            }
+                            e.target.value = '';
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => servicePhotoInputRef.current?.click()}
+                          className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+                          title="Enviar arquivo do computador/celular"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer text-xs font-semibold text-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={serviceFormData.show_on_public_page}
+                        onChange={(e) => setServiceFormData({ ...serviceFormData, show_on_public_page: e.target.checked })}
+                        className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <span>Exibir este serviço visível na minha página pública para os tutores</span>
+                    </label>
+
+                    <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setShowServiceModal(false)}
+                        className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Salvar Serviço</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Modal de Confirmação de Exclusão de Serviço */}
+            {serviceToDelete && (
+              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-100">
+                    <Trash2 className="w-6 h-6" />
+                  </div>
+                  <div className="text-center space-y-1">
+                    <h4 className="text-sm font-bold text-slate-900">Remover Serviço?</h4>
+                    <p className="text-xs text-slate-600">
+                      Tem certeza que deseja remover o serviço <span className="font-semibold text-slate-900">"{serviceToDelete.name}"</span>? Ele deixará de ser exibido na sua página pública.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      disabled={isDeletingService}
+                      onClick={() => setServiceToDelete(null)}
+                      className="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeletingService}
+                      onClick={confirmDeleteService}
+                      className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      {isDeletingService ? 'Excluindo...' : 'Sim, Excluir'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

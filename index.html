@@ -4,16 +4,66 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
-      // Suppress Vite HMR WebSocket connection errors in iframe environment
-      window.addEventListener('unhandledrejection', function(event) {
-        if (event && event.reason) {
-          var msg = String(event.reason.message || event.reason || '');
-          var stack = String(event.reason.stack || '');
-          if (msg.includes('WebSocket') || stack.includes('@vite/client') || msg.includes('without opened')) {
-            event.preventDefault();
-          }
+      // Suppress Vite HMR WebSocket errors in cloud sandbox iframe environment
+      (function() {
+        var OriginalWebSocket = window.WebSocket;
+        if (OriginalWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            var urlStr = String(url || '');
+            if (urlStr.includes('@vite') || urlStr.includes('ais-dev') || urlStr.includes(':3000')) {
+              var dummy = {
+                readyState: 3, // CLOSED
+                send: function() {},
+                close: function() {},
+                addEventListener: function() {},
+                removeEventListener: function() {},
+                dispatchEvent: function() { return false; },
+                onopen: null,
+                onclose: null,
+                onerror: null,
+                onmessage: null
+              };
+              return dummy;
+            }
+            return new OriginalWebSocket(url, protocols);
+          };
+          window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+          window.WebSocket.OPEN = OriginalWebSocket.OPEN;
+          window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+          window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
         }
-      });
+
+        window.addEventListener('error', function(event) {
+          var filename = String(event.filename || '');
+          var msg = String(event.message || '');
+          var stack = String(event.error?.stack || '');
+          if (filename.includes('@vite/client') || stack.includes('@vite/client') || msg.includes('WebSocket') || msg.includes('ws://') || msg.includes('wss://')) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        window.onerror = function(message, source, lineno, colno, error) {
+          var src = String(source || '');
+          var msg = String(message || '');
+          var stack = String(error?.stack || '');
+          if (src.includes('@vite/client') || stack.includes('@vite/client') || msg.includes('WebSocket') || msg.includes('ws://') || msg.includes('wss://')) {
+            return true;
+          }
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (event && event.reason) {
+            var msg = String(event.reason.message || event.reason || '');
+            var stack = String(event.reason.stack || '');
+            if (msg.includes('WebSocket') || stack.includes('@vite/client') || msg.includes('without opened') || msg.includes('failed')) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+            }
+          }
+        });
+      })();
     </script>
     <title>Vetgo - Sistema de Gestão Veterinária</title>
     <link rel="icon" type="image/png" href="/logo.png" />

@@ -3489,6 +3489,9 @@ export const api = {
       crmv: user.crmv || '',
       crmv_uf: user.crmv_uf || 'SP',
       logo_url: user.logo_url || null,
+      hero_image_url: user.hero_image_url || null,
+      banner_image_url: user.banner_image_url || null,
+      about_image_url: user.about_image_url || null,
       bio: user.bio || 'Atendimento veterinário personalizado com foco no bem-estar animal.',
       service_regions: user.service_regions || 'Atendimento domiciliar e clínicas parceiras',
       opening_hours: user.opening_hours || 'Segunda a Sexta: 08:00 às 19:00 | Sábados: 09:00 às 14:00',
@@ -3501,6 +3504,13 @@ export const api = {
       specialty_anesthesia_enabled: Boolean(user.specialty_anesthesia_enabled),
       public_slug: user.public_slug || cleanSlug,
       public_layout_theme: user.public_layout_theme || 'CLASSIC',
+      show_availability_calendar: user.show_availability_calendar !== false,
+      availability_mode: user.availability_mode || 'SPECIFIC_DATES',
+      available_dates: user.available_dates || [],
+      available_weekdays: user.available_weekdays || [1, 2, 3, 4, 5],
+      blocked_dates: user.blocked_dates || [],
+      available_slots: user.available_slots || ['08:00', '10:00', '14:00', '16:00'],
+      availability_notice: user.availability_notice || '',
       services: services,
       clinics: clinics
     };
@@ -3563,7 +3573,7 @@ export const api = {
         patient_species: data.pet_species,
         date_time: `${requestedDate}T10:00:00`,
         appointment_type: data.consultation_type,
-        status: 'AGENDADO',
+        status: 'PENDENTE',
         reason: `[Solicitação Web Pública] ${data.reason}`,
         notes: `WhatsApp do tutor: ${data.tutor_phone} | Período: ${periodLabel}`,
         created_at: new Date().toISOString()
@@ -3577,5 +3587,19 @@ export const api = {
       message: 'Solicitação registrada com sucesso! Clique no botão abaixo para confirmar diretamente no WhatsApp.',
       whatsapp_url: whatsappUrl
     };
+  },
+
+  async getNotifications(): Promise<any[]> {
+    try {
+      return await this.request<any[]>('/notifications');
+    } catch {
+      return [];
+    }
+  },
+
+  async markNotificationRead(id: number): Promise<void> {
+    try {
+      await this.request<any>(`/notifications/${id}/read`, { method: 'PATCH' });
+    } catch {}
   }
 };

@@ -64,6 +64,7 @@ interface DatabaseData {
   services?: any[];
   exams?: any[];
   smtp_settings?: any;
+  notifications?: any[];
 }
 
 function loadDB(): DatabaseData {
@@ -865,6 +866,16 @@ app.put('/api/v1/users/profile', requireAuth, (req, res) => {
     'instagram',
     'address_display',
     'public_layout_theme',
+    'hero_image_url',
+    'banner_image_url',
+    'about_image_url',
+    'show_availability_calendar',
+    'availability_mode',
+    'available_dates',
+    'available_weekdays',
+    'blocked_dates',
+    'available_slots',
+    'availability_notice',
   ];
 
   for (const key of allowed) {
@@ -1580,14 +1591,19 @@ app.get('/api/v1/public/vet/:slug', (req, res) => {
     return res.status(403).json({ detail: 'A página de divulgação deste profissional está temporariamente indisponível.' });
   }
 
-  // Serviços ativos do sistema ou do veterinário
-  const allServices = (db.services || []).filter((s) => s.is_active !== false);
+  // Serviços ativos do sistema ou do veterinário configurados para exibição pública
+  const allServices = (db.services || []).filter(
+    (s) => s.is_active !== false && (!s.owner_id || s.owner_id === user.id) && s.show_on_public_page !== false
+  );
   const vetServices = allServices.map((s) => ({
     id: s.id,
     name: s.name,
     category: s.category || 'PROCEDIMENTO',
     price: s.price || 0,
     description: s.description || '',
+    public_description: s.public_description || s.description || '',
+    photo_url: s.photo_url || null,
+    show_on_public_page: s.show_on_public_page !== false,
   }));
 
   // Clínicas parceiras vinculadas
@@ -1609,6 +1625,9 @@ app.get('/api/v1/public/vet/:slug', (req, res) => {
     crmv: user.crmv || '',
     crmv_uf: user.crmv_uf || '',
     logo_url: user.logo_url || null,
+    hero_image_url: user.hero_image_url || null,
+    banner_image_url: user.banner_image_url || null,
+    about_image_url: user.about_image_url || null,
     bio: user.bio || 'Atendimento veterinário personalizado com dedicação, respeito e rigor técnico no conforto do seu lar ou em clínicas parceiras.',
     service_regions: user.service_regions || 'Atendimento domiciliar na região metropolitana e clínicas conveniadas.',
     opening_hours: user.opening_hours || 'Segunda a Sexta: 08:00 às 19:00 | Sábados: 09:00 às 14:00',
@@ -1621,6 +1640,13 @@ app.get('/api/v1/public/vet/:slug', (req, res) => {
     specialty_anesthesia_enabled: Boolean(user.specialty_anesthesia_enabled),
     public_slug: user.public_slug || `${user.first_name || ''}-${user.last_name || ''}`.toLowerCase().replace(/[^a-z0-9]/g, '-'),
     public_layout_theme: user.public_layout_theme || 'CLASSIC',
+    show_availability_calendar: user.show_availability_calendar !== false,
+    availability_mode: user.availability_mode || 'SPECIFIC_DATES',
+    available_dates: Array.isArray(user.available_dates) ? user.available_dates : [],
+    available_weekdays: Array.isArray(user.available_weekdays) ? user.available_weekdays : [1, 2, 3, 4, 5],
+    blocked_dates: Array.isArray(user.blocked_dates) ? user.blocked_dates : [],
+    available_slots: Array.isArray(user.available_slots) ? user.available_slots : ['08:00', '10:00', '14:00', '16:00'],
+    availability_notice: user.availability_notice || '',
     services: vetServices,
     clinics: clinics,
   });
@@ -1722,7 +1748,7 @@ app.post('/api/v1/public/vet/:slug/request-consultation', (req, res) => {
     duration_minutes: 60,
     address: data.address || null,
     appointment_type: data.consultation_type || 'DOMICILIAR',
-    status: 'AGENDADO',
+    status: 'PENDENTE',
     reason: `[Solicitação Web Pública] ${data.reason}`,
     notes: `Período preferido: ${data.preferred_period || 'Qualquer'} | Pet: ${data.pet_name} (${data.pet_species || 'Canina'}${data.pet_breed ? ` - ${data.pet_breed}` : ''}) | Tutor WhatsApp: ${data.tutor_phone}`,
     created_at: new Date().toISOString(),
@@ -1730,7 +1756,36 @@ app.post('/api/v1/public/vet/:slug/request-consultation', (req, res) => {
   };
 
   db.appointments.push(newAppt);
+
+  // Registra notificação interna no sistema para o veterinário
+  if (!Array.isArray(db.notifications)) db.notifications = [];
+  const nextNotifId = db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => Number(n.id) || 0)) + 1 : 1;
+  db.notifications.push({
+    id: nextNotifId,
+    user_id: Number(user.id),
+    title: 'Nova Solicitação de Agendamento!',
+    message: `${data.tutor_name} solicitou atendimento para o pet ${data.pet_name} (${data.pet_species || 'Canina'}) via seu site público.`,
+    link: '/agenda',
+    type: 'APPOINTMENT_REQUEST',
+    read: false,
+    appointment_id: newAppt.id,
+    created_at: new Date().toISOString(),
+  });
+
   saveDB(db);
+
+  // Envia Notificação Push se o veterinário tiver dispositivo inscrito
+  try {
+    sendPushNotificationToUser(Number(user.id), {
+      title: 'Nova Solicitação de Agendamento!',
+      body: `${data.tutor_name} solicitou atendimento para ${data.pet_name} via seu site público. Clique para aprovar.`,
+      url: '/agenda',
+      appointment_id: newAppt.id,
+      type: 'APPOINTMENT_REQUEST',
+    }).catch((e: any) => console.warn('Erro ao disparar push de agendamento:', e));
+  } catch (pushErr) {
+    console.warn('Erro push notificacao agendamento:', pushErr);
+  }
 
   // Formata a URL do WhatsApp para envio direto pelo tutor
   const vetRawPhone = (user.whatsapp || user.phone || '').replace(/\D/g, '');
@@ -4003,6 +4058,27 @@ app.post('/api/v1/notifications/send-appointment-test', requireAuth, async (req,
     sent_count: count,
     message: `Notificação de agendamento enviada com sucesso para ${count} dispositivo(s)!`,
   });
+});
+
+app.get('/api/v1/notifications', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  if (!Array.isArray(db.notifications)) db.notifications = [];
+  const list = db.notifications
+    .filter((n: any) => Number(n.user_id) === Number(user.id) || !n.user_id)
+    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  res.json(list);
+});
+
+app.patch('/api/v1/notifications/:id/read', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray(db.notifications)) db.notifications = [];
+  const notif = db.notifications.find((n: any) => Number(n.id) === id && (Number(n.user_id) === Number(user.id) || !n.user_id));
+  if (notif) {
+    notif.read = true;
+    saveDB(db);
+  }
+  res.json({ success: true });
 });
 
 // -------------------------------------------------------------
