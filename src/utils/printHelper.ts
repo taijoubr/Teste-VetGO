@@ -5,7 +5,16 @@
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
-export function printElement(elementId: string, documentTitle = 'Documento_Veterinario_Vetgo'): void {
+export interface PrintOptions {
+  orientation?: 'portrait' | 'landscape';
+  margin?: string;
+}
+
+export function printElement(
+  elementId: string,
+  documentTitle = 'Documento_Veterinario_Vetgo',
+  options?: PrintOptions
+): void {
   const sourceEl = document.getElementById(elementId);
   if (!sourceEl) {
     window.print();
@@ -38,6 +47,9 @@ export function printElement(elementId: string, documentTitle = 'Documento_Veter
     .map((el) => el.outerHTML)
     .join('\n');
 
+  const orientation = options?.orientation || 'portrait';
+  const pageMargin = options?.margin || (orientation === 'landscape' ? '8mm 10mm 8mm 10mm' : '10mm 12mm 12mm 12mm');
+
   // Monta o HTML completo dentro do iframe isolado
   doc.open();
   doc.write(`
@@ -49,8 +61,8 @@ export function printElement(elementId: string, documentTitle = 'Documento_Veter
         ${styleTags}
         <style>
           @page {
-            size: A4 portrait;
-            margin: 10mm 12mm 12mm 12mm;
+            size: A4 ${orientation};
+            margin: ${pageMargin};
           }
           * {
             -webkit-print-color-adjust: exact !important;
@@ -110,27 +122,33 @@ export function printElement(elementId: string, documentTitle = 'Documento_Veter
 /**
  * Gera download real de arquivo PDF a partir de um elemento HTML
  */
-export async function exportToPdf(elementId: string, filename = 'documento-vetgo.pdf'): Promise<void> {
+export async function exportToPdf(
+  elementId: string,
+  filename = 'documento-vetgo.pdf',
+  options?: PrintOptions
+): Promise<void> {
   const element = document.getElementById(elementId);
   if (!element) {
-    printElement(elementId, filename);
+    printElement(elementId, filename, options);
     return;
   }
 
   const cleanName = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
+  const orientation = options?.orientation || 'portrait';
+  const margin = orientation === 'landscape' ? ([8, 8, 8, 8] as [number, number, number, number]) : ([10, 10, 10, 10] as [number, number, number, number]);
 
   const opt = {
-    margin: [10, 10, 10, 10] as [number, number, number, number],
+    margin,
     filename: cleanName,
     image: { type: 'jpeg' as const, quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true, logging: false },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+    jsPDF: { unit: 'mm', format: 'a4', orientation }
   };
 
   try {
     await html2pdf().set(opt).from(element).save();
   } catch (err) {
     console.warn('Erro ao gerar PDF direto via html2pdf, acionando impressão isolada:', err);
-    printElement(elementId, cleanName);
+    printElement(elementId, cleanName, options);
   }
 }

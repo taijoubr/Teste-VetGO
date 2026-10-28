@@ -72,6 +72,7 @@ export const ConsultationsPage: React.FC = () => {
   const [viewingExamDoc, setViewingExamDoc] = useState<ClinicalConsultation | null>(null);
   const [viewingBudgetDoc, setViewingBudgetDoc] = useState<ClinicalConsultation | null>(null);
   const [viewingPrescriptionDoc, setViewingPrescriptionDoc] = useState<ClinicalConsultation | null>(null);
+  const [prescriptionSignToggle, setPrescriptionSignToggle] = useState<boolean>(true);
   const [budgetPixQr, setBudgetPixQr] = useState<string>('');
   const [budgetPixPayload, setBudgetPixPayload] = useState<string>('');
   const [budgetCopied, setBudgetCopied] = useState<boolean>(false);
@@ -1921,6 +1922,16 @@ export const ConsultationsPage: React.FC = () => {
                   </button>
                 )}
 
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-900 transition cursor-pointer select-none border border-purple-200" title="Alternar entre assinatura digital e assinatura manual com caneta">
+                  <input
+                    type="checkbox"
+                    checked={prescriptionSignToggle}
+                    onChange={(e) => setPrescriptionSignToggle(e.target.checked)}
+                    className="rounded border-purple-300 text-purple-700 focus:ring-purple-500 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <span>{prescriptionSignToggle && user?.signature_url ? 'Assinatura Digital Ativa' : 'Assinatura Física (Caneta)'}</span>
+                </label>
+
                 <button
                   type="button"
                   onClick={() => exportToPdf('printable-prescription-doc', `Receita_${viewingPrescriptionDoc.patient_name || 'Paciente'}`)}
@@ -2052,16 +2063,42 @@ export const ConsultationsPage: React.FC = () => {
                 Uso sob prescrição e orientação médica veterinária. Não altere as doses ou suspenda o tratamento sem prévia consulta. Em caso de reações adversas, contate imediatamente o médico veterinário.
               </div>
 
-              {/* Signature line */}
-              <div className="pt-10 text-center">
-                <div className="w-56 border-t border-slate-400 mx-auto"></div>
-                <div className="text-xs font-bold text-slate-800 mt-1">
-                  Dr(a). {user?.first_name} {user?.last_name}
+              {/* Signature Block: Digital Signature & CRMV Stamp vs Physical Line */}
+              {prescriptionSignToggle && user?.signature_url ? (
+                <div className="pt-8 text-center space-y-2">
+                  <div className="flex flex-col items-center justify-center">
+                    <img
+                      src={user.signature_url}
+                      alt="Assinatura Digital"
+                      className="max-h-16 max-w-[220px] object-contain mb-1 filter drop-shadow-xs"
+                    />
+                    <div className="w-56 border-t border-slate-400 mx-auto"></div>
+                    <div className="text-xs font-bold text-slate-900 mt-1">
+                      Dr(a). {user?.first_name} {user?.last_name || ''}
+                    </div>
+                    <div className="text-[11px] text-slate-600 font-mono">
+                      Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                    </div>
+                    <div className="text-[9px] text-purple-900 font-mono mt-1 inline-flex items-center justify-center gap-1 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+                      <CheckCircle2 className="w-3 h-3 text-purple-700" />
+                      <span>Receituário assinado eletronicamente via Sistema Vetgo • Emissão: {new Date(viewingPrescriptionDoc.date_time).toLocaleDateString('pt-BR')}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-[11px] text-slate-500 font-mono">
-                  Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+              ) : (
+                <div className="pt-10 text-center">
+                  <div className="w-56 border-t border-slate-400 mx-auto"></div>
+                  <div className="text-xs font-bold text-slate-800 mt-1">
+                    Dr(a). {user?.first_name} {user?.last_name}
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono">
+                    Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                  </div>
+                  <div className="text-[10px] text-slate-400 italic mt-0.5">
+                    (Assinatura física com caneta)
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Vetgo footer */}
               <div className="pt-6 border-t border-slate-200 text-center text-[10px] text-slate-400">

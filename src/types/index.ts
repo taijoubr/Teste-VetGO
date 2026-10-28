@@ -48,6 +48,12 @@ export interface User {
   blocked_dates?: string[];
   available_slots?: string[];
   availability_notice?: string;
+  signature_url?: string;
+  stamp_url?: string;
+  signature_type?: 'DRAWN' | 'UPLOAD' | 'TYPOGRAPHIC';
+  auto_sign_documents?: boolean;
+  show_crmv_stamp?: boolean;
+  signature_date_enabled?: boolean;
 }
 
 export interface PublicVetProfile {
@@ -435,6 +441,7 @@ export interface AnesthesiaRecord {
 
   notes?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 // -------------------------------------------------------------
@@ -701,6 +708,11 @@ export interface DocumentRecord {
   content: string;
   metadata_json?: any;
   created_at: string;
+  is_signed?: boolean;
+  signature_url?: string;
+  signature_date?: string;
+  signature_type?: string;
+  show_stamp?: boolean;
 }
 
 export type TemplateCategory = 'RECEITA' | 'LAUDO' | 'TERMO' | 'ATESTADO' | 'ORIENTACOES' | 'DECLARACAO' | 'OUTRO';

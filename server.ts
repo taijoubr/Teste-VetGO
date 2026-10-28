@@ -13,7 +13,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 const isVercelEnv = Boolean(process.env.VERCEL || process.env.NOW_REGION);
 const defaultLocalDbPath = path.resolve(__dirname, 'data', 'db.json');
 let DB_PATH = defaultLocalDbPath;
@@ -154,9 +154,9 @@ db.patients.forEach((p) => {
   p.is_neutered = Boolean(p.is_neutered);
 });
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Middleware with 50mb body limit for high-res photos, signatures, stamps and attachments
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Anti-cache headers for all API routes to ensure freshly persisted data
 app.use('/api', (_req, res, next) => {
@@ -432,7 +432,7 @@ app.post('/api/v1/auth/login', (req, res) => {
 
     if (
       (isNcodesAdmin && ['taijou13!', 'taijou13', 'taijou', 'admin@123456', 'admin123', 'admin', '123456'].includes(pwdLower)) ||
-      (isVetTeste && ['nikolas13', 'nikolas', 'nikolas13!', 'vet@123456', 'vet123', 'vet', '123456'].includes(pwdLower)) ||
+      (isVetTeste && ['nikolas13', 'nikolas', 'nikolas13!', 'vetteste', 'vetteste123', 'vetteste!', '12345678', 'senha123', 'teste', 'teste123', 'vet@123456', 'vet123', 'vet', '123456'].includes(pwdLower)) ||
       (isAdminDemo && ['admin@123456', 'admin123', 'admin', '123456', 'vet@123456', 'vet123', 'taijou13!'].includes(pwdLower)) ||
       (isVetDemo && ['vet@123456', 'vet123', 'vet', '123456', 'caroline123', 'admin@123456', 'admin123', 'nikolas13'].includes(pwdLower)) ||
       (isBrunoDemo && ['bruno@123', 'bruno', 'vet@123456', 'vet123', '123456'].includes(pwdLower)) ||
@@ -876,6 +876,12 @@ app.put('/api/v1/users/profile', requireAuth, (req, res) => {
     'blocked_dates',
     'available_slots',
     'availability_notice',
+    'signature_url',
+    'stamp_url',
+    'signature_type',
+    'auto_sign_documents',
+    'show_crmv_stamp',
+    'signature_date_enabled',
   ];
 
   for (const key of allowed) {
@@ -2875,9 +2881,9 @@ app.post('/api/v1/anesthesias', requireAuth, (req, res) => {
 
   const newRecord = {
     ...req.body,
-    id: Date.now(),
+    id: req.body.id ? Number(req.body.id) : Date.now(),
     owner_id: Number(user.id),
-    created_at: new Date().toISOString(),
+    created_at: req.body.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
@@ -2895,7 +2901,16 @@ app.put('/api/v1/anesthesias/:id', requireAuth, (req, res) => {
     (a) => Number(a.id) === id && (Number(a.owner_id) === Number(user.id) || !a.owner_id || user.role === 'ADMIN')
   );
   if (idx === -1) {
-    return res.status(404).json({ detail: 'Ficha anestésica não encontrada.' });
+    const newRecord = {
+      ...req.body,
+      id,
+      owner_id: Number(user.id),
+      created_at: req.body.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    db.anesthesia_records.unshift(newRecord);
+    saveDB(db);
+    return res.json(newRecord);
   }
 
   db.anesthesia_records[idx] = {
@@ -4207,6 +4222,21 @@ Retorne apenas o texto completo do documento, sem explicações adicionais ou ma
       detail: 'Falha ao gerar rascunho com IA. ' + (error?.message || ''),
     });
   }
+});
+
+// -------------------------------------------------------------
+// API FALLBACK AND ERROR HANDLER
+// Ensures any unmatched or errored /api call returns clean JSON, never HTML
+// -------------------------------------------------------------
+app.all('/api/*', (_req, res) => {
+  res.status(404).json({ detail: 'Endpoint de API não encontrado.' });
+});
+
+app.use('/api', (err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('Unhandled API Error:', err);
+  res.status(err.status || 500).json({
+    detail: err.message || 'Erro interno no servidor.',
+  });
 });
 
 // -------------------------------------------------------------

@@ -195,6 +195,63 @@ export const Login: React.FC = () => {
               </Link>
             </div>
           </div>
+
+          {/* ACESSO RÁPIDO PARA CONTAS DE TESTE */}
+          <div className="mt-4 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 shadow-2xs">
+            <p className="text-xs font-bold text-emerald-900 mb-2 flex items-center justify-between">
+              <span>🧪 Contas de Teste para Avaliação</span>
+              <span className="text-[10px] font-normal text-emerald-700">Clique para preencher</span>
+            </p>
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('vetteste@gmail.com');
+                  setPassword('Nikolas13');
+                  setError(null);
+                }}
+                className="w-full text-left px-3 py-2 bg-white hover:bg-emerald-100/70 border border-emerald-200 rounded-lg text-xs transition cursor-pointer flex items-center justify-between group"
+              >
+                <div>
+                  <span className="font-semibold text-slate-800">Veterinário Teste</span>
+                  <span className="text-slate-500 block text-[11px]">vetteste@gmail.com</span>
+                </div>
+                <span className="text-[11px] font-mono text-emerald-700 font-medium group-hover:underline">Nikolas13</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('dra.carolina@vetgo.com.br');
+                  setPassword('Vet@123456');
+                  setError(null);
+                }}
+                className="w-full text-left px-3 py-2 bg-white hover:bg-emerald-100/70 border border-emerald-200 rounded-lg text-xs transition cursor-pointer flex items-center justify-between group"
+              >
+                <div>
+                  <span className="font-semibold text-slate-800">Dra. Carolina Mendes (Vet)</span>
+                  <span className="text-slate-500 block text-[11px]">dra.carolina@vetgo.com.br</span>
+                </div>
+                <span className="text-[11px] font-mono text-emerald-700 font-medium group-hover:underline">Vet@123456</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('ncodestechnologies@gmail.com');
+                  setPassword('Taijou13!');
+                  setError(null);
+                }}
+                className="w-full text-left px-3 py-2 bg-white hover:bg-emerald-100/70 border border-emerald-200 rounded-lg text-xs transition cursor-pointer flex items-center justify-between group"
+              >
+                <div>
+                  <span className="font-semibold text-slate-800">Administrador / TI</span>
+                  <span className="text-slate-500 block text-[11px]">ncodestechnologies@gmail.com</span>
+                </div>
+                <span className="text-[11px] font-mono text-emerald-700 font-medium group-hover:underline">Taijou13!</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

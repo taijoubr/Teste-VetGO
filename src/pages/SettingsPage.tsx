@@ -56,13 +56,16 @@ import {
   CalendarDays,
   Clock,
   Ban,
-  X
+  X,
+  PenTool
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { PushNotificationManager } from '../components/PushNotificationManager';
+import { VeterinarianSignatureManager } from '../components/VeterinarianSignatureManager';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { ClinicalServiceItem } from '../types';
+import { compressImage } from '../utils/imageCompressor';
 
 export const SettingsPage: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -92,25 +95,18 @@ export const SettingsPage: React.FC = () => {
       setTimeout(() => setSavedMessage(null), 3500);
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setSavedMessage('Arquivo muito grande. O limite máximo é de 5MB.');
-      setTimeout(() => setSavedMessage(null), 3500);
-      return;
-    }
 
     setIsUploadingLogo(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
-        await api.updateUserProfile({ logo_url: base64 });
-        await refreshUser();
-        setSavedMessage('Logomarca / Foto enviada e salva com sucesso!');
-        setTimeout(() => setSavedMessage(null), 3500);
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      setSavedMessage('Erro ao processar imagem. Tente novamente.');
+      // Comprime a imagem no navegador para resolução ótima (max 1024x1024), evitando payload excessivo
+      const base64 = await compressImage(file, 1024, 1024, 0.85);
+      await api.updateUserProfile({ logo_url: base64 });
+      await refreshUser();
+      setSavedMessage('Logomarca / Foto enviada e salva com sucesso!');
+      setTimeout(() => setSavedMessage(null), 3500);
+    } catch (err: any) {
+      console.error('Erro ao processar imagem:', err);
+      setSavedMessage(err?.message || 'Erro ao processar imagem. Tente novamente.');
       setTimeout(() => setSavedMessage(null), 3500);
     } finally {
       setIsUploadingLogo(false);
@@ -241,41 +237,47 @@ export const SettingsPage: React.FC = () => {
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
   const servicePhotoInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUploadHeroPhoto = (file: File) => {
+  const handleUploadHeroPhoto = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setSavedMessage('Por favor, selecione uma imagem PNG ou JPG.');
       setTimeout(() => setSavedMessage(null), 3000);
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setPublicForm((prev) => ({ ...prev, hero_image_url: e.target?.result as string }));
+    try {
+      const base64 = await compressImage(file, 1200, 800, 0.85);
+      setPublicForm((prev) => ({ ...prev, hero_image_url: base64 }));
       setSavedMessage('Foto de atendimento selecionada! Lembre-se de salvar.');
       setTimeout(() => setSavedMessage(null), 3500);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setSavedMessage('Erro ao processar imagem.');
+      setTimeout(() => setSavedMessage(null), 3000);
+    }
   };
 
-  const handleUploadAboutPhoto = (file: File) => {
+  const handleUploadAboutPhoto = async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setPublicForm((prev) => ({ ...prev, about_image_url: e.target?.result as string }));
+    try {
+      const base64 = await compressImage(file, 800, 800, 0.85);
+      setPublicForm((prev) => ({ ...prev, about_image_url: base64 }));
       setSavedMessage('Foto de perfil/sobre mim selecionada! Lembre-se de salvar.');
       setTimeout(() => setSavedMessage(null), 3500);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setSavedMessage('Erro ao processar imagem.');
+      setTimeout(() => setSavedMessage(null), 3000);
+    }
   };
 
-  const handleUploadBannerPhoto = (file: File) => {
+  const handleUploadBannerPhoto = async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setPublicForm((prev) => ({ ...prev, banner_image_url: e.target?.result as string }));
+    try {
+      const base64 = await compressImage(file, 1200, 600, 0.85);
+      setPublicForm((prev) => ({ ...prev, banner_image_url: base64 }));
       setSavedMessage('Foto de capa do BioLink selecionada! Lembre-se de salvar.');
       setTimeout(() => setSavedMessage(null), 3500);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setSavedMessage('Erro ao processar imagem.');
+      setTimeout(() => setSavedMessage(null), 3000);
+    }
   };
 
   // Public Services Management State
@@ -515,11 +517,12 @@ export const SettingsPage: React.FC = () => {
     { id: 'servicos', name: 'Serviços & Exames', icon: Stethoscope },
     { id: 'especialidades', name: 'Especialidades & Módulos', icon: Activity },
     { id: 'profissional', name: 'Dados Profissionais', icon: Shield },
+    { id: 'assinatura_digital', name: 'Assinatura Digital & Carimbo', icon: PenTool },
     { id: 'identidade', name: 'Identidade Visual & Logo', icon: ImageIcon },
     { id: 'notificacoes', name: 'Notificações Push', icon: Bell },
     { id: 'aplicativo', name: 'Instalar no Celular (App)', icon: Smartphone },
     { id: 'seguranca', name: 'Conta & Senha', icon: Key },
-    { id: 'assinatura', name: 'Assinatura & Plano', icon: CreditCard },
+    { id: 'assinatura', name: 'Plano & Cobrança (Vetgo Pro)', icon: CreditCard },
   ];
 
   return (
@@ -2030,14 +2033,15 @@ export const SettingsPage: React.FC = () => {
                           ref={servicePhotoInputRef}
                           accept="image/*"
                           className="hidden"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const f = e.target.files?.[0];
                             if (f) {
-                              const r = new FileReader();
-                              r.onload = (ev) => {
-                                setServiceFormData(prev => ({ ...prev, photo_url: ev.target?.result as string }));
-                              };
-                              r.readAsDataURL(f);
+                              try {
+                                const base64 = await compressImage(f, 800, 800, 0.85);
+                                setServiceFormData((prev) => ({ ...prev, photo_url: base64 }));
+                              } catch (err) {
+                                console.error('Erro ao processar foto do serviço:', err);
+                              }
                             }
                             e.target.value = '';
                           }}
@@ -2520,6 +2524,30 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Quick Link to Assinatura Digital & Carimbo */}
+            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                  <PenTool className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900">Assinatura Digital & Carimbo do CRMV</h4>
+                  <p className="text-[11px] text-slate-600">
+                    {user?.signature_url
+                      ? 'Sua assinatura digital está cadastrada e pronta para emitir documentos.'
+                      : 'Cadastre sua rubrica ou carimbo para assinar receitas e termos diretamente pelo sistema.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSearchParams({ tab: 'assinatura_digital' })}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 transition cursor-pointer whitespace-nowrap shadow-2xs"
+              >
+                {user?.signature_url ? 'Gerenciar Assinatura' : 'Cadastrar Assinatura Agora'}
+              </button>
+            </div>
+
             <button
               type="submit"
               className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition cursor-pointer"
@@ -2527,6 +2555,10 @@ export const SettingsPage: React.FC = () => {
               Salvar Dados Profissionais & PIX
             </button>
           </form>
+        )}
+
+        {activeTab === 'assinatura_digital' && (
+          <VeterinarianSignatureManager onSaved={refreshUser} />
         )}
 
         {activeTab === 'identidade' && (

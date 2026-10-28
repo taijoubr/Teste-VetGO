@@ -540,6 +540,13 @@ export const FullMedicalRecordModal: React.FC<FullMedicalRecordModalProps> = ({
 
                   {/* Assinatura / Carimbo */}
                   <div className="flex flex-col items-center">
+                    {data.vet?.signature_url && (
+                      <img
+                        src={data.vet.signature_url}
+                        alt="Assinatura Digital"
+                        className="max-h-14 max-w-[180px] object-contain mb-1"
+                      />
+                    )}
                     <div className="w-56 border-b border-slate-400 mb-1.5"></div>
                     <div className="text-xs font-bold text-slate-900 print:text-black">
                       Dr(a). {data.vet?.first_name} {data.vet?.last_name || ''}
@@ -547,6 +554,11 @@ export const FullMedicalRecordModal: React.FC<FullMedicalRecordModalProps> = ({
                     <div className="text-[11px] text-slate-500 font-mono">
                       {data.vet?.crmv ? `CRMV-${data.vet?.crmv_uf || 'SP'} ${data.vet?.crmv}` : 'Médico(a) Veterinário(a)'}
                     </div>
+                    {data.vet?.signature_url && (
+                      <div className="text-[9px] text-emerald-800 font-mono mt-0.5">
+                        ✔ Autenticado com Assinatura Digital do Veterinário
+                      </div>
+                    )}
                   </div>
                 </div>
 

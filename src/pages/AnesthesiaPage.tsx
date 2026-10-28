@@ -44,6 +44,7 @@ import {
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { printElement, exportToPdf } from '../utils/printHelper';
+import { TraditionalAnesthesiaSheet } from '../components/TraditionalAnesthesiaSheet';
 
 interface StandardAnestheticDrug {
   name: string;
@@ -145,6 +146,7 @@ export const AnesthesiaPage: React.FC = () => {
   const [showIncidentModal, setShowIncidentModal] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [sheetSignToggle, setSheetSignToggle] = useState<boolean>(true);
 
   // Visualização de tabs
   const [viewMode, setViewMode] = useState<'LIST' | 'ACTIVE_ROOM'>('LIST');
@@ -199,7 +201,21 @@ export const AnesthesiaPage: React.FC = () => {
   });
 
   // Form de Parâmetros
-  const [monForm, setMonForm] = useState({
+  const [monForm, setMonForm] = useState<{
+    elapsed_minutes: number | string;
+    timestamp: string;
+    fc: number | string;
+    fr: number | string;
+    spo2: number | string;
+    etco2: number | string;
+    pas: number | string;
+    pam: number | string;
+    pad: number | string;
+    temperature: number | string;
+    ecg: string;
+  }>({
+    elapsed_minutes: 0,
+    timestamp: '',
     fc: 90,
     fr: 14,
     spo2: 99,
@@ -315,29 +331,43 @@ export const AnesthesiaPage: React.FC = () => {
       setPatients(patientsData);
       setTutors(tutorsData);
 
-      // Se houver uma anestesia em andamento, recupera o cronômetro
-      const inProgress = anesthesiasData.find((a) => a.status === 'EM_ANDAMENTO');
-      if (inProgress) {
-        setActiveAnesthesia(inProgress);
-        const savedTime = localStorage.getItem(`vetgo_timer_${inProgress.id}`);
-        if (savedTime) {
-          setElapsedSeconds(Number(savedTime));
+      // Se já temos uma anestesia ativa selecionada, mantém ela e atualiza seus dados
+      if (activeAnesthesia) {
+        const found = anesthesiasData.find((a) => Number(a.id) === Number(activeAnesthesia.id));
+        if (found) {
+          setActiveAnesthesia(found);
+          if (found.status === 'EM_ANDAMENTO') {
+            const savedTime = localStorage.getItem(`vetgo_timer_${found.id}`);
+            if (savedTime) setElapsedSeconds(Number(savedTime));
+            setIsTimerRunning(true);
+          } else {
+            setIsTimerRunning(false);
+          }
         }
-        setIsTimerRunning(true);
-      } else if (urlPatientId) {
-        const foundAnesthesia = anesthesiasData.find((a) => Number(a.patient_id) === urlPatientId);
-        if (foundAnesthesia && !isNewUrl) {
-          setActiveAnesthesia(foundAnesthesia);
-        } else {
-          const pat = patientsData.find((p) => p.id === urlPatientId);
-          if (pat) {
-            setNewForm((prev) => ({
-              ...prev,
-              patient_id: pat.id,
-              tutor_id: pat.tutor_id,
-              weight_kg: pat.weight_kg || 10
-            }));
-            setShowNewAnesthesiaModal(true);
+      } else {
+        const inProgress = anesthesiasData.find((a) => a.status === 'EM_ANDAMENTO');
+        if (inProgress) {
+          setActiveAnesthesia(inProgress);
+          const savedTime = localStorage.getItem(`vetgo_timer_${inProgress.id}`);
+          if (savedTime) {
+            setElapsedSeconds(Number(savedTime));
+          }
+          setIsTimerRunning(true);
+        } else if (urlPatientId) {
+          const foundAnesthesia = anesthesiasData.find((a) => Number(a.patient_id) === urlPatientId);
+          if (foundAnesthesia && !isNewUrl) {
+            setActiveAnesthesia(foundAnesthesia);
+          } else {
+            const pat = patientsData.find((p) => p.id === urlPatientId);
+            if (pat) {
+              setNewForm((prev) => ({
+                ...prev,
+                patient_id: pat.id,
+                tutor_id: pat.tutor_id,
+                weight_kg: pat.weight_kg || 10
+              }));
+              setShowNewAnesthesiaModal(true);
+            }
           }
         }
       }
@@ -404,33 +434,90 @@ export const AnesthesiaPage: React.FC = () => {
     setViewMode('ACTIVE_ROOM');
   };
 
+  const openMonitoringModal = () => {
+    const currentElapsedMins = Math.floor(elapsedSeconds / 60);
+    const nowRealTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const existingMonitorings = activeAnesthesia?.monitorings || [];
+    let nextMinute = currentElapsedMins;
+    if (!isTimerRunning && existingMonitorings.length > 0) {
+      const maxMin = Math.max(...existingMonitorings.map((m) => m.elapsed_minutes || 0));
+      nextMinute = maxMin + (activeAnesthesia?.monitoring_interval_minutes || 5);
+    }
+    setMonForm((prev) => ({
+      ...prev,
+      elapsed_minutes: nextMinute,
+      timestamp: nowRealTime,
+    }));
+    setShowMonitoringModal(true);
+  };
+
   const handleSaveMonitoring = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeAnesthesia) return;
 
-    const currentElapsedMins = Math.floor(elapsedSeconds / 60);
-    const nowRealTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const toNumOrUndef = (val: any) => {
+      if (val === '' || val === undefined || val === null) return undefined;
+      const n = Number(val);
+      return isNaN(n) ? undefined : n;
+    };
+
+    const readingMinute = typeof monForm.elapsed_minutes === 'number' && !isNaN(monForm.elapsed_minutes)
+      ? Number(monForm.elapsed_minutes)
+      : (typeof monForm.elapsed_minutes === 'string' && monForm.elapsed_minutes.trim() !== '' && !isNaN(Number(monForm.elapsed_minutes))
+          ? Number(monForm.elapsed_minutes)
+          : Math.floor(elapsedSeconds / 60));
+
+    const nowRealTime = monForm.timestamp || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     const newReading = {
       timestamp: nowRealTime,
-      elapsed_minutes: currentElapsedMins,
-      heart_rate_bpm: Number(monForm.fc),
-      respiratory_rate_mpm: Number(monForm.fr),
-      spo2_percentage: Number(monForm.spo2),
-      etco2_mmhg: Number(monForm.etco2),
-      pas_mmhg: Number(monForm.pas),
-      pam_mmhg: Number(monForm.pam),
-      pad_mmhg: Number(monForm.pad),
-      temperature_c: Number(monForm.temperature),
-      ecg_rhythm: monForm.ecg
+      elapsed_minutes: readingMinute,
+      heart_rate_bpm: toNumOrUndef(monForm.fc),
+      respiratory_rate_mpm: toNumOrUndef(monForm.fr),
+      spo2_percentage: toNumOrUndef(monForm.spo2),
+      etco2_mmhg: toNumOrUndef(monForm.etco2),
+      pas_mmhg: toNumOrUndef(monForm.pas),
+      pam_mmhg: toNumOrUndef(monForm.pam),
+      pad_mmhg: toNumOrUndef(monForm.pad),
+      temperature_c: toNumOrUndef(monForm.temperature),
+      ecg_rhythm: monForm.ecg || 'Sinusal'
     };
 
-    await api.addMonitoringReading(activeAnesthesia.id, newReading);
-    setCountdownSeconds((activeAnesthesia.monitoring_interval_minutes || 5) * 60);
-    setShowMonitoringModal(false);
+    try {
+      const savedReading = await api.addMonitoringReading(activeAnesthesia.id, newReading);
+      setCountdownSeconds((activeAnesthesia.monitoring_interval_minutes || 5) * 60);
+      setShowMonitoringModal(false);
 
-    const refreshed = await api.getAnesthesia(activeAnesthesia.id);
-    if (refreshed) setActiveAnesthesia(refreshed);
+      // Atualiza imediatamente o estado da anestesia ativa na sala
+      setActiveAnesthesia((prev) => {
+        if (!prev) return prev;
+        const currentList = Array.isArray(prev.monitorings) ? prev.monitorings : [];
+        return {
+          ...prev,
+          monitorings: [...currentList, savedReading]
+        };
+      });
+
+      const refreshed = await api.getAnesthesia(activeAnesthesia.id);
+      if (refreshed) setActiveAnesthesia(refreshed);
+      loadAllData();
+    } catch (err) {
+      console.error('Erro ao salvar monitorização:', err);
+      // Fallback local caso haja falha temporária de rede
+      const localReading = {
+        ...newReading,
+        id: `m-local-${Date.now()}`
+      };
+      setActiveAnesthesia((prev) => {
+        if (!prev) return prev;
+        const currentList = Array.isArray(prev.monitorings) ? prev.monitorings : [];
+        return {
+          ...prev,
+          monitorings: [...currentList, localReading]
+        };
+      });
+      setShowMonitoringModal(false);
+    }
   };
 
   const handleSaveDrug = async (e: React.FormEvent) => {
@@ -542,20 +629,35 @@ export const AnesthesiaPage: React.FC = () => {
 
     const nowRealTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     setIsTimerRunning(false);
+    localStorage.removeItem(`vetgo_timer_${activeAnesthesia.id}`);
 
-    const anestheticDurationMins = Math.floor(elapsedSeconds / 60);
+    const anestheticDurationMins = Math.max(5, Math.floor(elapsedSeconds / 60));
 
     const timesData = {
+      anesthesia_start_time: activeAnesthesia.times?.anesthesia_start_time || activeAnesthesia.scheduled_time || nowRealTime,
       anesthesia_end_time: nowRealTime,
-      extubation_time: recoveryForm.extubation_time,
+      extubation_time: recoveryForm.extubation_time || nowRealTime,
       anesthetic_duration_minutes: anestheticDurationMins,
-      procedure_duration_minutes: Math.max(10, anestheticDurationMins - 15)
+      procedure_duration_minutes: Math.max(5, anestheticDurationMins - 15)
     };
 
-    const finished = await api.finishAnesthesia(activeAnesthesia.id, recoveryForm, timesData);
-    setActiveAnesthesia(finished);
-    setShowRecoveryModal(false);
-    loadAllData();
+    try {
+      const finished = await api.finishAnesthesia(activeAnesthesia.id, recoveryForm, timesData);
+      setActiveAnesthesia(finished);
+      setShowRecoveryModal(false);
+      await loadAllData();
+    } catch (err) {
+      console.error('Erro ao finalizar anestesia:', err);
+      const fallbackFinished = {
+        ...activeAnesthesia,
+        status: 'FINALIZADA' as const,
+        recovery: recoveryForm,
+        times: { ...activeAnesthesia.times, ...timesData }
+      };
+      setActiveAnesthesia(fallbackFinished);
+      setShowRecoveryModal(false);
+      await loadAllData();
+    }
   };
 
   const handleCreateAnesthesia = async (e: React.FormEvent) => {
@@ -810,15 +912,30 @@ export const AnesthesiaPage: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
                 {activeAnesthesia.status === 'PLANEJAMENTO' && (
-                  <button
-                    onClick={handleStartAnesthesia}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-md shadow-emerald-950/30"
-                  >
-                    <Play className="w-4 h-4 fill-current" />
-                    INICIAR ANESTESIA
-                  </button>
+                  <>
+                    <button
+                      onClick={handleStartAnesthesia}
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-md shadow-emerald-950/30 cursor-pointer"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      INICIAR ANESTESIA
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRecoveryForm((prev) => ({
+                          ...prev,
+                          extubation_time: getDeviceCurrentTime(),
+                        }));
+                        setShowRecoveryModal(true);
+                      }}
+                      className="w-full sm:w-auto px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-black transition shadow-sm text-center cursor-pointer"
+                      title="Encerrar procedimento e registrar recuperação pós-anestésica"
+                    >
+                      ENCERRAR ANESTESIA → RECUPERAÇÃO
+                    </button>
+                  </>
                 )}
 
                 {activeAnesthesia.status === 'EM_ANDAMENTO' && (
@@ -839,13 +956,27 @@ export const AnesthesiaPage: React.FC = () => {
                 )}
 
                 {activeAnesthesia.status === 'FINALIZADA' && (
-                  <button
-                    onClick={() => setShowPrintModal(true)}
-                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition"
-                  >
-                    <Printer className="w-4 h-4" />
-                    Ficha Anestésica
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowPrintModal(true)}
+                      className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4" />
+                      Ficha Anestésica
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const updated = await api.updateAnesthesia(activeAnesthesia.id, { status: 'EM_ANDAMENTO' });
+                        setActiveAnesthesia(updated);
+                        setIsTimerRunning(true);
+                        loadAllData();
+                      }}
+                      className="px-2.5 py-2 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition cursor-pointer"
+                      title="Reabrir procedimento para registrar mais parâmetros ou fármacos"
+                    >
+                      Reabrir Sala
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -858,8 +989,8 @@ export const AnesthesiaPage: React.FC = () => {
             </span>
             <div className="flex flex-wrap gap-1.5 sm:gap-2">
               <button
-                onClick={() => setShowMonitoringModal(true)}
-                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-bold transition"
+                onClick={openMonitoringModal}
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-bold transition cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" /> + Parâmetros
               </button>
@@ -900,7 +1031,7 @@ export const AnesthesiaPage: React.FC = () => {
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              Monitorização Periódica ({activeAnesthesia.monitorings.length})
+              Monitorização Periódica ({(activeAnesthesia.monitorings || []).length})
             </button>
             <button
               onClick={() => setRoomTab('GRAPH')}
@@ -920,7 +1051,7 @@ export const AnesthesiaPage: React.FC = () => {
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              Protocolo Anestésico ({activeAnesthesia.protocol_drugs.length})
+              Protocolo Anestésico ({(activeAnesthesia.protocol_drugs || []).length})
             </button>
             <button
               onClick={() => setRoomTab('TIMELINE')}
@@ -930,7 +1061,7 @@ export const AnesthesiaPage: React.FC = () => {
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              Linha Temporal ({activeAnesthesia.timeline_events.length})
+              Linha Temporal ({(activeAnesthesia.timeline_events || []).length})
             </button>
             <button
               onClick={() => setRoomTab('PRE_EVAL')}
@@ -963,14 +1094,14 @@ export const AnesthesiaPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {activeAnesthesia.monitorings.length === 0 ? (
+                    {(activeAnesthesia.monitorings || []).length === 0 ? (
                       <tr>
                         <td colSpan={9} className="py-8 text-center text-slate-400">
                           Nenhum parâmetro registrado ainda. Clique em "+ Parâmetros" para adicionar a primeira leitura.
                         </td>
                       </tr>
                     ) : (
-                      activeAnesthesia.monitorings.map((m) => (
+                      (activeAnesthesia.monitorings || []).map((m) => (
                         <tr key={m.id} className="hover:bg-slate-50/80 font-mono">
                           <td className="py-3 px-4 font-bold text-slate-900">{m.elapsed_minutes} min</td>
                           <td className="py-3 px-4 text-slate-500">{m.timestamp}</td>
@@ -1010,7 +1141,7 @@ export const AnesthesiaPage: React.FC = () => {
                   <thead>
                     <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                       <th className="py-2.5 px-3 text-left w-36">Parâmetro / Tempo</th>
-                      {activeAnesthesia.monitorings.map((m) => (
+                      {(activeAnesthesia.monitorings || []).map((m) => (
                         <th key={m.id} className="py-2.5 px-3 font-mono border-l border-slate-200">
                           {m.elapsed_minutes}'<br />
                           <span className="text-[10px] font-normal text-slate-400">{m.timestamp}</span>
@@ -1021,7 +1152,7 @@ export const AnesthesiaPage: React.FC = () => {
                   <tbody className="divide-y divide-slate-100 font-mono">
                     <tr className="bg-rose-50/40">
                       <td className="py-2 px-3 text-left font-bold text-rose-800 font-sans">FC (bpm)</td>
-                      {activeAnesthesia.monitorings.map((m) => (
+                      {(activeAnesthesia.monitorings || []).map((m) => (
                         <td key={m.id} className="py-2 px-3 border-l border-slate-200 font-bold text-rose-700">
                           {m.heart_rate_bpm || '-'}
                         </td>
@@ -1029,7 +1160,7 @@ export const AnesthesiaPage: React.FC = () => {
                     </tr>
                     <tr className="bg-blue-50/40">
                       <td className="py-2 px-3 text-left font-bold text-blue-800 font-sans">PAS (mmHg)</td>
-                      {activeAnesthesia.monitorings.map((m) => (
+                      {(activeAnesthesia.monitorings || []).map((m) => (
                         <td key={m.id} className="py-2 px-3 border-l border-slate-200 text-blue-900 font-semibold">
                           {m.pas_mmhg || '-'}
                         </td>
@@ -1037,7 +1168,7 @@ export const AnesthesiaPage: React.FC = () => {
                     </tr>
                     <tr className="bg-blue-100/50">
                       <td className="py-2 px-3 text-left font-bold text-blue-900 font-sans">PAM (mmHg)</td>
-                      {activeAnesthesia.monitorings.map((m) => (
+                      {(activeAnesthesia.monitorings || []).map((m) => (
                         <td key={m.id} className="py-2 px-3 border-l border-slate-200 font-bold text-blue-900">
                           {m.pam_mmhg || '-'}
                         </td>
@@ -1045,7 +1176,7 @@ export const AnesthesiaPage: React.FC = () => {
                     </tr>
                     <tr className="bg-blue-50/40">
                       <td className="py-2 px-3 text-left font-bold text-blue-800 font-sans">PAD (mmHg)</td>
-                      {activeAnesthesia.monitorings.map((m) => (
+                      {(activeAnesthesia.monitorings || []).map((m) => (
                         <td key={m.id} className="py-2 px-3 border-l border-slate-200 text-blue-900">
                           {m.pad_mmhg || '-'}
                         </td>
@@ -1053,7 +1184,7 @@ export const AnesthesiaPage: React.FC = () => {
                     </tr>
                     <tr className="bg-emerald-50/40">
                       <td className="py-2 px-3 text-left font-bold text-emerald-800 font-sans">SpO₂ (%)</td>
-                      {activeAnesthesia.monitorings.map((m) => (
+                      {(activeAnesthesia.monitorings || []).map((m) => (
                         <td key={m.id} className="py-2 px-3 border-l border-slate-200 font-bold text-emerald-700">
                           {m.spo2_percentage || '-'}
                         </td>
@@ -1061,7 +1192,7 @@ export const AnesthesiaPage: React.FC = () => {
                     </tr>
                     <tr className="bg-amber-50/40">
                       <td className="py-2 px-3 text-left font-bold text-amber-800 font-sans">ETCO₂ (mmHg)</td>
-                      {activeAnesthesia.monitorings.map((m) => (
+                      {(activeAnesthesia.monitorings || []).map((m) => (
                         <td key={m.id} className="py-2 px-3 border-l border-slate-200 font-bold text-amber-700">
                           {m.etco2_mmhg || '-'}
                         </td>
@@ -1069,7 +1200,7 @@ export const AnesthesiaPage: React.FC = () => {
                     </tr>
                     <tr className="bg-cyan-50/40">
                       <td className="py-2 px-3 text-left font-bold text-cyan-800 font-sans">FR (mpm)</td>
-                      {activeAnesthesia.monitorings.map((m) => (
+                      {(activeAnesthesia.monitorings || []).map((m) => (
                         <td key={m.id} className="py-2 px-3 border-l border-slate-200 font-bold text-cyan-700">
                           {m.respiratory_rate_mpm || '-'}
                         </td>
@@ -1077,7 +1208,7 @@ export const AnesthesiaPage: React.FC = () => {
                     </tr>
                     <tr className="bg-indigo-50/40">
                       <td className="py-2 px-3 text-left font-bold text-indigo-800 font-sans">Temp (°C)</td>
-                      {activeAnesthesia.monitorings.map((m) => (
+                      {(activeAnesthesia.monitorings || []).map((m) => (
                         <td key={m.id} className="py-2 px-3 border-l border-slate-200 font-bold text-indigo-700">
                           {m.temperature_c || '-'}
                         </td>
@@ -1198,6 +1329,10 @@ export const AnesthesiaPage: React.FC = () => {
                   <p><strong>Jejum Alimentar:</strong> {activeAnesthesia.pre_evaluation.fasting_food_hours || '-'} horas</p>
                   <p><strong>Jejum Hídrico:</strong> {activeAnesthesia.pre_evaluation.fasting_water_hours || '-'} horas</p>
                   <p><strong>Nível de Consciência:</strong> {activeAnesthesia.pre_evaluation.consciousness_level}</p>
+                  <p><strong>FC Basal:</strong> {activeAnesthesia.pre_evaluation.heart_rate_bpm ? `${activeAnesthesia.pre_evaluation.heart_rate_bpm} bpm` : '-'}</p>
+                  <p><strong>FR Basal:</strong> {activeAnesthesia.pre_evaluation.respiratory_rate_mpm ? `${activeAnesthesia.pre_evaluation.respiratory_rate_mpm} mpm` : '-'}</p>
+                  <p><strong>Temperatura:</strong> {activeAnesthesia.pre_evaluation.temperature_c ? `${activeAnesthesia.pre_evaluation.temperature_c}°C` : '-'}</p>
+                  <p><strong>TPC:</strong> {activeAnesthesia.pre_evaluation.capillary_refill_time_sec ? `${activeAnesthesia.pre_evaluation.capillary_refill_time_sec} s` : '-'}</p>
                   <p><strong>Reflexos:</strong> {activeAnesthesia.pre_evaluation.reflexes}</p>
                   <p><strong>Mucosas:</strong> {activeAnesthesia.pre_evaluation.mucous_membranes}</p>
                   <p><strong>Hidratação:</strong> {activeAnesthesia.pre_evaluation.hydration_status}</p>
@@ -1914,24 +2049,51 @@ export const AnesthesiaPage: React.FC = () => {
               <p className="text-[11px] text-slate-500">
                 Informe os valores lidos no monitor. O sistema nunca inventa nem repete automaticamente parâmetros.
               </p>
+              <div className="grid grid-cols-2 gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">Minuto do Procedimento *</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={monForm.elapsed_minutes ?? ''}
+                      onChange={(e) => setMonForm({ ...monForm, elapsed_minutes: e.target.value === '' ? '' : Number(e.target.value) })}
+                      className="w-full px-3 py-1.5 border border-slate-200 rounded-lg font-mono font-bold bg-white"
+                      placeholder="Ex: 0, 5, 10..."
+                    />
+                    <span className="text-slate-500 font-bold">min</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">Horário da Leitura</label>
+                  <input
+                    type="time"
+                    value={monForm.timestamp || ''}
+                    onChange={(e) => setMonForm({ ...monForm, timestamp: e.target.value })}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg font-mono font-bold bg-white"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-rose-700 mb-1">FC (bpm)</label>
+                  <label className="block font-semibold text-rose-700 mb-1">FC (bpm) *</label>
                   <input
                     type="number"
                     required
-                    value={monForm.fc}
-                    onChange={(e) => setMonForm({ ...monForm, fc: Number(e.target.value) })}
+                    value={monForm.fc ?? ''}
+                    onChange={(e) => setMonForm({ ...monForm, fc: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg font-mono font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-cyan-700 mb-1">FR (mpm)</label>
+                  <label className="block font-semibold text-cyan-700 mb-1">FR (mpm) *</label>
                   <input
                     type="number"
                     required
-                    value={monForm.fr}
-                    onChange={(e) => setMonForm({ ...monForm, fr: Number(e.target.value) })}
+                    value={monForm.fr ?? ''}
+                    onChange={(e) => setMonForm({ ...monForm, fr: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg font-mono font-bold"
                   />
                 </div>
@@ -1942,8 +2104,8 @@ export const AnesthesiaPage: React.FC = () => {
                   <label className="block font-semibold text-blue-700 mb-1">PAS (mmHg)</label>
                   <input
                     type="number"
-                    value={monForm.pas}
-                    onChange={(e) => setMonForm({ ...monForm, pas: Number(e.target.value) })}
+                    value={monForm.pas ?? ''}
+                    onChange={(e) => setMonForm({ ...monForm, pas: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-2 py-1.5 border border-slate-200 rounded font-mono font-bold"
                   />
                 </div>
@@ -1951,8 +2113,8 @@ export const AnesthesiaPage: React.FC = () => {
                   <label className="block font-semibold text-blue-800 mb-1">PAM (mmHg)</label>
                   <input
                     type="number"
-                    value={monForm.pam}
-                    onChange={(e) => setMonForm({ ...monForm, pam: Number(e.target.value) })}
+                    value={monForm.pam ?? ''}
+                    onChange={(e) => setMonForm({ ...monForm, pam: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-2 py-1.5 border border-slate-200 rounded font-mono font-bold"
                   />
                 </div>
@@ -1960,8 +2122,8 @@ export const AnesthesiaPage: React.FC = () => {
                   <label className="block font-semibold text-blue-700 mb-1">PAD (mmHg)</label>
                   <input
                     type="number"
-                    value={monForm.pad}
-                    onChange={(e) => setMonForm({ ...monForm, pad: Number(e.target.value) })}
+                    value={monForm.pad ?? ''}
+                    onChange={(e) => setMonForm({ ...monForm, pad: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-2 py-1.5 border border-slate-200 rounded font-mono font-bold"
                   />
                 </div>
@@ -1972,8 +2134,8 @@ export const AnesthesiaPage: React.FC = () => {
                   <label className="block font-semibold text-emerald-700 mb-1">SpO₂ (%)</label>
                   <input
                     type="number"
-                    value={monForm.spo2}
-                    onChange={(e) => setMonForm({ ...monForm, spo2: Number(e.target.value) })}
+                    value={monForm.spo2 ?? ''}
+                    onChange={(e) => setMonForm({ ...monForm, spo2: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-2 py-1.5 border border-slate-200 rounded font-mono font-bold"
                   />
                 </div>
@@ -1981,8 +2143,8 @@ export const AnesthesiaPage: React.FC = () => {
                   <label className="block font-semibold text-amber-700 mb-1">ETCO₂ (mmHg)</label>
                   <input
                     type="number"
-                    value={monForm.etco2}
-                    onChange={(e) => setMonForm({ ...monForm, etco2: Number(e.target.value) })}
+                    value={monForm.etco2 ?? ''}
+                    onChange={(e) => setMonForm({ ...monForm, etco2: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-2 py-1.5 border border-slate-200 rounded font-mono font-bold"
                   />
                 </div>
@@ -1991,8 +2153,8 @@ export const AnesthesiaPage: React.FC = () => {
                   <input
                     type="number"
                     step="0.1"
-                    value={monForm.temperature}
-                    onChange={(e) => setMonForm({ ...monForm, temperature: Number(e.target.value) })}
+                    value={monForm.temperature ?? ''}
+                    onChange={(e) => setMonForm({ ...monForm, temperature: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-2 py-1.5 border border-slate-200 rounded font-mono font-bold"
                   />
                 </div>
@@ -2634,32 +2796,50 @@ export const AnesthesiaPage: React.FC = () => {
 
       {/* MODAL: FICHA ANESTÉSICA PRONTA PARA IMPRESSÃO / PDF (Requisito 15) */}
       {showPrintModal && activeAnesthesia && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-4xl max-h-[92vh] rounded-xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-slate-100 w-full max-w-[1240px] max-h-[94vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-300">
             {/* Toolbar */}
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+            <div className="p-3.5 sm:p-4 border-b border-slate-200 flex items-center justify-between bg-white flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-emerald-700" />
-                <h3 className="text-sm font-bold text-slate-900">
-                  Ficha Anestésica Oficial ({activeAnesthesia.code})
-                </h3>
+                <FileText className="w-5 h-5 text-emerald-800" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <span>Ficha Anestésica Hospitalar Tradicional</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">
+                      {activeAnesthesia.code}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Formato A4 Paisagem com grade de símbolos (● ▲ ■ ◆) e escala 20-220 mmHg/bpm
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-50 hover:bg-slate-100 text-slate-800 transition cursor-pointer select-none border border-slate-300" title="Alternar entre assinatura digital e assinatura manual com caneta">
+                  <input
+                    type="checkbox"
+                    checked={sheetSignToggle}
+                    onChange={(e) => setSheetSignToggle(e.target.checked)}
+                    className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <span>{sheetSignToggle && user?.signature_url ? 'Assinatura Digital Ativa' : 'Assinatura Física (Caneta)'}</span>
+                </label>
+
                 <button
                   type="button"
-                  onClick={() => exportToPdf('printable-anesthesia-sheet', `Ficha_Anestesia_${activeAnesthesia.code}_${activeAnesthesia.patient_name || 'Paciente'}`)}
+                  onClick={() => exportToPdf('printable-anesthesia-sheet', `Ficha_Anestesia_${activeAnesthesia.code}_${activeAnesthesia.patient_name || 'Paciente'}`, { orientation: 'landscape' })}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 transition shadow-sm cursor-pointer"
-                  title="Baixar arquivo PDF oficial no dispositivo"
+                  title="Baixar arquivo PDF oficial em A4 Paisagem"
                 >
-                  <Download className="w-4 h-4" /> Baixar PDF
+                  <Download className="w-4 h-4" /> Baixar PDF Paisagem
                 </button>
                 <button
                   type="button"
-                  onClick={() => printElement('printable-anesthesia-sheet', `Ficha_Anestesia_${activeAnesthesia.code}`)}
+                  onClick={() => printElement('printable-anesthesia-sheet', `Ficha_Anestesia_${activeAnesthesia.code}`, { orientation: 'landscape' })}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-700 transition shadow-sm cursor-pointer"
-                  title="Imprimir documento em página A4 limpa sem menus"
+                  title="Imprimir documento em A4 Paisagem"
                 >
-                  <Printer className="w-4 h-4" /> Imprimir A4
+                  <Printer className="w-4 h-4" /> Imprimir A4 Paisagem
                 </button>
                 <button
                   onClick={() => setShowPrintModal(false)}
@@ -2670,187 +2850,16 @@ export const AnesthesiaPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Ficha Documento Formatado A4 */}
-            <div
-              id="printable-anesthesia-sheet"
-              className="printable-document p-8 overflow-y-auto flex-1 text-slate-900 font-sans space-y-6 bg-white text-xs print:p-0"
-            >
-              {/* Cabeçalho do Veterinário Responsável */}
-              <div className="border-b-2 border-emerald-800 pb-4 flex items-start justify-between">
-                <div>
-                  <h2 className="text-lg font-black text-emerald-950 uppercase tracking-wide">
-                    {user?.first_name || user?.last_name
-                      ? `Dr(a). ${user.first_name || ''} ${user.last_name || ''}`.trim()
-                      : 'Dr(a). Médico(a) Veterinário(a)'}
-                  </h2>
-                  <p className="text-xs font-bold text-emerald-800">
-                    Médico(a) Veterinário(a) • {user?.crmv ? `CRMV-${user.crmv_uf || 'SP'} ${user.crmv}` : 'CRMV Especialista'}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {user?.clinic_name || 'Especialista em Anestesiologia Veterinária & Cuidados Críticos'}
-                    {user?.phone ? ` • Contato: ${user.phone}` : ''}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs font-black font-mono text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
-                    FICHA Nº: {activeAnesthesia.code}
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1">Data: {activeAnesthesia.date}</p>
-                </div>
-              </div>
-
-              {/* Dados do Paciente e Procedimento */}
-              <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="space-y-1">
-                  <p><strong>Paciente:</strong> {activeAnesthesia.patient_name}</p>
-                  <p><strong>Espécie/Raça:</strong> {activeAnesthesia.patient_species} • {activeAnesthesia.patient_breed || 'SRD'}</p>
-                  <p><strong>Peso:</strong> {activeAnesthesia.pre_evaluation.weight_kg} kg</p>
-                  {(() => {
-                    const tObj = tutors.find((t) => t.id === activeAnesthesia.tutor_id);
-                    const tutorDisplay = activeAnesthesia.tutor_name || tObj?.name || 'Tutor Responsável';
-                    return (
-                      <p><strong>Tutor:</strong> {tutorDisplay} {tObj?.phone ? `• Tel: ${tObj.phone}` : ''}</p>
-                    );
-                  })()}
-                </div>
-                <div className="space-y-1">
-                  <p><strong>Clínica:</strong> {activeAnesthesia.clinic_name}</p>
-                  {(() => {
-                    const sObj = surgeons.find((s) => s.id === activeAnesthesia.surgeon_id);
-                    const surgeonDisplay = sObj && sObj.crmv
-                      ? `${sObj.name} (CRMV-${sObj.crmv_uf || 'SP'} ${sObj.crmv})`
-                      : activeAnesthesia.surgeon_name;
-                    return (
-                      <p><strong>Cirurgião:</strong> {surgeonDisplay}</p>
-                    );
-                  })()}
-                  <p><strong>Procedimento:</strong> {activeAnesthesia.procedure_name}</p>
-                  <p><strong>Caráter:</strong> {activeAnesthesia.procedure_nature} • <strong>ASA:</strong> {activeAnesthesia.asa_category.replace('_', ' ')}{activeAnesthesia.is_emergency ? '-E' : ''}</p>
-                </div>
-              </div>
-
-              {/* Avaliação Pré & ASA */}
-              <div className="space-y-1 border border-slate-200 p-3 rounded-lg">
-                <h4 className="font-bold text-emerald-900 uppercase text-[11px]">Avaliação Pré-Anestésica & Planejamento</h4>
-                <p><strong>Consciência:</strong> {activeAnesthesia.pre_evaluation.consciousness_level} | <strong>Reflexos:</strong> {activeAnesthesia.pre_evaluation.reflexes} | <strong>Mucosas:</strong> {activeAnesthesia.pre_evaluation.mucous_membranes} | <strong>TPC:</strong> {activeAnesthesia.pre_evaluation.capillary_refill_time_sec || 2}s</p>
-                <p><strong>Técnica Anestésica:</strong> {activeAnesthesia.planning.technique} | <strong>Circuito:</strong> {activeAnesthesia.planning.breathing_circuit} | <strong>Tubo:</strong> {activeAnesthesia.planning.tube_size || 'Com cuff'}</p>
-                <p className="italic text-slate-600"><strong>Justificativa ASA:</strong> {activeAnesthesia.asa_justification || '-'}</p>
-              </div>
-
-              {/* Protocolo de Fármacos */}
-              <div className="space-y-2">
-                <h4 className="font-bold text-emerald-900 uppercase text-[11px]">Protocolo Medicamentoso Administrado</h4>
-                <table className="w-full text-xs text-left border border-slate-200">
-                  <thead className="bg-slate-100 font-bold text-slate-700">
-                    <tr>
-                      <th className="p-2">Etapa</th>
-                      <th className="p-2">Fármaco</th>
-                      <th className="p-2">Dose (mg/kg)</th>
-                      <th className="p-2">Via</th>
-                      <th className="p-2 text-right">Volume / Quantidade</th>
-                      <th className="p-2 text-right">Horário Real</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                    {activeAnesthesia.protocol_drugs.map((d) => (
-                      <tr key={d.id}>
-                        <td className="p-2 font-sans font-semibold">{d.stage}</td>
-                        <td className="p-2 font-sans font-bold text-slate-800">{d.drug_name}</td>
-                        <td className="p-2">{d.dose_mg_kg}</td>
-                        <td className="p-2 font-sans">{d.route}</td>
-                        <td className="p-2 text-right font-bold">{d.administered_volume} {d.presentation_type === 'COMPRIMIDO' ? 'comp' : 'ml'}</td>
-                        <td className="p-2 text-right text-slate-500">{d.administered_at_time || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Grade de Monitorização */}
-              <div className="space-y-2">
-                <h4 className="font-bold text-emerald-900 uppercase text-[11px]">Monitorização Transoperatória</h4>
-                <div className="overflow-x-auto border border-slate-200">
-                  <table className="w-full text-center border-collapse text-[10px]">
-                    <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                      <tr>
-                        <th className="p-1.5 text-left w-20">Parâmetro</th>
-                        {activeAnesthesia.monitorings.map((m) => (
-                          <th key={m.id} className="p-1.5 border-l border-slate-200 font-mono">
-                            {m.elapsed_minutes}'
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono">
-                      <tr>
-                        <td className="p-1.5 text-left font-bold text-rose-800 font-sans">FC (bpm)</td>
-                        {activeAnesthesia.monitorings.map((m) => (
-                          <td key={m.id} className="p-1.5 border-l border-slate-200">{m.heart_rate_bpm || '-'}</td>
-                        ))}
-                      </tr>
-                      <tr>
-                        <td className="p-1.5 text-left font-bold text-blue-800 font-sans">PAS/PAM/PAD</td>
-                        {activeAnesthesia.monitorings.map((m) => (
-                          <td key={m.id} className="p-1.5 border-l border-slate-200">
-                            {m.pas_mmhg || '-'}/{m.pam_mmhg || '-'}/{m.pad_mmhg || '-'}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr>
-                        <td className="p-1.5 text-left font-bold text-emerald-800 font-sans">SpO₂ (%)</td>
-                        {activeAnesthesia.monitorings.map((m) => (
-                          <td key={m.id} className="p-1.5 border-l border-slate-200">{m.spo2_percentage || '-'}</td>
-                        ))}
-                      </tr>
-                      <tr>
-                        <td className="p-1.5 text-left font-bold text-amber-800 font-sans">ETCO₂</td>
-                        {activeAnesthesia.monitorings.map((m) => (
-                          <td key={m.id} className="p-1.5 border-l border-slate-200">{m.etco2_mmhg || '-'}</td>
-                        ))}
-                      </tr>
-                      <tr>
-                        <td className="p-1.5 text-left font-bold text-cyan-800 font-sans">FR (mpm)</td>
-                        {activeAnesthesia.monitorings.map((m) => (
-                          <td key={m.id} className="p-1.5 border-l border-slate-200">{m.respiratory_rate_mpm || '-'}</td>
-                        ))}
-                      </tr>
-                      <tr>
-                        <td className="p-1.5 text-left font-bold text-indigo-800 font-sans">Temp (°C)</td>
-                        {activeAnesthesia.monitorings.map((m) => (
-                          <td key={m.id} className="p-1.5 border-l border-slate-200">{m.temperature_c || '-'}</td>
-                        ))}
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Recuperação Pós-Anestésica */}
-              {activeAnesthesia.recovery && (
-                <div className="border border-slate-200 p-3 rounded-lg bg-slate-50 space-y-1">
-                  <h4 className="font-bold text-emerald-900 uppercase text-[11px]">Recuperação Pós-Anestésica</h4>
-                  <p><strong>Extubação:</strong> {activeAnesthesia.recovery.extubation_time} | <strong>Consciência:</strong> {activeAnesthesia.recovery.consciousness_level} | <strong>Qualidade:</strong> {activeAnesthesia.recovery.recovery_quality}</p>
-                  <p><strong>Pós-operatório:</strong> {activeAnesthesia.recovery.post_op_medications || 'Conforme prescrição médica'}</p>
-                  <p className="text-slate-600 italic">{activeAnesthesia.recovery.discharge_notes}</p>
-                </div>
-              )}
-
-              {/* Assinatura Oficial do Veterinário Anestesista */}
-              <div className="pt-10 flex items-center justify-between border-t border-slate-200">
-                <div className="text-[10px] text-slate-400">
-                  Gerado pelo Sistema Vetgo • Registro Clínico Seguro
-                </div>
-                <div className="text-center">
-                  <div className="w-56 border-b border-slate-800 pb-1 font-bold text-xs text-slate-900">
-                    {user?.first_name || user?.last_name
-                      ? `Dr(a). ${user.first_name || ''} ${user.last_name || ''}`.trim()
-                      : 'Médico(a) Veterinário(a)'}
-                  </div>
-                  <span className="text-[10px] text-slate-500">
-                    {user?.crmv ? `CRMV-${user.crmv_uf || 'SP'} ${user.crmv}` : 'CRMV Especialista'} • Anestesiologia
-                  </span>
-                </div>
-              </div>
+            {/* Ficha Documento Formatado A4 Paisagem */}
+            <div className="overflow-y-auto overflow-x-auto flex-1 p-3 sm:p-6 bg-slate-200/60">
+              <TraditionalAnesthesiaSheet
+                anesthesia={activeAnesthesia}
+                clinics={clinics}
+                surgeons={surgeons}
+                tutors={tutors}
+                user={user}
+                isSigned={sheetSignToggle}
+              />
             </div>
           </div>
         </div>

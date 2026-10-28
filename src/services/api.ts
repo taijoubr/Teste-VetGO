@@ -38,6 +38,58 @@ import { firestoreSync } from './firebase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
+/**
+ * Safely parses API responses and translates HTML/gateway errors into readable messages.
+ * Prevents "Unexpected token '<', '<!doctype '... is not valid JSON" crashes.
+ */
+async function parseJsonResponse<T>(res: Response, defaultErrorMsg: string): Promise<T> {
+  const contentType = res.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+
+  if (!res.ok) {
+    let errMsg = defaultErrorMsg;
+    if (isJson) {
+      try {
+        const errJson = await res.json();
+        if (errJson?.detail) {
+          errMsg =
+            typeof errJson.detail === 'string'
+              ? errJson.detail
+              : Array.isArray(errJson.detail)
+              ? errJson.detail.map((e: any) => e.msg || e).join(', ')
+              : JSON.stringify(errJson.detail);
+        } else if (errJson?.message) {
+          errMsg = String(errJson.message);
+        }
+      } catch {}
+    } else {
+      const text = await res.text().catch(() => '');
+      if (text.includes('<!doctype') || text.includes('<html')) {
+        errMsg = 'Servidor reiniciando ou temporariamente indisponível. Tente novamente em instantes.';
+      } else if (res.status === 404) {
+        errMsg = 'Recurso da API não encontrado.';
+      } else {
+        errMsg = `${defaultErrorMsg} (Status ${res.status})`;
+      }
+    }
+    throw new Error(errMsg);
+  }
+
+  if (res.status === 204) {
+    return {} as T;
+  }
+
+  if (!isJson) {
+    const text = await res.text().catch(() => '');
+    if (text.includes('<!doctype') || text.includes('<html')) {
+      throw new Error('Servidor em reinicialização. Aguarde alguns instantes e tente novamente.');
+    }
+    throw new Error('Resposta do servidor em formato inesperado.');
+  }
+
+  return res.json();
+}
+
 export const api = {
   // Token management
   getToken(): string | null {
@@ -120,27 +172,9 @@ export const api = {
 
       if (!res.ok) {
         isServerResponseError = true;
-        let errMsg = 'Erro na requisição ao servidor.';
-        try {
-          const errorData = await res.json();
-          if (errorData?.detail) {
-            errMsg =
-              typeof errorData.detail === 'string'
-                ? errorData.detail
-                : Array.isArray(errorData.detail)
-                ? errorData.detail.map((e: any) => e.msg || e).join(', ')
-                : JSON.stringify(errorData.detail);
-          }
-        } catch {
-          // Not JSON
-        }
-        throw new Error(errMsg);
       }
 
-      if (res.status === 204) {
-        return {} as T;
-      }
-      const data = await res.json();
+      const data = await parseJsonResponse<T>(res, 'Erro na requisição ao servidor.');
 
       if (data && (data as any).is_offline) {
         throw new Error('Modo Offline: Dados indisponíveis no momento.');
@@ -223,15 +257,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
-    if (!res.ok) {
-      let errMsg = 'E-mail ou senha incorretos.';
-      try {
-        const errJson = await res.json();
-        if (errJson?.detail) errMsg = errJson.detail;
-      } catch {}
-      throw new Error(errMsg);
-    }
-    const data = await res.json();
+    const data = await parseJsonResponse<any>(res, 'E-mail ou senha incorretos.');
     this.setToken(data.access_token);
     // Preserva ou inicializa a preferência de especialidade (padrão true se não definido)
     const savedUserStr = localStorage.getItem('vetgo_current_user');
@@ -272,15 +298,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) {
-      let errMsg = 'Falha ao autenticar com a conta Google.';
-      try {
-        const errJson = await res.json();
-        if (errJson?.detail) errMsg = errJson.detail;
-      } catch {}
-      throw new Error(errMsg);
-    }
-    const data = await res.json();
+    const data = await parseJsonResponse<any>(res, 'Falha ao autenticar com a conta Google.');
     this.setToken(data.access_token);
     const user: User = {
       ...data.user,
@@ -297,17 +315,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
-    if (!res.ok) {
-      let errMsg = 'Erro ao cadastrar usuário.';
-      try {
-        const errJson = await res.json();
-        if (errJson?.detail) {
-          errMsg = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
-        }
-      } catch {}
-      throw new Error(errMsg);
-    }
-    const result = await res.json();
+    const result = await parseJsonResponse<any>(res, 'Erro ao cadastrar usuário.');
     this.setToken(result.access_token);
     // Novo usuário inicia obrigatoriamente com o módulo de anestesia desligado
     const user = {
@@ -329,15 +337,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, code })
     });
-    if (!res.ok) {
-      let errMsg = 'Código de validação incorreto ou expirado.';
-      try {
-        const errJson = await res.json();
-        if (errJson?.detail) errMsg = errJson.detail;
-      } catch {}
-      throw new Error(errMsg);
-    }
-    const data = await res.json();
+    const data = await parseJsonResponse<any>(res, 'Código de validação incorreto ou expirado.');
     if (data.user) {
       const savedUserStr = localStorage.getItem('vetgo_current_user');
       let current = data.user;
@@ -358,15 +358,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
     });
-    if (!res.ok) {
-      let errMsg = 'Erro ao reenviar código.';
-      try {
-        const errJson = await res.json();
-        if (errJson?.detail) errMsg = errJson.detail;
-      } catch {}
-      throw new Error(errMsg);
-    }
-    return res.json();
+    return parseJsonResponse<{ message: string; email_sent: boolean; dev_code?: string }>(res, 'Erro ao reenviar código.');
   },
 
   async forgotPassword(email: string): Promise<{ message: string; email_sent?: boolean }> {
@@ -375,15 +367,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     });
-    if (!res.ok) {
-      let errMsg = 'Erro ao solicitar recuperação de senha.';
-      try {
-        const errJson = await res.json();
-        if (errJson?.detail) errMsg = errJson.detail;
-      } catch {}
-      throw new Error(errMsg);
-    }
-    return res.json();
+    return parseJsonResponse<{ message: string; email_sent?: boolean }>(res, 'Erro ao solicitar recuperação de senha.');
   },
 
   async resetPassword(email: string, code: string, newPassword: string): Promise<{ message: string }> {
@@ -392,15 +376,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, code, new_password: newPassword }),
     });
-    if (!res.ok) {
-      let errMsg = 'Erro ao redefinir senha.';
-      try {
-        const errJson = await res.json();
-        if (errJson?.detail) errMsg = errJson.detail;
-      } catch {}
-      throw new Error(errMsg);
-    }
-    return res.json();
+    return parseJsonResponse<{ message: string }>(res, 'Erro ao redefinir senha.');
   },
 
   async getVapidPublicKey(): Promise<string> {
@@ -1510,12 +1486,35 @@ export const api = {
           if (srv && srv.id) {
             const srvId = Number(srv.id);
             const existing = map.get(srvId);
-            map.set(srvId, existing ? { ...existing, ...srv } : srv);
+            if (!existing) {
+              map.set(srvId, srv);
+            } else {
+              // Preserva status e arrays mais ricos sem sobrescrever com dados vazios do servidor
+              const merged: AnesthesiaRecord = {
+                ...existing,
+                ...srv,
+                status: (existing.status === 'FINALIZADA' || srv.status === 'FINALIZADA')
+                  ? 'FINALIZADA'
+                  : (srv.status || existing.status),
+                monitorings: (srv.monitorings?.length || 0) >= (existing.monitorings?.length || 0)
+                  ? (srv.monitorings || [])
+                  : (existing.monitorings || []),
+                protocol_drugs: (srv.protocol_drugs?.length || 0) >= (existing.protocol_drugs?.length || 0)
+                  ? (srv.protocol_drugs || [])
+                  : (existing.protocol_drugs || []),
+                timeline_events: (srv.timeline_events?.length || 0) >= (existing.timeline_events?.length || 0)
+                  ? (srv.timeline_events || [])
+                  : (existing.timeline_events || []),
+                recovery: srv.recovery || existing.recovery,
+                times: { ...(existing.times || {}), ...(srv.times || {}) }
+              };
+              map.set(srvId, merged);
+            }
           }
         }
-        const merged = Array.from(map.values());
-        localStorage.setItem("vetgo_anesthesias", JSON.stringify(merged));
-        result = merged;
+        const mergedList = Array.from(map.values());
+        localStorage.setItem("vetgo_anesthesias", JSON.stringify(mergedList));
+        result = mergedList;
       }
     } catch {
       // Fallback
@@ -1532,7 +1531,7 @@ export const api = {
 
   async getAnesthesia(id: number): Promise<AnesthesiaRecord | null> {
     const list = await this.getAnesthesias();
-    return list.find((a) => a.id === id) || null;
+    return list.find((a) => Number(a.id) === Number(id)) || null;
   },
 
   async createAnesthesia(data: Partial<AnesthesiaRecord>): Promise<AnesthesiaRecord> {
@@ -1622,27 +1621,63 @@ export const api = {
   async updateAnesthesia(id: number, updates: Partial<AnesthesiaRecord>): Promise<AnesthesiaRecord> {
     const user = this.getCachedUser();
     const userId = user?.id ? String(user.id) : 'vet_1';
+
+    // 1. Aplica imediatamente no cache local para persistência instantânea
+    let list: AnesthesiaRecord[] = [];
+    const local = localStorage.getItem('vetgo_anesthesias');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) list = parsed;
+      } catch {}
+    }
+
+    const idx = list.findIndex((a) => Number(a.id) === Number(id));
+    let currentRecord: AnesthesiaRecord;
+    if (idx !== -1) {
+      list[idx] = {
+        ...list[idx],
+        ...updates,
+        updated_at: new Date().toISOString()
+      };
+      currentRecord = list[idx];
+      localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
+    } else {
+      currentRecord = { id, ...updates } as AnesthesiaRecord;
+      list.unshift(currentRecord);
+      localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
+    }
+
+    // 2. Persiste no servidor backend
     try {
-      await this.request<AnesthesiaRecord>(`/anesthesias/${id}`, {
+      const serverRes = await this.request<AnesthesiaRecord>(`/anesthesias/${id}`, {
         method: 'PUT',
         body: JSON.stringify(updates),
       });
+      if (serverRes && serverRes.id) {
+        const freshIdx = list.findIndex((a) => Number(a.id) === Number(id));
+        if (freshIdx !== -1) {
+          list[freshIdx] = { ...list[freshIdx], ...serverRes };
+          currentRecord = list[freshIdx];
+          localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
+        }
+      }
     } catch (e) {
-      console.warn('Erro ao atualizar ficha anestésica no servidor, atualizando localmente:', e);
+      console.warn('Erro ao atualizar ficha anestésica no servidor, mantendo cópia local:', e);
     }
-    const list = await this.getAnesthesias();
-    const idx = list.findIndex((a) => a.id === id);
-    if (idx === -1) throw new Error('Anestesia não encontrada');
-    list[idx] = { ...list[idx], ...updates };
-    localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
-    firestoreSync.saveDoc('anesthesias', String(id), { ...list[idx], userId }).catch(() => {});
-    return list[idx];
+
+    // 3. Sincroniza Firestore
+    firestoreSync.saveDoc('anesthesias', String(id), { ...currentRecord, userId }).catch(() => {});
+    return currentRecord;
   },
 
   async addMonitoringReading(anesthesiaId: number, reading: Omit<MonitoringReading, 'id'>): Promise<MonitoringReading> {
     const list = await this.getAnesthesias();
-    const idx = list.findIndex((a) => a.id === anesthesiaId);
+    const idx = list.findIndex((a) => Number(a.id) === Number(anesthesiaId));
     if (idx === -1) throw new Error('Anestesia não encontrada');
+
+    if (!Array.isArray(list[idx].monitorings)) list[idx].monitorings = [];
+    if (!Array.isArray(list[idx].timeline_events)) list[idx].timeline_events = [];
 
     const newReading: MonitoringReading = {
       ...reading,
@@ -1668,6 +1703,13 @@ export const api = {
     list[idx].timeline_events.push(timeEvent);
 
     localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
+
+    // Salva no backend e Firestore
+    await this.updateAnesthesia(anesthesiaId, {
+      monitorings: list[idx].monitorings,
+      timeline_events: list[idx].timeline_events
+    }).catch((err) => console.warn('Erro ao sincronizar monitorização no servidor:', err));
+
     return newReading;
   },
 
@@ -1676,15 +1718,22 @@ export const api = {
     eventData: Omit<AnestheticTimelineEvent, 'id'>
   ): Promise<AnestheticTimelineEvent> {
     const list = await this.getAnesthesias();
-    const idx = list.findIndex((a) => a.id === anesthesiaId);
+    const idx = list.findIndex((a) => Number(a.id) === Number(anesthesiaId));
     if (idx === -1) throw new Error('Anestesia não encontrada');
 
+    if (!Array.isArray(list[idx].timeline_events)) list[idx].timeline_events = [];
     const newEvent: AnestheticTimelineEvent = {
       ...eventData,
       id: `evt-${Date.now()}`
     };
     list[idx].timeline_events.push(newEvent);
     localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
+
+    // Salva no backend e Firestore
+    await this.updateAnesthesia(anesthesiaId, {
+      timeline_events: list[idx].timeline_events
+    }).catch((err) => console.warn('Erro ao sincronizar timeline no servidor:', err));
+
     return newEvent;
   },
 
@@ -1694,8 +1743,10 @@ export const api = {
     timesData: Partial<ProcedureTimes>
   ): Promise<AnesthesiaRecord> {
     const list = await this.getAnesthesias();
-    const idx = list.findIndex((a) => a.id === anesthesiaId);
+    const idx = list.findIndex((a) => Number(a.id) === Number(anesthesiaId));
     if (idx === -1) throw new Error('Anestesia não encontrada');
+
+    if (!Array.isArray(list[idx].timeline_events)) list[idx].timeline_events = [];
 
     list[idx].status = 'FINALIZADA';
     list[idx].recovery = recoveryData;
@@ -1712,6 +1763,14 @@ export const api = {
     });
 
     localStorage.setItem('vetgo_anesthesias', JSON.stringify(list));
+
+    // Salva no backend e Firestore
+    await this.updateAnesthesia(anesthesiaId, {
+      status: 'FINALIZADA',
+      recovery: recoveryData,
+      times: list[idx].times,
+      timeline_events: list[idx].timeline_events
+    }).catch((err) => console.warn('Erro ao finalizar anestesia no servidor:', err));
 
     // Se houver valor faturado cadastrado, gera o registro no financeiro
     const billedAmount = Number(list[idx].total_billed_amount) || 0;
