@@ -96,19 +96,15 @@ function saveDB(data: DatabaseData) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const tmpPath = `${DB_PATH}.tmp.${Date.now()}`;
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, DB_PATH);
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
   } catch (e) {
     console.error('Error saving db.json:', e);
-    if (!DB_PATH.startsWith('/tmp')) {
-      try {
-        const fallbackPath = path.resolve('/tmp', 'vetgo_db.json');
-        fs.writeFileSync(fallbackPath, JSON.stringify(data, null, 2), 'utf-8');
-        DB_PATH = fallbackPath;
-      } catch (err2) {
-        console.error('Fallback save to /tmp also failed:', err2);
-      }
+    try {
+      const fallbackPath = path.resolve('/tmp', 'vetgo_db.json');
+      fs.writeFileSync(fallbackPath, JSON.stringify(data, null, 2), 'utf-8');
+      DB_PATH = fallbackPath;
+    } catch (err2) {
+      console.error('Fallback save to /tmp also failed:', err2);
     }
   }
 }

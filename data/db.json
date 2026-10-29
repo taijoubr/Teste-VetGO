@@ -47,7 +47,7 @@
       "subscription_end": null,
       "admin_notes": "Conta de teste manual do veterinário",
       "created_at": "2026-10-03T21:34:16.833Z",
-      "updated_at": "2026-10-04T07:38:46.037Z",
+      "updated_at": "2026-10-29T07:38:49.314Z",
       "specialty_anesthesia_enabled": false,
       "email_verified": true,
       "reset_password_code": null,
@@ -59,7 +59,10 @@
       "service_regions": "São Paulo - SP (Zona Sul, Pinheiros, Itaim, Moema, Jardins e Morumbi)",
       "opening_hours": "Segunda a Sexta: 08:00 às 19:00 | Sábados: 09:00 às 14:00",
       "custom_welcome_message": "Olá Dr.! Gostaria de solicitar informações para agendamento de consulta veterinária.",
-      "instagram": "@vet.teste.oficial"
+      "instagram": "@vet.teste.oficial",
+      "signature_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      "signature_type": "DRAWN",
+      "auto_sign_documents": true
     }
   ],
   "tutors": [

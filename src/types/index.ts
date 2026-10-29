@@ -54,6 +54,7 @@ export interface User {
   auto_sign_documents?: boolean;
   show_crmv_stamp?: boolean;
   signature_date_enabled?: boolean;
+  updated_at?: string;
 }
 
 export interface PublicVetProfile {

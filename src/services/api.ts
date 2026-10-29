@@ -90,6 +90,105 @@ async function parseJsonResponse<T>(res: Response, defaultErrorMsg: string): Pro
   return res.json();
 }
 
+/**
+ * Preserva dados críticos do veterinário (como assinatura digital desenhada/anexada, carimbo e preferências)
+ * entre sessões, reinicializações e ambientes efêmeros na nuvem ("online").
+ */
+export function enrichUserWithLocalVault(user: User): User {
+  if (!user || !user.id) return user;
+  const userId = user.id;
+
+  // 1. Preservar especialidade de anestesia
+  let specialtyEnabled = typeof user.specialty_anesthesia_enabled === 'boolean'
+    ? user.specialty_anesthesia_enabled
+    : false;
+
+  const cachedStr = localStorage.getItem('vetgo_current_user');
+  let cachedUser: any = null;
+  if (cachedStr) {
+    try {
+      cachedUser = JSON.parse(cachedStr);
+      if (cachedUser && cachedUser.id === userId && typeof cachedUser.specialty_anesthesia_enabled === 'boolean') {
+        specialtyEnabled = cachedUser.specialty_anesthesia_enabled;
+      }
+    } catch {}
+  }
+
+  // 2. Recuperar assinatura do cofre persistente
+  const vaultSignature =
+    localStorage.getItem(`vetgo_user_signature_${userId}`) ||
+    (cachedUser && cachedUser.id === userId && cachedUser.signature_url ? cachedUser.signature_url : null) ||
+    localStorage.getItem('vetgo_user_signature');
+
+  // 3. Recuperar carimbo físico do cofre persistente
+  const vaultStamp =
+    localStorage.getItem(`vetgo_user_stamp_${userId}`) ||
+    (cachedUser && cachedUser.id === userId && cachedUser.stamp_url ? cachedUser.stamp_url : null) ||
+    localStorage.getItem('vetgo_user_stamp');
+
+  // 4. Recuperar preferências de assinatura
+  let vaultPrefs: any = {};
+  try {
+    const rawPrefs = localStorage.getItem(`vetgo_user_signature_prefs_${userId}`);
+    if (rawPrefs) vaultPrefs = JSON.parse(rawPrefs);
+  } catch {}
+
+  const finalSignatureUrl = user.signature_url || vaultSignature || undefined;
+  const finalStampUrl = user.stamp_url || vaultStamp || undefined;
+  const finalSignatureType = user.signature_type || vaultPrefs.signature_type || (cachedUser?.id === userId ? cachedUser.signature_type : undefined) || (finalSignatureUrl ? 'DRAWN' : undefined);
+
+  const autoSign = typeof user.auto_sign_documents === 'boolean'
+    ? user.auto_sign_documents
+    : (typeof vaultPrefs.auto_sign_documents === 'boolean'
+        ? vaultPrefs.auto_sign_documents
+        : (cachedUser?.id === userId && typeof cachedUser.auto_sign_documents === 'boolean'
+            ? cachedUser.auto_sign_documents
+            : true));
+
+  const showStamp = typeof user.show_crmv_stamp === 'boolean'
+    ? user.show_crmv_stamp
+    : (typeof vaultPrefs.show_crmv_stamp === 'boolean'
+        ? vaultPrefs.show_crmv_stamp
+        : (cachedUser?.id === userId && typeof cachedUser.show_crmv_stamp === 'boolean'
+            ? cachedUser.show_crmv_stamp
+            : true));
+
+  const dateEnabled = typeof user.signature_date_enabled === 'boolean'
+    ? user.signature_date_enabled
+    : (typeof vaultPrefs.signature_date_enabled === 'boolean'
+        ? vaultPrefs.signature_date_enabled
+        : (cachedUser?.id === userId && typeof cachedUser.signature_date_enabled === 'boolean'
+            ? cachedUser.signature_date_enabled
+            : true));
+
+  const enriched: User = {
+    ...user,
+    specialty_anesthesia_enabled: specialtyEnabled,
+    signature_url: finalSignatureUrl,
+    stamp_url: finalStampUrl,
+    signature_type: finalSignatureType,
+    auto_sign_documents: autoSign,
+    show_crmv_stamp: showStamp,
+    signature_date_enabled: dateEnabled,
+  };
+
+  // Se o cofre tiver assinatura, consolida nos backups locais
+  if (finalSignatureUrl) {
+    try {
+      localStorage.setItem(`vetgo_user_signature_${userId}`, finalSignatureUrl);
+      localStorage.setItem('vetgo_user_signature', finalSignatureUrl);
+    } catch {}
+  }
+  if (finalStampUrl) {
+    try {
+      localStorage.setItem(`vetgo_user_stamp_${userId}`, finalStampUrl);
+      localStorage.setItem('vetgo_user_stamp', finalStampUrl);
+    } catch {}
+  }
+
+  return enriched;
+}
+
 export const api = {
   // Token management
   getToken(): string | null {
@@ -259,23 +358,7 @@ export const api = {
     });
     const data = await parseJsonResponse<any>(res, 'E-mail ou senha incorretos.');
     this.setToken(data.access_token);
-    // Preserva ou inicializa a preferência de especialidade (padrão true se não definido)
-    const savedUserStr = localStorage.getItem('vetgo_current_user');
-    let specialtyEnabled = typeof data.user.specialty_anesthesia_enabled === 'boolean'
-      ? data.user.specialty_anesthesia_enabled
-      : false;
-    if (savedUserStr) {
-      try {
-        const parsed = JSON.parse(savedUserStr);
-        if (typeof parsed.specialty_anesthesia_enabled === 'boolean') {
-          specialtyEnabled = parsed.specialty_anesthesia_enabled;
-        }
-      } catch {}
-    }
-    const user = {
-      ...data.user,
-      specialty_anesthesia_enabled: specialtyEnabled
-    };
+    const user = enrichUserWithLocalVault(data.user);
     localStorage.setItem('vetgo_current_user', JSON.stringify(user));
     return { user, token: data.access_token };
   },
@@ -300,10 +383,7 @@ export const api = {
     });
     const data = await parseJsonResponse<any>(res, 'Falha ao autenticar com a conta Google.');
     this.setToken(data.access_token);
-    const user: User = {
-      ...data.user,
-      specialty_anesthesia_enabled: data.user.specialty_anesthesia_enabled !== false
-    };
+    const user = enrichUserWithLocalVault(data.user);
     localStorage.setItem('vetgo_current_user', JSON.stringify(user));
     return { user, token: data.access_token, is_new: data.is_new };
   },
@@ -453,24 +533,24 @@ export const api = {
     }
     try {
       const user = await this.request<User>('/auth/me');
-      // Preservar a escolha do usuário ou usar o valor do perfil (padrão desligado para novos)
-      let specialtyEnabled = typeof user.specialty_anesthesia_enabled === 'boolean'
-        ? user.specialty_anesthesia_enabled
-        : false;
-      const cached = localStorage.getItem('vetgo_current_user');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (parsed.id === user.id && typeof parsed.specialty_anesthesia_enabled === 'boolean') {
-            specialtyEnabled = parsed.specialty_anesthesia_enabled;
-          }
-        } catch {}
-      }
-      const finalUser = {
-        ...user,
-        specialty_anesthesia_enabled: specialtyEnabled
-      };
+      const finalUser = enrichUserWithLocalVault(user);
       localStorage.setItem('vetgo_current_user', JSON.stringify(finalUser));
+
+      // Se o backend online não tiver a assinatura mas o cofre local tiver, sincroniza em segundo plano
+      if (!user.signature_url && finalUser.signature_url) {
+        this.request('/users/profile', {
+          method: 'PUT',
+          body: JSON.stringify({
+            signature_url: finalUser.signature_url,
+            stamp_url: finalUser.stamp_url,
+            signature_type: finalUser.signature_type,
+            auto_sign_documents: finalUser.auto_sign_documents,
+            show_crmv_stamp: finalUser.show_crmv_stamp,
+            signature_date_enabled: finalUser.signature_date_enabled,
+          })
+        }).catch(() => {});
+      }
+
       return finalUser;
     } catch (err: any) {
       // Se for erro explícito de 401/Sessão expirada, remove credenciais
@@ -478,11 +558,12 @@ export const api = {
         this.removeToken();
         return null;
       }
-      // Se for falha de rede/offline, retorna o usuário em cache para permitir uso sem internet
+      // Se for falha de rede/offline, retorna o usuário em cache enriquecido com o cofre local
       const cached = localStorage.getItem('vetgo_current_user');
       if (cached) {
         try {
-          return JSON.parse(cached) as User;
+          const parsed = JSON.parse(cached) as User;
+          return enrichUserWithLocalVault(parsed);
         } catch {}
       }
       return null;
@@ -490,32 +571,113 @@ export const api = {
   },
 
   async updateProfile(updates: Partial<User>): Promise<User> {
-    const updated = await this.request<User>('/users/profile', {
-      method: 'PUT',
-      body: JSON.stringify(updates)
-    });
-    // Recupera valor prévio ou valor atualizado caso tenha vindo em updates
-    let specialtyEnabled = false;
-    if (typeof updates.specialty_anesthesia_enabled === 'boolean') {
-      specialtyEnabled = updates.specialty_anesthesia_enabled;
-    } else if (typeof updated.specialty_anesthesia_enabled === 'boolean') {
-      specialtyEnabled = updated.specialty_anesthesia_enabled;
-    } else {
-      const cached = localStorage.getItem('vetgo_current_user');
-      if (cached) {
+    let cachedUser: Partial<User> = {};
+    const cached = localStorage.getItem('vetgo_current_user');
+    if (cached) {
+      try {
+        cachedUser = JSON.parse(cached);
+      } catch {}
+    }
+
+    const currentUserId = updates.id || cachedUser.id || 1;
+
+    // 1. Atualização imediata do cofre local de segurança para garantir disponibilidade total
+    if (updates.signature_url !== undefined) {
+      if (updates.signature_url) {
         try {
-          const parsed = JSON.parse(cached);
-          if (typeof parsed.specialty_anesthesia_enabled === 'boolean') {
-            specialtyEnabled = parsed.specialty_anesthesia_enabled;
-          }
+          localStorage.setItem(`vetgo_user_signature_${currentUserId}`, updates.signature_url);
+          localStorage.setItem('vetgo_user_signature', updates.signature_url);
+        } catch {}
+      } else {
+        try {
+          localStorage.removeItem(`vetgo_user_signature_${currentUserId}`);
+          localStorage.removeItem('vetgo_user_signature');
         } catch {}
       }
     }
-    const finalUser = {
+
+    if (updates.stamp_url !== undefined) {
+      if (updates.stamp_url) {
+        try {
+          localStorage.setItem(`vetgo_user_stamp_${currentUserId}`, updates.stamp_url);
+          localStorage.setItem('vetgo_user_stamp', updates.stamp_url);
+        } catch {}
+      } else {
+        try {
+          localStorage.removeItem(`vetgo_user_stamp_${currentUserId}`);
+          localStorage.removeItem('vetgo_user_stamp');
+        } catch {}
+      }
+    }
+
+    if (
+      updates.auto_sign_documents !== undefined ||
+      updates.show_crmv_stamp !== undefined ||
+      updates.signature_date_enabled !== undefined ||
+      updates.signature_type !== undefined
+    ) {
+      try {
+        const existingPrefs = JSON.parse(
+          localStorage.getItem(`vetgo_user_signature_prefs_${currentUserId}`) || '{}'
+        );
+        const newPrefs = {
+          ...existingPrefs,
+          ...(updates.auto_sign_documents !== undefined ? { auto_sign_documents: updates.auto_sign_documents } : {}),
+          ...(updates.show_crmv_stamp !== undefined ? { show_crmv_stamp: updates.show_crmv_stamp } : {}),
+          ...(updates.signature_date_enabled !== undefined ? { signature_date_enabled: updates.signature_date_enabled } : {}),
+          ...(updates.signature_type !== undefined ? { signature_type: updates.signature_type } : {}),
+        };
+        localStorage.setItem(`vetgo_user_signature_prefs_${currentUserId}`, JSON.stringify(newPrefs));
+      } catch {}
+    }
+
+    let updated: User;
+    try {
+      updated = await this.request<User>('/users/profile', {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+    } catch (apiErr) {
+      console.warn('Erro ao atualizar perfil na API, persistindo em cache local resiliente:', apiErr);
+      updated = {
+        ...(cachedUser as User),
+        ...updates,
+        updated_at: new Date().toISOString()
+      };
+    }
+
+    const mergedUser: User = {
+      ...(cachedUser as User),
       ...updated,
-      specialty_anesthesia_enabled: specialtyEnabled
+      ...updates,
     };
+
+    const finalUser = enrichUserWithLocalVault(mergedUser);
     localStorage.setItem('vetgo_current_user', JSON.stringify(finalUser));
+
+    // Sincronizar em nuvem no Firestore para persistência multi-dispositivo
+    try {
+      firestoreSync.saveDoc('users', String(finalUser.id), {
+        id: finalUser.id,
+        first_name: finalUser.first_name,
+        last_name: finalUser.last_name,
+        email: finalUser.email,
+        crmv: finalUser.crmv,
+        crmv_uf: finalUser.crmv_uf,
+        clinic_name: finalUser.clinic_name,
+        phone: finalUser.phone,
+        signature_url: finalUser.signature_url || null,
+        stamp_url: finalUser.stamp_url || null,
+        signature_type: finalUser.signature_type || null,
+        auto_sign_documents: finalUser.auto_sign_documents ?? true,
+        show_crmv_stamp: finalUser.show_crmv_stamp ?? true,
+        signature_date_enabled: finalUser.signature_date_enabled ?? true,
+        specialty_anesthesia_enabled: finalUser.specialty_anesthesia_enabled ?? false,
+      });
+    } catch (e) {
+      console.warn('Erro ao sincronizar perfil com Firestore:', e);
+    }
+
     return finalUser;
   },
 
