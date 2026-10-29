@@ -4,6 +4,7 @@ import {
   AnestheticTimelineEvent,
   Clinic,
   MonitoringReading,
+  Patient,
   Surgeon,
   Tutor,
   User
@@ -24,6 +25,7 @@ interface TraditionalAnesthesiaSheetProps {
   clinics: Clinic[];
   surgeons: Surgeon[];
   tutors: Tutor[];
+  patients?: Patient[];
   user: User | null;
   isSigned?: boolean;
 }
@@ -33,13 +35,15 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
   clinics,
   surgeons,
   tutors,
+  patients = [],
   user,
   isSigned = true
 }) => {
   // Encontra dados vinculados
   const clinic = clinics.find((c) => c.id === anesthesia.clinic_id);
   const surgeon = surgeons.find((s) => s.id === anesthesia.surgeon_id);
-  const tutor = tutors.find((t) => t.id === anesthesia.tutor_id);
+  const patient = patients.find((p) => p.id === anesthesia.patient_id);
+  const tutor = tutors.find((t) => t.id === (anesthesia.tutor_id || patient?.tutor_id));
 
   const vetName = user?.first_name || user?.last_name
     ? `Dr(a). ${user?.first_name || ''} ${user?.last_name || ''}`.trim()
@@ -53,8 +57,36 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
     ? `${surgeon.name} (CRMV-${surgeon.crmv_uf || 'SP'} ${surgeon.crmv})`
     : anesthesia.surgeon_name || 'Não informado';
 
-  const tutorDisplay = anesthesia.tutor_name || tutor?.name || 'Tutor Responsável';
+  const tutorDisplay = anesthesia.tutor_name || tutor?.name || patient?.tutor_name || 'Tutor Responsável';
   const tutorContact = tutor?.phone || tutor?.whatsapp || '';
+  const tutorDocument = (tutor as any)?.document || (tutor as any)?.cpf || '';
+  const tutorCity = tutor?.city ? `${tutor.city}${tutor.state ? `/${tutor.state}` : ''}` : '';
+
+  // Horários e Tempos Cirúrgicos / Anestésicos
+  const anesthesiaStartTime = anesthesia.times?.anesthesia_start_time || anesthesia.scheduled_time || '—';
+
+  // Resolução inteligente do início cirúrgico
+  const procStartEvent = (anesthesia.timeline_events || []).find((e) =>
+    /incis|cirurg|início.*cirurg|inicio.*cirurg/i.test(e.title)
+  );
+  const procedureStartTime =
+    anesthesia.times?.procedure_start_time ||
+    procStartEvent?.real_time ||
+    (anesthesia.status === 'FINALIZADA' && anesthesiaStartTime !== '—' ? anesthesiaStartTime : '—');
+
+  // Resolução inteligente do término cirúrgico
+  const procEndEvent = (anesthesia.timeline_events || []).find((e) =>
+    /sutur|fechamento|fim.*cirurg|término.*cirurg|termino.*cirurg/i.test(e.title)
+  );
+  const procedureEndTime =
+    anesthesia.times?.procedure_end_time ||
+    procEndEvent?.real_time ||
+    anesthesia.times?.anesthesia_end_time ||
+    (anesthesia.status === 'FINALIZADA' ? anesthesia.times?.extubation_time || '—' : '—');
+
+  const anesthesiaEndTime =
+    anesthesia.times?.anesthesia_end_time ||
+    (anesthesia.status === 'FINALIZADA' ? anesthesia.times?.extubation_time || 'Concluída' : 'Em andamento');
 
   // Classificações ASA
   const ASA_CLASSES = [
@@ -234,14 +266,23 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
             PACIENTE
           </span>
           <div className="text-[11px] font-bold text-slate-900 truncate">
-            {anesthesia.patient_name}
+            {anesthesia.patient_name} {patient?.code ? <span className="text-[9px] text-slate-500 font-mono font-normal">({patient.code})</span> : null}
+          </div>
+          <div className="text-slate-700">
+            {anesthesia.patient_species} • {anesthesia.patient_breed || patient?.breed || 'SRD'}
           </div>
           <div className="text-slate-600">
-            {anesthesia.patient_species} • {anesthesia.patient_breed || 'SRD'}
+            Sexo: <strong>{patient?.gender || '—'}</strong> • Idade: <strong>{patient?.approximate_age || '—'}</strong>
           </div>
-          <div className="text-slate-600">
-            Peso: <strong className="text-slate-900 font-bold">{anesthesia.pre_evaluation?.weight_kg || '—'} kg</strong>
+          <div className="text-slate-600 flex items-center justify-between">
+            <span>Peso: <strong className="text-slate-900 font-bold">{anesthesia.pre_evaluation?.weight_kg || patient?.weight_kg || '—'} kg</strong></span>
+            <span>Castrado: <strong>{patient ? (patient.is_neutered ? 'Sim' : 'Não') : '—'}</strong></span>
           </div>
+          {(patient?.microchip_number || patient?.microchip) && (
+            <div className="text-[9px] text-slate-500 font-mono truncate">
+              Chip: {patient.microchip_number || patient.microchip}
+            </div>
+          )}
         </div>
 
         {/* Tutor */}
@@ -255,6 +296,16 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
           <div className="text-slate-600 font-mono">
             {tutorContact ? `Contato: ${tutorContact}` : 'Contato em ficha cadastral'}
           </div>
+          {tutorDocument && (
+            <div className="text-[9px] text-slate-600 font-mono">
+              CPF/Doc: {tutorDocument}
+            </div>
+          )}
+          {tutorCity && (
+            <div className="text-[9px] text-slate-500 truncate">
+              Cidade: {tutorCity}
+            </div>
+          )}
         </div>
 
         {/* Cirurgião & Local */}
@@ -268,6 +319,16 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
           <div className="text-slate-600 truncate">
             Cirurgião: <strong>{surgeonDisplay}</strong>
           </div>
+          {clinic?.phone && (
+            <div className="text-[9px] text-slate-500 font-mono">
+              Tel Clínica: {clinic.phone}
+            </div>
+          )}
+          {clinic?.city && (
+            <div className="text-[9px] text-slate-500">
+              {clinic.city}{clinic.state ? `/${clinic.state}` : ''}
+            </div>
+          )}
         </div>
 
         {/* Procedimento & Caráter */}
@@ -278,7 +339,7 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
           <div className="font-bold text-slate-900 truncate">
             {anesthesia.procedure_name}
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
             <span className="px-1.5 py-0.2 rounded font-bold uppercase text-[9px] bg-slate-200 text-slate-800">
               {anesthesia.procedure_nature}
             </span>
@@ -312,13 +373,15 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
               </strong>
             </div>
             <div>
-              <span className="text-slate-500 block text-[9px]">Consciência:</span>
-              <strong className="text-slate-800">{anesthesia.pre_evaluation?.consciousness_level || 'Alerta'}</strong>
+              <span className="text-slate-500 block text-[9px]">Consciência / Hidratação:</span>
+              <strong className="text-slate-800">
+                {anesthesia.pre_evaluation?.consciousness_level || 'Alerta'} • {anesthesia.pre_evaluation?.hydration_status || 'Normohidratado'}
+              </strong>
             </div>
             <div>
               <span className="text-slate-500 block text-[9px]">Mucosas / TPC:</span>
               <strong className="text-slate-800">
-                {anesthesia.pre_evaluation?.mucous_membranes || 'Normocoradas'} ({anesthesia.pre_evaluation?.capillary_refill_time_sec || 2}s)
+                {anesthesia.pre_evaluation?.mucous_membranes || 'Normocoradas'} ({anesthesia.pre_evaluation?.capillary_refill_time_sec ?? 2}s)
               </strong>
             </div>
             <div>
@@ -337,7 +400,8 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
             anesthesia.pre_evaluation?.previous_anesthesias ||
             anesthesia.pre_evaluation?.lab_tests_summary ||
             anesthesia.pre_evaluation?.ecg_summary ||
-            anesthesia.pre_evaluation?.notes) && (
+            anesthesia.pre_evaluation?.notes ||
+            anesthesia.pre_evaluation?.reflexes) && (
             <div className="text-[10px] text-slate-700 bg-slate-50 p-1.5 rounded border border-slate-200 space-y-0.5">
               {anesthesia.pre_evaluation?.previous_diseases && (
                 <div><strong>Doenças prévias / Comorbidades:</strong> {anesthesia.pre_evaluation.previous_diseases}</div>
@@ -346,16 +410,19 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
                 <div><strong>Cirurgias/Anestesias anteriores:</strong> {anesthesia.pre_evaluation.previous_surgeries} {anesthesia.pre_evaluation.previous_anesthesias ? `• ${anesthesia.pre_evaluation.previous_anesthesias}` : ''}</div>
               )}
               {anesthesia.pre_evaluation?.allergies && (
-                <div><strong className="text-rose-700">Alergias:</strong> {anesthesia.pre_evaluation.allergies}</div>
+                <div><strong className="text-rose-700">Alergias relatadas:</strong> {anesthesia.pre_evaluation.allergies}</div>
               )}
               {anesthesia.pre_evaluation?.continuous_medications && (
                 <div><strong>Medicações contínuas:</strong> {anesthesia.pre_evaluation.continuous_medications}</div>
               )}
               {anesthesia.pre_evaluation?.lab_tests_summary && (
-                <div><strong>Exames laboratoriais:</strong> {anesthesia.pre_evaluation.lab_tests_summary}</div>
+                <div><strong>Exames laboratoriais prévios:</strong> {anesthesia.pre_evaluation.lab_tests_summary}</div>
               )}
               {anesthesia.pre_evaluation?.ecg_summary && (
                 <div><strong>ECG / Ecocardiograma:</strong> {anesthesia.pre_evaluation.ecg_summary} {anesthesia.pre_evaluation.echocardiogram_summary ? `• ${anesthesia.pre_evaluation.echocardiogram_summary}` : ''}</div>
+              )}
+              {anesthesia.pre_evaluation?.reflexes && (
+                <div><strong>Reflexos protetores:</strong> {anesthesia.pre_evaluation.reflexes}</div>
               )}
               {anesthesia.pre_evaluation?.notes && (
                 <div><strong>Observações pré-anestésicas:</strong> {anesthesia.pre_evaluation.notes}</div>
@@ -412,20 +479,31 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
       {/* ============================================================== */}
       <div className="p-2 bg-slate-50/70 rounded-lg border border-slate-300 grid grid-cols-3 gap-3 text-[10px]">
         <div>
-          <span className="text-slate-500 font-bold block text-[9px] uppercase">Técnica Anestésica</span>
+          <span className="text-slate-500 font-bold block text-[9px] uppercase">Técnica Anestésica & Ventilação</span>
           <strong className="text-slate-900">{anesthesia.planning?.technique || 'Anestesia Geral Inalatória Balanceada'}</strong>
+          <div className="text-[9px] text-slate-600">
+            Ventilação: <strong>{anesthesia.planning?.ventilation_type || 'Espontânea'}</strong>
+          </div>
         </div>
         <div>
           <span className="text-slate-500 font-bold block text-[9px] uppercase">Vias Aéreas & Circuito</span>
           <span className="text-slate-800">
-            Tubo: <strong>{anesthesia.planning?.tube_size || 'Tubo c/ cuff'}</strong> • Circuito: <strong>{anesthesia.planning?.breathing_circuit || 'Bain / Baraka'}</strong>
+            Tubo: <strong>{anesthesia.planning?.tube_size ? `Nº ${anesthesia.planning.tube_size}` : 'Tubo c/ cuff'}</strong> ({anesthesia.planning?.intubation || 'Orotraqueal'})
           </span>
+          <div className="text-[9px] text-slate-600">
+            Circuito: <strong>{anesthesia.planning?.breathing_circuit || 'Bain / Baraka'}</strong>
+          </div>
         </div>
         <div>
           <span className="text-slate-500 font-bold block text-[9px] uppercase">Acesso Venoso & Fluido</span>
           <span className="text-slate-800">
             Acesso: <strong>{anesthesia.planning?.venous_access_site || 'Veia Cefálica'}</strong> • {anesthesia.planning?.fluid_type || 'Ringer com Lactato'}
           </span>
+          {anesthesia.planning?.fluid_rate_ml_kg_h ? (
+            <div className="text-[9px] text-emerald-800 font-bold">
+              Taxa de infusão: {anesthesia.planning.fluid_rate_ml_kg_h} ml/kg/h
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -486,19 +564,19 @@ export const TraditionalAnesthesiaSheet: React.FC<TraditionalAnesthesiaSheetProp
       <div className="grid grid-cols-4 gap-2 bg-emerald-950 text-white rounded-lg p-2 text-center text-[10px]">
         <div>
           <span className="text-[8px] text-emerald-300 font-bold uppercase block">Início da Anestesia</span>
-          <span className="font-mono font-bold text-xs">{anesthesia.times?.anesthesia_start_time || '—'}</span>
+          <span className="font-mono font-bold text-xs">{anesthesiaStartTime}</span>
         </div>
         <div>
           <span className="text-[8px] text-emerald-300 font-bold uppercase block">Início da Cirurgia (Incisão)</span>
-          <span className="font-mono font-bold text-xs">{anesthesia.times?.procedure_start_time || '—'}</span>
+          <span className="font-mono font-bold text-xs">{procedureStartTime}</span>
         </div>
         <div>
           <span className="text-[8px] text-emerald-300 font-bold uppercase block">Término da Cirurgia</span>
-          <span className="font-mono font-bold text-xs">{anesthesia.times?.procedure_end_time || '—'}</span>
+          <span className="font-mono font-bold text-xs">{procedureEndTime}</span>
         </div>
         <div>
           <span className="text-[8px] text-emerald-300 font-bold uppercase block">Término da Anestesia</span>
-          <span className="font-mono font-bold text-xs">{anesthesia.times?.anesthesia_end_time || '—'}</span>
+          <span className="font-mono font-bold text-xs">{anesthesiaEndTime}</span>
         </div>
       </div>
 

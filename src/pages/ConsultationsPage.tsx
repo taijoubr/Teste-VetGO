@@ -1258,26 +1258,53 @@ export const ConsultationsPage: React.FC = () => {
               </div>
 
               {/* Patient & Tutor Info */}
-              <div className="grid grid-cols-2 gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                <div>
-                  <div>
-                    <strong className="text-slate-700">Paciente:</strong> {viewingConsultation.patient_name}
+              {(() => {
+                const pat = patients.find((p) => p.id === viewingConsultation.patient_id);
+                const tut = tutors.find((t) => t.id === (pat?.tutor_id || (viewingConsultation as any).tutor_id));
+                return (
+                  <div className="grid grid-cols-2 gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                    <div className="space-y-0.5">
+                      <div>
+                        <strong className="text-slate-700">Paciente:</strong>{' '}
+                        <span className="font-bold text-slate-900">{viewingConsultation.patient_name}</span>{' '}
+                        {pat?.code ? <span className="text-[10px] text-slate-500 font-mono">({pat.code})</span> : null}
+                      </div>
+                      <div className="text-slate-600">
+                        Espécie/Raça: <strong>{pat?.species || 'Canina/Felina'} • {pat?.breed || 'SRD'}</strong>
+                      </div>
+                      <div className="text-slate-600">
+                        Sexo: <strong>{pat?.gender || '—'}</strong> • Idade: <strong>{pat?.approximate_age || '—'}</strong> • Peso: <strong>{pat?.weight_kg ? `${pat.weight_kg} kg` : (viewingConsultation.vital_signs?.temperature_c ? 'Aferido' : '—')}</strong>
+                      </div>
+                      {(pat?.microchip_number || pat?.microchip) && (
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          Microchip: {pat.microchip_number || pat.microchip}
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-0.5">
+                      <div>
+                        <strong className="text-slate-700">Tutor(a):</strong>{' '}
+                        <span className="font-bold text-slate-900">{viewingConsultation.tutor_name || tut?.name}</span>
+                        {tut?.phone ? <span className="text-slate-500 ml-1 font-mono">({tut.phone})</span> : null}
+                      </div>
+                      {(tut as any)?.document && (
+                        <div className="text-slate-600 font-mono text-[11px]">
+                          CPF: {(tut as any).document}
+                        </div>
+                      )}
+                      <div>
+                        <strong className="text-slate-700">Data do Atendimento:</strong>{' '}
+                        {new Date(viewingConsultation.date_time).toLocaleDateString('pt-BR')} às{' '}
+                        {new Date(viewingConsultation.date_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <div>
+                        <strong className="text-slate-700">Local:</strong>{' '}
+                        {viewingConsultation.location_address || 'Atendimento Volante / Domiciliar'}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <strong className="text-slate-700">Tutor(a):</strong> {viewingConsultation.tutor_name}
-                  </div>
-                </div>
-                <div>
-                  <div>
-                    <strong className="text-slate-700">Data do Atendimento:</strong>{' '}
-                    {new Date(viewingConsultation.date_time).toLocaleDateString('pt-BR')}
-                  </div>
-                  <div>
-                    <strong className="text-slate-700">Local:</strong>{' '}
-                    {viewingConsultation.location_address || 'Atendimento Domiciliar'}
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Clinical Details */}
               <div className="space-y-3 text-xs">
@@ -1483,15 +1510,37 @@ export const ConsultationsPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Signature line */}
-              <div className="pt-10 text-center">
-                <div className="w-56 border-t border-slate-400 mx-auto"></div>
-                <div className="text-xs font-bold text-slate-800 mt-1">
-                  Dr(a). {user?.first_name} {user?.last_name}
-                </div>
-                <div className="text-[11px] text-slate-500 font-mono">
-                  Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
-                </div>
+              {/* Signature line: Digital vs Physical */}
+              <div className="pt-8 text-center space-y-2">
+                {user?.signature_url ? (
+                  <div className="flex flex-col items-center justify-center">
+                    <img
+                      src={user.signature_url}
+                      alt="Assinatura Digital"
+                      className="max-h-14 max-w-[200px] object-contain mb-1 filter drop-shadow-xs"
+                    />
+                    <div className="w-56 border-t border-slate-600 mx-auto"></div>
+                    <div className="text-xs font-bold text-slate-900 mt-1">
+                      Dr(a). {user?.first_name} {user?.last_name || ''}
+                    </div>
+                    <div className="text-[11px] text-slate-600 font-mono">
+                      Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                    </div>
+                    <div className="text-[9px] text-emerald-800 font-mono mt-1">
+                      ✔ Assinatura Eletrônica Autenticada VetGo
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="w-56 border-t border-slate-400 mx-auto"></div>
+                    <div className="text-xs font-bold text-slate-800 mt-1">
+                      Dr(a). {user?.first_name} {user?.last_name || ''}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-mono">
+                      Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Discrete Vetgo Footer */}
@@ -1560,26 +1609,47 @@ export const ConsultationsPage: React.FC = () => {
               </div>
 
               {/* Patient & Tutor Info */}
-              <div className="grid grid-cols-2 gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                <div>
-                  <div>
-                    <strong className="text-slate-700">Paciente:</strong> {viewingExamDoc.patient_name}
+              {(() => {
+                const pat = patients.find((p) => p.id === viewingExamDoc.patient_id);
+                const tut = tutors.find((t) => t.id === (pat?.tutor_id || (viewingExamDoc as any).tutor_id));
+                return (
+                  <div className="grid grid-cols-2 gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                    <div className="space-y-0.5">
+                      <div>
+                        <strong className="text-slate-700">Paciente:</strong>{' '}
+                        <span className="font-bold text-slate-900">{viewingExamDoc.patient_name}</span>{' '}
+                        {pat?.code ? <span className="text-[10px] text-slate-500 font-mono">({pat.code})</span> : null}
+                      </div>
+                      <div className="text-slate-600">
+                        Espécie/Raça: <strong>{pat?.species || 'Canina/Felina'} • {pat?.breed || 'SRD'}</strong>
+                      </div>
+                      <div className="text-slate-600">
+                        Sexo: <strong>{pat?.gender || '—'}</strong> • Idade: <strong>{pat?.approximate_age || '—'}</strong> • Peso: <strong>{pat?.weight_kg ? `${pat.weight_kg} kg` : '—'}</strong>
+                      </div>
+                      {(pat?.microchip_number || pat?.microchip) && (
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          Microchip: {pat.microchip_number || pat.microchip}
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-0.5">
+                      <div>
+                        <strong className="text-slate-700">Tutor(a):</strong>{' '}
+                        <span className="font-bold text-slate-900">{viewingExamDoc.tutor_name || tut?.name}</span>
+                        {tut?.phone ? <span className="text-slate-500 ml-1 font-mono">({tut.phone})</span> : null}
+                      </div>
+                      <div>
+                        <strong className="text-slate-700">Data da Requisição:</strong>{' '}
+                        {new Date(viewingExamDoc.date_time).toLocaleDateString('pt-BR')}
+                      </div>
+                      <div>
+                        <strong className="text-slate-700">Suspeita Clínica:</strong>{' '}
+                        <span className="text-slate-900 font-semibold">{viewingExamDoc.diagnosis_suspicions || 'Investigação clínica'}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <strong className="text-slate-700">Tutor(a):</strong> {viewingExamDoc.tutor_name}
-                  </div>
-                </div>
-                <div>
-                  <div>
-                    <strong className="text-slate-700">Data da Requisição:</strong>{' '}
-                    {new Date(viewingExamDoc.date_time).toLocaleDateString('pt-BR')}
-                  </div>
-                  <div>
-                    <strong className="text-slate-700">Suspeita Clínica:</strong>{' '}
-                    {viewingExamDoc.diagnosis_suspicions || 'Investigação clínica'}
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Exames Solicitados */}
               <div className="space-y-3">
@@ -1611,15 +1681,34 @@ export const ConsultationsPage: React.FC = () => {
                 Solicitamos a gentileza de encaminhar o laudo e resultados para o e-mail ou WhatsApp do veterinário responsável indicado no cabeçalho.
               </div>
 
-              {/* Signature line */}
-              <div className="pt-10 text-center">
-                <div className="w-56 border-t border-slate-400 mx-auto"></div>
-                <div className="text-xs font-bold text-slate-800 mt-1">
-                  Dr(a). {user?.first_name} {user?.last_name}
-                </div>
-                <div className="text-[11px] text-slate-500 font-mono">
-                  Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
-                </div>
+              {/* Signature line: Digital vs Physical */}
+              <div className="pt-8 text-center space-y-2">
+                {user?.signature_url ? (
+                  <div className="flex flex-col items-center justify-center">
+                    <img
+                      src={user.signature_url}
+                      alt="Assinatura Digital"
+                      className="max-h-14 max-w-[200px] object-contain mb-1 filter drop-shadow-xs"
+                    />
+                    <div className="w-56 border-t border-slate-600 mx-auto"></div>
+                    <div className="text-xs font-bold text-slate-900 mt-1">
+                      Dr(a). {user?.first_name} {user?.last_name || ''}
+                    </div>
+                    <div className="text-[11px] text-slate-600 font-mono">
+                      Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="w-56 border-t border-slate-400 mx-auto"></div>
+                    <div className="text-xs font-bold text-slate-800 mt-1">
+                      Dr(a). {user?.first_name} {user?.last_name}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-mono">
+                      Médico(a) Veterinário(a) • CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Vetgo footer */}
@@ -1992,25 +2081,41 @@ export const ConsultationsPage: React.FC = () => {
               </div>
 
               {/* Informações do Paciente e Tutor */}
-              <div className="grid grid-cols-2 gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                <div>
-                  <div>
-                    <strong className="text-slate-700">Paciente:</strong> {viewingPrescriptionDoc.patient_name}
+              {(() => {
+                const pat = patients.find((p) => p.id === viewingPrescriptionDoc.patient_id);
+                const tut = tutors.find((t) => t.id === (pat?.tutor_id || (viewingPrescriptionDoc as any).tutor_id));
+                return (
+                  <div className="grid grid-cols-2 gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                    <div className="space-y-0.5">
+                      <div>
+                        <strong className="text-slate-700">Paciente:</strong>{' '}
+                        <span className="font-bold text-slate-900">{viewingPrescriptionDoc.patient_name}</span>{' '}
+                        {pat?.code ? <span className="text-[10px] text-slate-500 font-mono">({pat.code})</span> : null}
+                      </div>
+                      <div className="text-slate-600">
+                        Espécie/Raça: <strong>{pat?.species || 'Canina/Felina'} • {pat?.breed || 'SRD'}</strong>
+                      </div>
+                      <div className="text-slate-600">
+                        Sexo: <strong>{pat?.gender || '—'}</strong> • Idade: <strong>{pat?.approximate_age || '—'}</strong> • Peso: <strong>{pat?.weight_kg ? `${pat.weight_kg} kg` : (viewingPrescriptionDoc.vital_signs?.temperature_c ? 'Aferido' : '—')}</strong>
+                      </div>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div>
+                        <strong className="text-slate-700">Tutor(a):</strong>{' '}
+                        <span className="font-bold text-slate-900">{viewingPrescriptionDoc.tutor_name || tut?.name}</span>
+                        {tut?.phone ? <span className="text-slate-500 ml-1 font-mono">({tut.phone})</span> : null}
+                      </div>
+                      <div>
+                        <strong className="text-slate-700">Data de Emissão:</strong>{' '}
+                        {new Date(viewingPrescriptionDoc.date_time).toLocaleDateString('pt-BR')}
+                      </div>
+                      <div>
+                        <strong className="text-slate-700">Local:</strong> {viewingPrescriptionDoc.location_address || 'Atendimento Volante Domiciliar'}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <strong className="text-slate-700">Tutor(a):</strong> {viewingPrescriptionDoc.tutor_name}
-                  </div>
-                </div>
-                <div>
-                  <div>
-                    <strong className="text-slate-700">Data de Emissão:</strong>{' '}
-                    {new Date(viewingPrescriptionDoc.date_time).toLocaleDateString('pt-BR')}
-                  </div>
-                  <div>
-                    <strong className="text-slate-700">Local:</strong> Atendimento Volante Domiciliar
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Lista Numerada de Medicamentos Prescritos */}
               <div className="space-y-3">

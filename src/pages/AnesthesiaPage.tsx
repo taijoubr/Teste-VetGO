@@ -633,8 +633,22 @@ export const AnesthesiaPage: React.FC = () => {
 
     const anestheticDurationMins = Math.max(5, Math.floor(elapsedSeconds / 60));
 
+    // Identifica horários cirúrgicos nos eventos ou calcula com base nos marcos do procedimento
+    const surgeryStartEvent = (activeAnesthesia.timeline_events || []).find((e) =>
+      /incis|cirurg|início.*cirurg|inicio.*cirurg/i.test(e.title)
+    );
+    const surgeryEndEvent = (activeAnesthesia.timeline_events || []).find((e) =>
+      /sutur|fechamento|fim.*cirurg|término.*cirurg|termino.*cirurg/i.test(e.title)
+    );
+
+    const startTime = activeAnesthesia.times?.anesthesia_start_time || activeAnesthesia.scheduled_time || nowRealTime;
+    const procStartTime = activeAnesthesia.times?.procedure_start_time || surgeryStartEvent?.real_time || startTime;
+    const procEndTime = activeAnesthesia.times?.procedure_end_time || surgeryEndEvent?.real_time || nowRealTime;
+
     const timesData = {
-      anesthesia_start_time: activeAnesthesia.times?.anesthesia_start_time || activeAnesthesia.scheduled_time || nowRealTime,
+      anesthesia_start_time: startTime,
+      procedure_start_time: procStartTime,
+      procedure_end_time: procEndTime,
       anesthesia_end_time: nowRealTime,
       extubation_time: recoveryForm.extubation_time || nowRealTime,
       anesthetic_duration_minutes: anestheticDurationMins,
@@ -2857,6 +2871,7 @@ export const AnesthesiaPage: React.FC = () => {
                 clinics={clinics}
                 surgeons={surgeons}
                 tutors={tutors}
+                patients={patients}
                 user={user}
                 isSigned={sheetSignToggle}
               />
