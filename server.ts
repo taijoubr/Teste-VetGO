@@ -65,6 +65,7 @@ interface DatabaseData {
   exams?: any[];
   smtp_settings?: any;
   notifications?: any[];
+  clinic_invoices?: any[];
 }
 
 function loadDB(): DatabaseData {
@@ -2453,6 +2454,133 @@ app.delete('/api/v1/clinics/:id', requireAuth, (req, res) => {
   db.clinics.splice(idx, 1);
   saveDB(db);
   res.json({ message: 'Clínica removida com sucesso.' });
+});
+
+// -------------------------------------------------------------
+// CLINIC BILLING INVOICES (FECHAMENTO DE FATURAMENTO COM CLÍNICAS)
+// -------------------------------------------------------------
+app.get('/api/v1/clinic-invoices', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const clinicId = req.query.clinic_id ? Number(req.query.clinic_id) : undefined;
+  if (!Array.isArray((db as any).clinic_invoices)) (db as any).clinic_invoices = [];
+
+  let list = (db as any).clinic_invoices.filter((inv: any) =>
+    Number(inv.owner_id) === Number(user.id) || !inv.owner_id || user.role === 'ADMIN'
+  );
+
+  if (clinicId) {
+    list = list.filter((inv: any) => Number(inv.clinic_id) === clinicId);
+  }
+
+  list.sort((a: any, b: any) => new Date(b.created_at || b.closing_date).getTime() - new Date(a.created_at || a.closing_date).getTime());
+  res.json(list);
+});
+
+app.post('/api/v1/clinic-invoices', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  if (!Array.isArray((db as any).clinic_invoices)) (db as any).clinic_invoices = [];
+
+  const clinic = (db.clinics || []).find((c) => Number(c.id) === Number(req.body.clinic_id));
+  const invoiceNumber = req.body.invoice_number || `FAT-${clinic ? clinic.code : 'CL'}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${String((db as any).clinic_invoices.length + 1).padStart(2, '0')}`;
+
+  const newInvoice = {
+    ...req.body,
+    id: Date.now(),
+    owner_id: Number(user.id),
+    invoice_number: invoiceNumber,
+    clinic_name: clinic?.name || req.body.clinic_name || 'Clínica Parceira',
+    clinic_cnpj: clinic?.cnpj || req.body.clinic_cnpj || '',
+    clinic_corporate_name: clinic?.corporate_name || req.body.clinic_corporate_name || '',
+    clinic_phone: clinic?.phone || clinic?.whatsapp || req.body.clinic_phone || '',
+    clinic_email: clinic?.email || req.body.clinic_email || '',
+    clinic_address: clinic ? `${clinic.address || ''}, ${clinic.address_number || ''} - ${clinic.city || ''}/${clinic.state || ''}` : (req.body.clinic_address || ''),
+    status: req.body.status || 'PENDENTE',
+    created_at: new Date().toISOString(),
+  };
+
+  (db as any).clinic_invoices.unshift(newInvoice);
+
+  // Lança automaticamente no módulo financeiro para controle de contas a receber
+  if (req.body.create_financial_entry !== false && Number(newInvoice.total_amount) > 0) {
+    if (!Array.isArray(db.financial_entries)) db.financial_entries = [];
+    const finEntry = {
+      id: Date.now() + 1,
+      owner_id: Number(user.id),
+      entry_type: 'RECEITA',
+      category: 'Faturamento Clínicas Parceiras',
+      description: `Fechamento ${newInvoice.period_label || 'Periódico'} - ${newInvoice.clinic_name}`,
+      amount: Number(newInvoice.total_amount),
+      payment_method: 'PIX',
+      status: newInvoice.status === 'PAGA' ? 'PAGO' : 'PENDENTE',
+      date: newInvoice.closing_date || new Date().toISOString().split('T')[0],
+      due_date: newInvoice.due_date,
+      clinic_id: newInvoice.clinic_id,
+      clinic_name: newInvoice.clinic_name,
+      receipt_number: newInvoice.invoice_number,
+      notes: `Fatura #${newInvoice.invoice_number} gerada para ${newInvoice.clinic_name} com ${newInvoice.total_procedures || 0} procedimentos inclusos.`,
+      created_at: new Date().toISOString(),
+    };
+    db.financial_entries.unshift(finEntry);
+  }
+
+  saveDB(db);
+  res.status(201).json(newInvoice);
+});
+
+app.put('/api/v1/clinic-invoices/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray((db as any).clinic_invoices)) (db as any).clinic_invoices = [];
+
+  const idx = (db as any).clinic_invoices.findIndex(
+    (inv: any) => Number(inv.id) === id && (Number(inv.owner_id) === Number(user.id) || !inv.owner_id || user.role === 'ADMIN')
+  );
+
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Fatura não encontrada.' });
+  }
+
+  const prev = (db as any).clinic_invoices[idx];
+  const updated = {
+    ...prev,
+    ...req.body,
+    id,
+    owner_id: user.id,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (req.body.status === 'PAGA' && !prev.paid_at) {
+    updated.paid_at = new Date().toISOString();
+    if (Array.isArray(db.financial_entries)) {
+      const fin = db.financial_entries.find((f: any) => f.receipt_number === prev.invoice_number);
+      if (fin) {
+        fin.status = 'PAGO';
+        fin.payment_date = new Date().toISOString().split('T')[0];
+      }
+    }
+  }
+
+  (db as any).clinic_invoices[idx] = updated;
+  saveDB(db);
+  res.json(updated);
+});
+
+app.delete('/api/v1/clinic-invoices/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Array.isArray((db as any).clinic_invoices)) (db as any).clinic_invoices = [];
+
+  const idx = (db as any).clinic_invoices.findIndex(
+    (inv: any) => Number(inv.id) === id && (Number(inv.owner_id) === Number(user.id) || !inv.owner_id || user.role === 'ADMIN')
+  );
+
+  if (idx === -1) {
+    return res.status(404).json({ detail: 'Fatura não encontrada.' });
+  }
+
+  const removed = (db as any).clinic_invoices.splice(idx, 1)[0];
+  saveDB(db);
+  res.json({ message: 'Fatura removida com sucesso.', id: removed.id });
 });
 
 app.get('/api/v1/surgeons', requireAuth, (req, res) => {

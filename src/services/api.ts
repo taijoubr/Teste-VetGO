@@ -30,7 +30,8 @@ import {
   SupplierOrder,
   PatientExam,
   PublicVetProfile,
-  PublicConsultationRequest
+  PublicConsultationRequest,
+  ClinicBillingInvoice
 } from '../types';
 import { adminService } from './adminService';
 import { offlineStorage } from './offlineStorage';
@@ -1477,6 +1478,130 @@ export const api = {
     const filtered = clinics.filter((c) => c.id !== id);
     localStorage.setItem('vetgo_clinics', JSON.stringify(filtered));
     firestoreSync.deleteDoc('clinics', String(id)).catch(() => {});
+  },
+
+  // -----------------------------------------------------------------
+  // FECHAMENTO DE FATURAMENTO COM CLÍNICAS PARCEIRAS (FATURAS / PIX)
+  // -----------------------------------------------------------------
+  async getClinicInvoices(clinicId?: number): Promise<ClinicBillingInvoice[]> {
+    const user = this.getCachedUser();
+    const userKey = user?.id ? `vetgo_clinic_invoices_u${user.id}` : 'vetgo_clinic_invoices';
+    try {
+      const url = clinicId ? `/clinic-invoices?clinic_id=${clinicId}` : '/clinic-invoices';
+      const serverList = await this.request<ClinicBillingInvoice[]>(url);
+      if (Array.isArray(serverList)) {
+        localStorage.setItem(userKey, JSON.stringify(serverList));
+        return serverList;
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar faturas de clínicas no servidor, buscando localmente:', e);
+    }
+
+    const local = localStorage.getItem(userKey);
+    if (local) {
+      try {
+        const parsed: ClinicBillingInvoice[] = JSON.parse(local);
+        if (clinicId) {
+          return parsed.filter((i) => Number(i.clinic_id) === Number(clinicId));
+        }
+        return parsed;
+      } catch {}
+    }
+    return [];
+  },
+
+  async createClinicInvoice(data: Partial<ClinicBillingInvoice> & { create_financial_entry?: boolean }): Promise<ClinicBillingInvoice> {
+    const user = this.getCachedUser();
+    const userKey = user?.id ? `vetgo_clinic_invoices_u${user.id}` : 'vetgo_clinic_invoices';
+    try {
+      const created = await this.request<ClinicBillingInvoice>('/clinic-invoices', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      if (created && created.id) {
+        const list = await this.getClinicInvoices();
+        list.unshift(created);
+        localStorage.setItem(userKey, JSON.stringify(list));
+        return created;
+      }
+    } catch (e) {
+      console.warn('Erro ao criar fatura no servidor, salvando localmente:', e);
+    }
+
+    const list = await this.getClinicInvoices();
+    const invoiceNumber = data.invoice_number || `FAT-CL${data.clinic_id || '01'}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(list.length + 1).padStart(2, '0')}`;
+    const newInvoice: ClinicBillingInvoice = {
+      id: Date.now(),
+      owner_id: user?.id || 1,
+      invoice_number: invoiceNumber,
+      clinic_id: Number(data.clinic_id) || 1,
+      clinic_name: data.clinic_name || 'Clínica Parceira',
+      clinic_corporate_name: data.clinic_corporate_name,
+      clinic_cnpj: data.clinic_cnpj,
+      clinic_phone: data.clinic_phone,
+      clinic_email: data.clinic_email,
+      clinic_address: data.clinic_address,
+      period_type: data.period_type || 'MENSAL',
+      period_label: data.period_label || 'Fechamento Mensal',
+      start_date: data.start_date || new Date().toISOString().split('T')[0],
+      end_date: data.end_date || new Date().toISOString().split('T')[0],
+      closing_date: data.closing_date || new Date().toISOString().split('T')[0],
+      due_date: data.due_date || new Date().toISOString().split('T')[0],
+      items: data.items || [],
+      total_procedures: data.total_procedures || (data.items ? data.items.length : 0),
+      total_amount: Number(data.total_amount) || 0,
+      status: data.status || 'PENDENTE',
+      pix_key: data.pix_key || user?.pix_key,
+      pix_receiver_name: data.pix_receiver_name || user?.pix_receiver_name,
+      pix_city: data.pix_city || user?.pix_city,
+      pix_payload: data.pix_payload,
+      notes: data.notes,
+      created_at: new Date().toISOString()
+    };
+
+    list.unshift(newInvoice);
+    localStorage.setItem(userKey, JSON.stringify(list));
+    return newInvoice;
+  },
+
+  async updateClinicInvoice(id: number, updates: Partial<ClinicBillingInvoice>): Promise<ClinicBillingInvoice> {
+    const user = this.getCachedUser();
+    const userKey = user?.id ? `vetgo_clinic_invoices_u${user.id}` : 'vetgo_clinic_invoices';
+    try {
+      const updated = await this.request<ClinicBillingInvoice>(`/clinic-invoices/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+      if (updated) {
+        const list = await this.getClinicInvoices();
+        const nextList = list.map((i) => i.id === id ? { ...i, ...updated } : i);
+        localStorage.setItem(userKey, JSON.stringify(nextList));
+        return updated;
+      }
+    } catch (e) {
+      console.warn('Erro ao atualizar fatura no servidor, salvando localmente:', e);
+    }
+
+    const list = await this.getClinicInvoices();
+    const idx = list.findIndex((i) => i.id === id);
+    if (idx === -1) throw new Error('Fatura não encontrada');
+    list[idx] = { ...list[idx], ...updates };
+    localStorage.setItem(userKey, JSON.stringify(list));
+    return list[idx];
+  },
+
+  async deleteClinicInvoice(id: number): Promise<boolean> {
+    const user = this.getCachedUser();
+    const userKey = user?.id ? `vetgo_clinic_invoices_u${user.id}` : 'vetgo_clinic_invoices';
+    try {
+      await this.request(`/clinic-invoices/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Erro ao excluir fatura no servidor:', e);
+    }
+    const list = await this.getClinicInvoices();
+    const filtered = list.filter((i) => i.id !== id);
+    localStorage.setItem(userKey, JSON.stringify(filtered));
+    return true;
   },
 
   // -----------------------------------------------------------------

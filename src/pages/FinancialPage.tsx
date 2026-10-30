@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { FinancialEntry, Tutor, Patient, PaymentMethod, FinancialEntryType } from '../types';
 import {
@@ -16,7 +17,8 @@ import {
   CheckCircle2,
   AlertCircle,
   QrCode,
-  Download
+  Download,
+  Building2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PixPaymentModal } from '../components/PixPaymentModal';
@@ -182,7 +184,15 @@ export const FinancialPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/clinicas"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs transition"
+            title="Acessar fechamento quinzenal/mensal de anestesias com clínicas parceiras"
+          >
+            <Building2 className="w-4 h-4 text-emerald-700" />
+            <span>Fechamento de Clínicas</span>
+          </Link>
           <button
             type="button"
             onClick={() => {

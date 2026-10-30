@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import QRCode from 'qrcode';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
-import { Clinic, AnesthesiaRecord, FinancialEntry } from '../types';
+import { Clinic, AnesthesiaRecord, FinancialEntry, ClinicBillingInvoice } from '../types';
 import {
   Building2,
   Search,
@@ -20,7 +21,17 @@ import {
   UserCheck,
   Tag,
   Loader2,
-  Edit2
+  Edit2,
+  Receipt,
+  QrCode,
+  Download,
+  Share2,
+  Check,
+  Printer,
+  Copy,
+  ExternalLink,
+  ChevronRight,
+  Clock
 } from 'lucide-react';
 import {
   formatCNPJ,
@@ -29,6 +40,8 @@ import {
   CPF_CNPJ_DISCLAIMER
 } from '../utils/validators';
 import { formatCEP, fetchAddressByCep } from '../services/cepService';
+import { ClinicBillingModal } from '../components/ClinicBillingModal';
+import { printElement, exportToPdf } from '../utils/printHelper';
 
 export const ClinicsPage: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -41,7 +54,17 @@ export const ClinicsPage: React.FC = () => {
   const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
   const [clinicHistory, setClinicHistory] = useState<AnesthesiaRecord[]>([]);
   const [clinicFinancials, setClinicFinancials] = useState<FinancialEntry[]>([]);
+  const [clinicInvoices, setClinicInvoices] = useState<ClinicBillingInvoice[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'info' | 'history' | 'financial'>('info');
+
+  // Billing Modal State
+  const [showBillingModal, setShowBillingModal] = useState<boolean>(false);
+  const [billingModalClinic, setBillingModalClinic] = useState<Clinic | null>(null);
+  const [selectedInvoiceForView, setSelectedInvoiceForView] = useState<ClinicBillingInvoice | null>(null);
+  const [invoiceQrDataUrl, setInvoiceQrDataUrl] = useState<string>('');
+  const [copiedInvoicePixId, setCopiedInvoicePixId] = useState<number | null>(null);
+  const [updatingInvoiceStatus, setUpdatingInvoiceStatus] = useState<number | null>(null);
 
   const [modalError, setModalError] = useState<string | null>(null);
   const [cnpjWarning, setCnpjWarning] = useState<string | null>(null);
@@ -61,15 +84,15 @@ export const ClinicsPage: React.FC = () => {
     address_number: '',
     complement: '',
     neighborhood: '',
-    city: 'São Paulo',
-    state: 'SP',
+    city: '',
+    state: '',
     postal_code: '',
     manager_name: '',
     financial_contact: '',
     payment_terms: '',
     billing_type: 'POR_ATENDIMENTO' as 'POR_ATENDIMENTO' | 'FATURAMENTO_PERIODICO',
-    billing_closing_day: 25,
-    billing_due_day: 5,
+    billing_closing_day: '' as any,
+    billing_due_day: '' as any,
     price_table_type: 'PADRAO' as 'PADRAO' | 'ESPECIFICA',
     notes: '',
     is_active: true
@@ -106,15 +129,15 @@ export const ClinicsPage: React.FC = () => {
       address_number: '',
       complement: '',
       neighborhood: '',
-      city: 'São Paulo',
-      state: 'SP',
+      city: '',
+      state: '',
       postal_code: '',
       manager_name: '',
       financial_contact: '',
       payment_terms: '',
       billing_type: 'POR_ATENDIMENTO',
-      billing_closing_day: 25,
-      billing_due_day: 5,
+      billing_closing_day: '' as any,
+      billing_due_day: '' as any,
       price_table_type: 'PADRAO',
       notes: '',
       is_active: true
@@ -263,13 +286,109 @@ export const ClinicsPage: React.FC = () => {
     setSelectedClinic(clinic);
     setActiveTab('info');
     try {
-      const procedures = await api.getAnesthesias({ clinicId: clinic.id });
+      setInvoicesLoading(true);
+      const [procedures, allFin, invoices] = await Promise.all([
+        api.getAnesthesias({ clinicId: clinic.id }),
+        api.getFinancialEntries(),
+        api.getClinicInvoices(clinic.id)
+      ]);
       setClinicHistory(procedures);
-      const allFin = await api.getFinancialEntries();
       setClinicFinancials(allFin.filter((f) => f.clinic_id === clinic.id));
+      setClinicInvoices(invoices);
     } catch (err) {
       console.error(err);
+    } finally {
+      setInvoicesLoading(false);
     }
+  };
+
+  const reloadClinicInvoices = async (clinicId: number) => {
+    try {
+      setInvoicesLoading(true);
+      const [invoices, allFin] = await Promise.all([
+        api.getClinicInvoices(clinicId),
+        api.getFinancialEntries()
+      ]);
+      setClinicInvoices(invoices);
+      setClinicFinancials(allFin.filter((f) => f.clinic_id === clinicId));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
+
+  const handleToggleInvoicePaid = async (invoice: ClinicBillingInvoice) => {
+    try {
+      setUpdatingInvoiceStatus(invoice.id);
+      const newStatus = invoice.status === 'PAGA' ? 'PENDENTE' : 'PAGA';
+      await api.updateClinicInvoice(invoice.id, {
+        status: newStatus,
+        payment_date: newStatus === 'PAGA' ? new Date().toISOString().split('T')[0] : undefined
+      });
+      if (selectedClinic) {
+        await reloadClinicInvoices(selectedClinic.id);
+      }
+      if (selectedInvoiceForView && selectedInvoiceForView.id === invoice.id) {
+        setSelectedInvoiceForView((prev) => prev ? { ...prev, status: newStatus } : null);
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar status da fatura', err);
+    } finally {
+      setUpdatingInvoiceStatus(null);
+    }
+  };
+
+  const handleOpenInvoiceView = async (invoice: ClinicBillingInvoice) => {
+    setSelectedInvoiceForView(invoice);
+    if (invoice.pix_code) {
+      try {
+        const qr = await QRCode.toDataURL(invoice.pix_code, {
+          width: 256,
+          margin: 1,
+          color: { dark: '#064e3b', light: '#ffffff' }
+        });
+        setInvoiceQrDataUrl(qr);
+      } catch (e) {
+        console.error('Erro ao gerar QR Code', e);
+        setInvoiceQrDataUrl('');
+      }
+    } else {
+      setInvoiceQrDataUrl('');
+    }
+  };
+
+  const handleCopyPix = (invoice: ClinicBillingInvoice) => {
+    if (!invoice.pix_code) return;
+    navigator.clipboard.writeText(invoice.pix_code);
+    setCopiedInvoicePixId(invoice.id);
+    setTimeout(() => setCopiedInvoicePixId(null), 2500);
+  };
+
+  const handleShareWhatsApp = (invoice: ClinicBillingInvoice) => {
+    const targetPhone = selectedClinic?.whatsapp || selectedClinic?.phone || '';
+    const cleanPhone = targetPhone.replace(/\D/g, '');
+    const phoneParam = cleanPhone.length >= 10 ? `55${cleanPhone}` : '';
+
+    const lines = [
+      `*DEMONSTRATIVO DE FECHAMENTO & COBRANÇA - ${invoice.invoice_number}*`,
+      `*Clínica:* ${invoice.clinic_name}`,
+      `*Período:* ${invoice.period_label || 'Fechamento de Procedimentos'}`,
+      `*Total de Procedimentos:* ${invoice.total_procedures}`,
+      `*Valor Total:* R$ ${invoice.total_amount.toFixed(2)}`,
+      `*Vencimento:* ${invoice.due_date ? new Date(invoice.due_date + 'T12:00:00').toLocaleDateString('pt-BR') : 'Imediato'}`,
+      '',
+      '*Chave PIX para Pagamento:*',
+      invoice.pix_key ? `Tipo: ${invoice.pix_type} | Chave: ${invoice.pix_key}` : '',
+      invoice.pix_code ? `\n*Código PIX Copia e Cola:*\n\`\`\`${invoice.pix_code}\`\`\`` : '',
+      '',
+      'Relatório analítico e demonstrativo das cirurgias disponível para conferência. Agradecemos a parceria!'
+    ].filter(Boolean).join('\n');
+
+    const url = phoneParam
+      ? `https://api.whatsapp.com/send?phone=${phoneParam}&text=${encodeURIComponent(lines)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(lines)}`;
+    window.open(url, '_blank');
   };
 
   const filteredClinics = clinics.filter((c) => {
@@ -332,13 +451,26 @@ export const ClinicsPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleOpenCreateModal}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-sm font-semibold transition shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Nova Clínica
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setBillingModalClinic(clinics[0] || null);
+              setShowBillingModal(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold transition shadow-sm cursor-pointer"
+            title="Gerar fechamento de faturamento quinzenal ou mensal com relatório e PIX"
+          >
+            <Receipt className="w-4 h-4 text-emerald-400" />
+            <span>Fechamento & Faturamento</span>
+          </button>
+          <button
+            onClick={handleOpenCreateModal}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-sm font-semibold transition shadow-sm cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nova Clínica</span>
+          </button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -423,17 +555,30 @@ export const ClinicsPage: React.FC = () => {
                   {clinic.billing_type === 'FATURAMENTO_PERIODICO' ? 'Faturamento Periódico' : 'Por Atendimento'}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-emerald-800">
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-emerald-800 mr-1">
                   {clinic.total_procedures || 0} anestesias
                 </span>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    setBillingModalClinic(clinic);
+                    setShowBillingModal(true);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-300 transition cursor-pointer"
+                  title="Faturar procedimentos desta clínica"
+                >
+                  <Receipt className="w-3 h-3 text-emerald-700" />
+                  Faturar
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
                     handleOpenEditModal(clinic);
                   }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition cursor-pointer"
                   title="Editar dados da clínica parceira"
                 >
                   <Edit2 className="w-3 h-3" />
@@ -520,7 +665,7 @@ export const ClinicsPage: React.FC = () => {
                     : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
               >
-                Financeiro & Faturamentos ({clinicFinancials.length})
+                Financeiro & Faturamentos ({clinicInvoices.length + clinicFinancials.length})
               </button>
             </div>
 
@@ -622,34 +767,284 @@ export const ClinicsPage: React.FC = () => {
               )}
 
               {activeTab === 'financial' && (
-                <div className="space-y-3">
-                  {clinicFinancials.length === 0 ? (
-                    <p className="text-xs text-slate-500 py-6 text-center">
-                      Nenhum lançamento financeiro vinculado a esta clínica.
-                    </p>
-                  ) : (
-                    clinicFinancials.map((fin) => (
-                      <div
-                        key={fin.id}
-                        className="p-3.5 rounded-lg border border-slate-200 bg-white flex items-center justify-between text-xs"
-                      >
-                        <div className="space-y-0.5">
-                          <p className="font-semibold text-slate-800">{fin.description}</p>
-                          <p className="text-slate-400">Data: {fin.date} • {fin.receipt_number}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-slate-900 text-sm">R$ {fin.amount.toFixed(2)}</p>
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                              fin.status === 'PAGO' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {fin.status}
-                          </span>
-                        </div>
+                <div className="space-y-5 text-xs">
+                  {/* Top Bar with Metrics and Action */}
+                  <div className="bg-gradient-to-r from-emerald-900 to-slate-900 text-white p-4 rounded-xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Receipt className="w-5 h-5 text-emerald-400" />
+                        <h4 className="text-sm font-bold tracking-tight">Gestão de Fechamentos & Faturas</h4>
                       </div>
-                    ))
-                  )}
+                      <p className="text-[11px] text-emerald-200/80 mt-0.5">
+                        Agrupamento quinzenal/mensal de anestesias com demonstrativo analítico e cobrança direta via PIX
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBillingModalClinic(selectedClinic);
+                        setShowBillingModal(true);
+                      }}
+                      className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg shadow-sm transition text-xs cursor-pointer shrink-0"
+                    >
+                      <Plus className="w-4 h-4 text-slate-950" />
+                      Novo Fechamento / Fatura
+                    </button>
+                  </div>
+
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Faturado</span>
+                      <p className="text-base font-black text-slate-900 mt-1 font-mono">
+                        R$ {clinicInvoices.reduce((acc, curr) => acc + (curr.total_amount || 0), 0).toFixed(2)}
+                      </p>
+                      <span className="text-[10px] text-slate-500">{clinicInvoices.length} fatura(s) emitida(s)</span>
+                    </div>
+
+                    <div className="p-3 bg-amber-50/70 border border-amber-200/70 rounded-xl">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">A Receber (Pendente)</span>
+                      <p className="text-base font-black text-amber-900 mt-1 font-mono">
+                        R$ {clinicInvoices.filter((i) => i.status === 'PENDENTE').reduce((acc, curr) => acc + curr.total_amount, 0).toFixed(2)}
+                      </p>
+                      <span className="text-[10px] text-amber-700/80">
+                        {clinicInvoices.filter((i) => i.status === 'PENDENTE').length} fatura(s) pendente(s)
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-emerald-50/70 border border-emerald-200/70 rounded-xl">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Liquidado / Pago</span>
+                      <p className="text-base font-black text-emerald-900 mt-1 font-mono">
+                        R$ {clinicInvoices.filter((i) => i.status === 'PAGA').reduce((acc, curr) => acc + curr.total_amount, 0).toFixed(2)}
+                      </p>
+                      <span className="text-[10px] text-emerald-700/80">
+                        {clinicInvoices.filter((i) => i.status === 'PAGA').length} fatura(s) quitada(s)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Section 1: Faturas Emitidas */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h5 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                        <FileText className="w-4 h-4 text-emerald-700" />
+                        Faturas & Fechamentos Emitidos ({clinicInvoices.length})
+                      </h5>
+                      {invoicesLoading && (
+                        <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Atualizando...
+                        </span>
+                      )}
+                    </div>
+
+                    {clinicInvoices.length === 0 ? (
+                      <div className="p-8 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center space-y-2">
+                        <Receipt className="w-8 h-8 text-slate-300 mx-auto" />
+                        <p className="font-semibold text-slate-700">Nenhum fechamento periódico emitido para esta clínica ainda.</p>
+                        <p className="text-slate-500 text-[11px] max-w-md mx-auto">
+                          Agrupe as anestesias do mês ou da quinzena para gerar um relatório analítico oficial em PDF e cobrança direta via PIX com Copia e Cola.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBillingModalClinic(selectedClinic);
+                            setShowBillingModal(true);
+                          }}
+                          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-semibold text-xs shadow-2xs transition cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Criar Primeiro Fechamento
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {clinicInvoices.map((inv) => (
+                          <div
+                            key={inv.id}
+                            className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs hover:border-emerald-500 transition space-y-3"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-sm font-mono text-emerald-950">
+                                    {inv.invoice_number}
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                                      inv.status === 'PAGA'
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : inv.status === 'PENDENTE'
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}
+                                  >
+                                    {inv.status === 'PAGA' ? (
+                                      <>
+                                        <Check className="w-3 h-3" /> PAGA
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Clock className="w-3 h-3" /> PENDENTE
+                                      </>
+                                    )}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  Período: <strong className="text-slate-700">{inv.period_label || `${inv.start_date} a ${inv.end_date}`}</strong> • Emitida em {new Date(inv.created_at || inv.closing_date).toLocaleDateString('pt-BR')}
+                                </p>
+                              </div>
+
+                              <div className="text-left sm:text-right">
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase">Valor Total</span>
+                                <p className="text-base font-black text-slate-900 font-mono">
+                                  R$ {inv.total_amount.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-600 bg-slate-50/70 p-2.5 rounded-lg">
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Procedimentos</span>
+                                <strong className="text-slate-800">{inv.total_procedures} atendimentos</strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Vencimento</span>
+                                <strong className="text-slate-800">
+                                  {inv.due_date ? new Date(inv.due_date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                                </strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Chave PIX</span>
+                                <strong className="text-slate-800 truncate block max-w-[140px]" title={inv.pix_key || '-'}>
+                                  {inv.pix_key || '-'}
+                                </strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Pagamento</span>
+                                <strong className="text-slate-800">
+                                  {inv.payment_date ? new Date(inv.payment_date + 'T12:00:00').toLocaleDateString('pt-BR') : 'Aguardando'}
+                                </strong>
+                              </div>
+                            </div>
+
+                            {/* Action Buttons for Invoice */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenInvoiceView(inv)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition cursor-pointer"
+                                  title="Ver demonstrativo analítico e imprimir/PDF"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-emerald-700" />
+                                  Visualizar / PDF
+                                </button>
+
+                                {inv.pix_code && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyPix(inv)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-semibold transition cursor-pointer"
+                                    title="Copiar código PIX Copia e Cola"
+                                  >
+                                    {copiedInvoicePixId === inv.id ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span className="text-emerald-700 font-bold">Copiado!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5 text-slate-600" />
+                                        <span>Copiar PIX</span>
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleShareWhatsApp(inv)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-2xs transition cursor-pointer"
+                                  title="Enviar cobrança e código PIX pelo WhatsApp da clínica"
+                                >
+                                  <Share2 className="w-3.5 h-3.5" />
+                                  WhatsApp
+                                </button>
+                              </div>
+
+                              <div>
+                                <button
+                                  type="button"
+                                  disabled={updatingInvoiceStatus === inv.id}
+                                  onClick={() => handleToggleInvoicePaid(inv)}
+                                  className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                    inv.status === 'PAGA'
+                                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                                      : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs'
+                                  }`}
+                                >
+                                  {updatingInvoiceStatus === inv.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : inv.status === 'PAGA' ? (
+                                    <>
+                                      <Clock className="w-3.5 h-3.5" />
+                                      Marcar Pendente
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      Marcar como Paga
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Section 2: Lançamentos no Livro Caixa */}
+                  <div className="space-y-2 pt-3 border-t border-slate-100">
+                    <h5 className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-slate-500" />
+                      Lançamentos Financeiros no Livro Caixa ({clinicFinancials.length})
+                    </h5>
+
+                    {clinicFinancials.length === 0 ? (
+                      <p className="text-xs text-slate-400 py-3 text-center">
+                        Nenhum lançamento no livro caixa vinculado a esta clínica.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {clinicFinancials.map((fin) => (
+                          <div
+                            key={fin.id}
+                            className="p-3 rounded-lg border border-slate-200 bg-white flex items-center justify-between text-xs"
+                          >
+                            <div className="space-y-0.5">
+                              <p className="font-semibold text-slate-800">{fin.description}</p>
+                              <p className="text-slate-400 text-[11px]">
+                                Data: {fin.date} • Recibo: {fin.receipt_number || '-'} • Método: {fin.payment_method}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold text-slate-900 text-sm font-mono">R$ {fin.amount.toFixed(2)}</p>
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  fin.status === 'PAGO' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {fin.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -688,7 +1083,7 @@ export const ClinicsPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-5 overflow-y-auto flex-1 space-y-4 text-xs">
+            <form onSubmit={handleSubmit} autoComplete="off" className="p-5 overflow-y-auto flex-1 space-y-4 text-xs">
               {modalError && (
                 <div className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -957,8 +1352,10 @@ export const ClinicsPage: React.FC = () => {
                         type="number"
                         min={1}
                         max={31}
-                        value={form.billing_closing_day}
-                        onChange={(e) => setForm({ ...form, billing_closing_day: Number(e.target.value) })}
+                        placeholder="Ex: 25"
+                        autoComplete="off"
+                        value={form.billing_closing_day || ''}
+                        onChange={(e) => setForm({ ...form, billing_closing_day: e.target.value ? Number(e.target.value) : ('' as any) })}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
                       />
                     </div>
@@ -968,8 +1365,10 @@ export const ClinicsPage: React.FC = () => {
                         type="number"
                         min={1}
                         max={31}
-                        value={form.billing_due_day}
-                        onChange={(e) => setForm({ ...form, billing_due_day: Number(e.target.value) })}
+                        placeholder="Ex: 5"
+                        autoComplete="off"
+                        value={form.billing_due_day || ''}
+                        onChange={(e) => setForm({ ...form, billing_due_day: e.target.value ? Number(e.target.value) : ('' as any) })}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
                       />
                     </div>
@@ -1033,6 +1432,378 @@ export const ClinicsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal Visualização Analítica & Impressão da Fatura */}
+      {selectedInvoiceForView && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-4xl max-h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden my-auto">
+            {/* Modal Header & Actions Bar */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-900 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-emerald-400" />
+                  <h3 className="font-bold text-base sm:text-lg tracking-tight">
+                    Fatura & Demonstrativo: {selectedInvoiceForView.invoice_number}
+                  </h3>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                      selectedInvoiceForView.status === 'PAGA'
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-amber-400 text-slate-950'
+                    }`}
+                  >
+                    {selectedInvoiceForView.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  {selectedInvoiceForView.clinic_name} • {selectedInvoiceForView.period_label || 'Fechamento de Serviços'}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    printElement(
+                      'invoice-preview-container',
+                      `Fatura_${selectedInvoiceForView.invoice_number}_${selectedInvoiceForView.clinic_name}`
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Imprimir
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    exportToPdf(
+                      'invoice-preview-container',
+                      `Fatura_${selectedInvoiceForView.invoice_number}_${selectedInvoiceForView.clinic_name}`
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Salvar PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleShareWhatsApp(selectedInvoiceForView)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  WhatsApp
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleInvoicePaid(selectedInvoiceForView)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold border border-slate-700 transition cursor-pointer"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {selectedInvoiceForView.status === 'PAGA' ? 'Marcar Pendente' : 'Marcar Paga'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedInvoiceForView(null)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Document Container */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-slate-100/70">
+              <div
+                id="invoice-preview-container"
+                className="bg-white max-w-3xl mx-auto p-6 sm:p-8 rounded-xl shadow-xs border border-slate-200 text-slate-800 text-xs space-y-6"
+              >
+                {/* Document Header */}
+                <div className="flex flex-col sm:flex-row justify-between items-start border-b-2 border-emerald-800 pb-5 gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-lg bg-emerald-800 text-white flex items-center justify-center font-black text-lg">
+                        V
+                      </div>
+                      <div>
+                        <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-snug">
+                          {[user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Dr(a). Médico(a) Veterinário(a)'}
+                        </h2>
+                        <p className="text-emerald-800 font-semibold text-[11px]">
+                          CRMV {user?.crmv ? `${user.crmv}/${user?.crmv_uf || 'SP'}` : 'Não informado'} • Anestesiologia & Cirurgia Veterinária
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[11px] text-slate-500 space-y-0.5">
+                      {user?.phone && <p>Contato: {user.phone}</p>}
+                      {user?.email && <p>E-mail: {user.email}</p>}
+                      {user?.pix_city ? <p>Local: {user.pix_city}</p> : user?.crmv_uf ? <p>UF: {user.crmv_uf}</p> : null}
+                    </div>
+                  </div>
+
+                  <div className="text-left sm:text-right bg-emerald-50/70 border border-emerald-200/60 p-3 rounded-xl sm:min-w-[220px]">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-900 block">
+                      Demonstrativo de Fechamento
+                    </span>
+                    <h3 className="text-lg font-black font-mono text-emerald-950 mt-0.5">
+                      {selectedInvoiceForView.invoice_number}
+                    </h3>
+                    <div className="mt-2 text-[11px] space-y-0.5 text-slate-700">
+                      <p>
+                        <strong>Emissão:</strong>{' '}
+                        {new Date(selectedInvoiceForView.created_at || selectedInvoiceForView.closing_date).toLocaleDateString('pt-BR')}
+                      </p>
+                      <p>
+                        <strong>Vencimento:</strong>{' '}
+                        <span className="font-bold text-emerald-800">
+                          {selectedInvoiceForView.due_date
+                            ? new Date(selectedInvoiceForView.due_date + 'T12:00:00').toLocaleDateString('pt-BR')
+                            : 'À vista'}
+                        </span>
+                      </p>
+                      <p>
+                        <strong>Status:</strong>{' '}
+                        <span
+                          className={`font-bold ${
+                            selectedInvoiceForView.status === 'PAGA' ? 'text-emerald-700' : 'text-amber-700'
+                          }`}
+                        >
+                          {selectedInvoiceForView.status}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Clinic / Debtor Information */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                    Dados da Clínica Parceira (Tomador do Serviço)
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-700">
+                    <div>
+                      <p className="font-bold text-slate-900 text-xs">{selectedInvoiceForView.clinic_name}</p>
+                      <p>Código: {selectedClinic?.code || '-'}</p>
+                      {selectedClinic?.corporate_name && <p>Razão: {selectedClinic.corporate_name}</p>}
+                      {selectedClinic?.cnpj && <p>CNPJ: {selectedClinic.cnpj}</p>}
+                    </div>
+                    <div>
+                      {selectedClinic?.financial_contact && (
+                        <p><strong>Contato Financeiro:</strong> {selectedClinic.financial_contact}</p>
+                      )}
+                      {(selectedClinic?.phone || selectedClinic?.whatsapp) && (
+                        <p><strong>Telefone / WhatsApp:</strong> {selectedClinic.phone || selectedClinic.whatsapp}</p>
+                      )}
+                      {selectedClinic?.address && (
+                        <p>
+                          <strong>Endereço:</strong> {selectedClinic.address}, {selectedClinic.address_number} - {selectedClinic.city}/{selectedClinic.state}
+                        </p>
+                      )}
+                      <p>
+                        <strong>Período de Referência:</strong>{' '}
+                        {selectedInvoiceForView.period_label || `${selectedInvoiceForView.start_date} a ${selectedInvoiceForView.end_date}`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Analytical Items Table */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-emerald-700" />
+                      Relação Analítica de Procedimentos Anestésicos & Cirúrgicos
+                    </h4>
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      {selectedInvoiceForView.items.length} procedimento(s)
+                    </span>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-left border-collapse text-[11px]">
+                      <thead>
+                        <tr className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
+                          <th className="py-2 px-3">Data</th>
+                          <th className="py-2 px-3">Paciente / Espécie</th>
+                          <th className="py-2 px-3">Procedimento</th>
+                          <th className="py-2 px-3">Cirurgião</th>
+                          <th className="py-2 px-3">ASA</th>
+                          <th className="py-2 px-3 text-right">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {selectedInvoiceForView.items.map((it, idx) => (
+                          <tr key={it.id || idx} className="hover:bg-slate-50/70 transition">
+                            <td className="py-2 px-3 font-medium text-slate-600 whitespace-nowrap">
+                              {it.procedure_date ? new Date(it.procedure_date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                            </td>
+                            <td className="py-2 px-3 font-semibold text-slate-900">
+                              {it.patient_name || '-'}
+                              {it.patient_species && (
+                                <span className="block text-[10px] text-slate-400 font-normal">
+                                  {it.patient_species}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 font-medium text-slate-800">
+                              {it.procedure_name}
+                              {it.notes && (
+                                <span className="block text-[10px] text-slate-400 italic">
+                                  {it.notes}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-slate-600">{it.surgeon_name || '-'}</td>
+                            <td className="py-2 px-3 text-slate-500 font-mono text-[10px]">
+                              {it.asa_classification ? it.asa_classification.replace('_', ' ') : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono whitespace-nowrap">
+                              R$ {(it.billed_amount ?? it.amount ?? 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Totals Breakdown */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 pt-2">
+                  <div className="text-[11px] text-slate-500 max-w-sm">
+                    {selectedInvoiceForView.notes ? (
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <strong className="block text-slate-700 font-semibold mb-0.5">Observações:</strong>
+                        <p>{selectedInvoiceForView.notes}</p>
+                      </div>
+                    ) : (
+                      <p className="italic text-slate-400">
+                        Valores apurados conforme tabela acordada entre o médico veterinário volante e a clínica parceira.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 w-full sm:w-72 space-y-1.5 text-xs">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Subtotal ({selectedInvoiceForView.total_procedures} itens):</span>
+                      <span className="font-mono font-semibold">R$ {(selectedInvoiceForView.subtotal_amount ?? selectedInvoiceForView.total_amount).toFixed(2)}</span>
+                    </div>
+                    {Boolean(selectedInvoiceForView.discount_amount && selectedInvoiceForView.discount_amount > 0) && (
+                      <div className="flex justify-between text-emerald-700 font-medium">
+                        <span>Descontos:</span>
+                        <span className="font-mono">- R$ {(selectedInvoiceForView.discount_amount || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Boolean(selectedInvoiceForView.additional_amount && selectedInvoiceForView.additional_amount > 0) && (
+                      <div className="flex justify-between text-slate-700 font-medium">
+                        <span>Acréscimos / Deslocamento:</span>
+                        <span className="font-mono">+ R$ {(selectedInvoiceForView.additional_amount || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-slate-900 font-bold">
+                      <span className="text-sm">TOTAL A PAGAR:</span>
+                      <span className="text-lg font-mono text-emerald-800">
+                        R$ {selectedInvoiceForView.total_amount.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PIX Payment Section */}
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl flex flex-col sm:flex-row items-center gap-4">
+                  {invoiceQrDataUrl ? (
+                    <img
+                      src={invoiceQrDataUrl}
+                      alt="QR Code PIX"
+                      className="w-28 h-28 rounded-lg bg-white p-1 border border-emerald-300 shrink-0 shadow-2xs"
+                    />
+                  ) : (
+                    <div className="w-28 h-28 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-800 font-bold">
+                      <QrCode className="w-10 h-10" />
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5 text-xs flex-1 w-full">
+                    <div className="flex items-center gap-1.5 text-emerald-950 font-bold">
+                      <QrCode className="w-4 h-4 text-emerald-700" />
+                      <span>Instruções para Pagamento via PIX</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-900">
+                      Aponte a câmera do aplicativo do seu banco para o QR Code acima ou utilize a chave PIX:
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-[11px]">
+                      <span className="font-semibold text-slate-700">
+                        Chave ({selectedInvoiceForView.pix_type || 'PIX'}):{' '}
+                        <strong className="text-emerald-950 font-mono">
+                          {selectedInvoiceForView.pix_key || user?.pix_key || 'Não informada'}
+                        </strong>
+                      </span>
+                    </div>
+
+                    {selectedInvoiceForView.pix_code && (
+                      <div className="mt-2 space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-slate-500">
+                          <span>PIX Copia e Cola:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyPix(selectedInvoiceForView)}
+                            className="inline-flex items-center gap-1 text-emerald-800 font-bold hover:underline cursor-pointer"
+                          >
+                            {copiedInvoicePixId === selectedInvoiceForView.id ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-700" /> Copiado!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" /> Copiar Código
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          readOnly
+                          value={selectedInvoiceForView.pix_code}
+                          className="w-full px-2 py-1 bg-white border border-emerald-200 rounded text-[10px] font-mono text-slate-700 truncate"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Document Signatures Footer */}
+                <div className="pt-6 border-t border-slate-200 grid grid-cols-2 gap-8 text-center text-[10px] text-slate-500">
+                  <div className="border-t border-slate-300 pt-2">
+                    <p className="font-semibold text-slate-700">{[user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Médico Veterinário Anestesiologista'}</p>
+                    <p>CRMV {user?.crmv || '------'}</p>
+                  </div>
+                  <div className="border-t border-slate-300 pt-2">
+                    <p className="font-semibold text-slate-700">{selectedInvoiceForView.clinic_name}</p>
+                    <p>De acordo / Financeiro da Clínica</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Principal de Emissão de Fechamento / Fatura */}
+      <ClinicBillingModal
+        isOpen={showBillingModal}
+        onClose={() => {
+          setShowBillingModal(false);
+          setBillingModalClinic(null);
+        }}
+        initialClinic={billingModalClinic || selectedClinic}
+        clinics={clinics}
+        onInvoiceCreated={(newInvoice) => {
+          if (selectedClinic && selectedClinic.id === newInvoice.clinic_id) {
+            reloadClinicInvoices(selectedClinic.id);
+          }
+          loadClinics();
+        }}
+      />
     </div>
   );
 };

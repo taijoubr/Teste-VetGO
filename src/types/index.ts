@@ -245,6 +245,63 @@ export interface Clinic {
   total_billed?: number;
 }
 
+export type ClinicBillingPeriodType = 'MENSAL' | 'QUINZENAL_1' | 'QUINZENAL_2' | 'PERSONALIZADO';
+
+export interface ClinicBillingInvoiceItem {
+  id: string | number;
+  date: string;
+  procedure_date?: string;
+  code: string; // Ex: AN-2026-001 ou CIR-001
+  procedure_name: string;
+  patient_name: string;
+  patient_species?: string;
+  surgeon_name?: string;
+  tutor_name?: string;
+  asa_category?: string;
+  asa_classification?: string;
+  amount: number;
+  billed_amount?: number;
+  included?: boolean;
+  notes?: string;
+}
+
+export interface ClinicBillingInvoice {
+  id: number;
+  owner_id?: number;
+  invoice_number: string; // Ex: FAT-CL01-202610-01
+  clinic_id: number;
+  clinic_name: string;
+  clinic_corporate_name?: string;
+  clinic_cnpj?: string;
+  clinic_phone?: string;
+  clinic_email?: string;
+  clinic_address?: string;
+  period_type: ClinicBillingPeriodType;
+  period_label: string; // Ex: "Outubro / 2026" ou "1ª Quinzena - Out/2026"
+  start_date: string;
+  end_date: string;
+  closing_date: string;
+  due_date: string;
+  items: ClinicBillingInvoiceItem[];
+  total_procedures: number;
+  subtotal_amount?: number;
+  discount_amount?: number;
+  additional_amount?: number;
+  total_amount: number;
+  status: 'PENDENTE' | 'ENVIADA' | 'PAGA' | 'CANCELADA';
+  pix_key?: string;
+  pix_type?: string;
+  pix_receiver_name?: string;
+  pix_city?: string;
+  pix_payload?: string;
+  pix_code?: string;
+  notes?: string;
+  created_at: string;
+  paid_at?: string;
+  payment_date?: string;
+  payment_method?: string;
+}
+
 // -------------------------------------------------------------
 // REQUISITO 2: CIRURGIÕES (identificador PR-xx)
 // -------------------------------------------------------------
