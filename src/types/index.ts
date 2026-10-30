@@ -917,6 +917,9 @@ export interface PatientExam {
   status: 'SOLICITADO' | 'COLETADO' | 'CONCLUIDO' | 'CANCELADO';
   results?: string;
   reference_values?: string;
+  pdf_url?: string;
+  pdf_name?: string;
+  pdf_size?: string;
   attachments?: { name: string; url: string; type: string }[];
   notes?: string;
   price?: number;

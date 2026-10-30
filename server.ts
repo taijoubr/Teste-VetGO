@@ -1515,51 +1515,37 @@ app.get('/api/v1/public/patients/:id/card', (req, res) => {
     }
   }
 
-  // Se não houver vacinas lançadas ainda em consultas, retorna vacinas padrão da espécie para exibição de exemplo
-  if (vaccines.length === 0) {
-    vaccines.push(
-      {
-        id: 'vac-1',
-        vaccine_name: patient.species === 'Felina' ? 'Tríplice Felina (V3)' : 'Polivalente (V10)',
-        manufacturer: 'Zoetis',
-        batch_number: 'BR-84920',
-        application_date: '2026-04-15',
-        next_booster_date: '2027-04-15',
-        route: 'Subcutânea',
-        applied_by: vet ? `Dra./Dr. ${vet.first_name} ${vet.last_name}` : 'Médico-Veterinário',
-      },
-      {
-        id: 'vac-2',
-        vaccine_name: 'Antirrábica (Defensor)',
-        manufacturer: 'Zoetis',
-        batch_number: 'AR-39104',
-        application_date: '2026-04-15',
-        next_booster_date: '2027-04-15',
-        route: 'Subcutânea',
-        applied_by: vet ? `Dra./Dr. ${vet.first_name} ${vet.last_name}` : 'Médico-Veterinário',
-      }
-    );
-  }
-
   res.json({
     id: patient.id,
+    code: patient.code || `PAC-${String(patient.id).padStart(4, '0')}`,
     name: patient.name,
     species: patient.species,
-    breed: patient.breed || 'Não informada',
-    gender: patient.gender || 'Macho',
-    birth_date: patient.birth_date,
-    approximate_age: patient.approximate_age,
-    weight_kg: patient.weight_kg,
-    coat_color: patient.coat_color,
+    breed: patient.breed || 'SRD (Sem Raça Definida)',
+    gender: patient.gender || 'Não informado',
+    birth_date: patient.birth_date || null,
+    approximate_age: patient.approximate_age || null,
+    weight_kg: patient.weight_kg || null,
+    coat_color: patient.coat_color || null,
     is_neutered: Boolean(patient.is_neutered),
     microchip: patient.microchip || patient.microchip_number || null,
+    microchip_status: patient.microchip_status || (patient.microchip || patient.microchip_number ? 'SIM' : 'NAO'),
     photo_url: patient.photo_url || null,
+    notes: patient.notes || null,
+    created_at: patient.created_at || null,
+    tutor_id: tutor ? tutor.id : patient.tutor_id,
     tutor_name: tutor ? tutor.name : 'Tutor Responsável',
     tutor_phone: tutor ? (tutor.phone || tutor.whatsapp) : null,
+    tutor_email: tutor ? tutor.email : null,
+    tutor_city: tutor ? (tutor.city ? `${tutor.city}${tutor.state ? `/${tutor.state}` : ''}` : null) : null,
     vet_name: vet ? `Dra./Dr. ${vet.first_name} ${vet.last_name}` : 'Médico-Veterinário Responsável',
+    vet_logo_url: vet?.logo_url || null,
+    vet_phone: vet ? (vet.whatsapp || vet.phone) : null,
+    vet_email: vet?.email || null,
+    vet_signature_url: vet?.signature_url || null,
     crmv: vet ? `${vet.crmv || ''} ${vet.crmv_uf || ''}`.trim() : null,
-    clinic_name: vet?.clinic_name || 'Atendimento Volante & Domiciliar',
+    clinic_name: vet?.clinic_name || 'Atendimento Veterinário Especializado',
     vaccines,
+    has_vaccines: vaccines.length > 0,
     verified_at: new Date().toISOString(),
   });
 });
@@ -2358,6 +2344,9 @@ app.post('/api/v1/exams', requireAuth, (req, res) => {
     status: data.status || 'CONCLUIDO',
     results: data.results || '',
     reference_values: data.reference_values || '',
+    pdf_url: data.pdf_url || '',
+    pdf_name: data.pdf_name || '',
+    pdf_size: data.pdf_size || '',
     attachments: data.attachments || [],
     notes: data.notes || '',
     price: Number(data.price) || 0,

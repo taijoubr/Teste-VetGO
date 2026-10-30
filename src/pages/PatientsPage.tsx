@@ -1,11 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { Patient, Tutor, Species, AnesthesiaRecord, PatientExam } from '../types';
-import { PawPrint, Search, Plus, User, AlertCircle, X, CheckCircle2, Activity, Calendar, ShieldCheck, QrCode, Edit3, FileText, Microscope, FileSpreadsheet, Heart } from 'lucide-react';
+import {
+  PawPrint,
+  Search,
+  Plus,
+  User,
+  AlertCircle,
+  X,
+  CheckCircle2,
+  Activity,
+  Calendar,
+  ShieldCheck,
+  QrCode,
+  Edit3,
+  FileText,
+  Microscope,
+  FileSpreadsheet,
+  Heart,
+  Pill,
+  UploadCloud,
+  Eye,
+  Download,
+  Share2,
+  Paperclip,
+  ExternalLink
+} from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SPECIES_CONFIGS } from '../utils/speciesData';
 import { PetCardModal } from '../components/PetCardModal';
 import { FullMedicalRecordModal } from '../components/FullMedicalRecordModal';
+import { DirectPrescriptionModal } from '../components/DirectPrescriptionModal';
 import { formatPatientCode, formatTutorCode } from '../utils/formatters';
 
 const SPECIES_LIST: Species[] = [
@@ -35,6 +60,8 @@ export const PatientsPage: React.FC = () => {
   const [anesthesias, setAnesthesias] = useState<AnesthesiaRecord[]>([]);
   const [exams, setExams] = useState<PatientExam[]>([]);
   const [selectedPetForExams, setSelectedPetForExams] = useState<Patient | null>(null);
+  const [selectedPetForPrescription, setSelectedPetForPrescription] = useState<Patient | null>(null);
+  const [viewingExamPdf, setViewingExamPdf] = useState<{ url: string; title: string; filename?: string } | null>(null);
   const [showNewExamModal, setShowNewExamModal] = useState(false);
   const [examForm, setExamForm] = useState({
     exam_type: 'Hemograma Completo',
@@ -44,7 +71,10 @@ export const PatientsPage: React.FC = () => {
     results: '',
     reference_values: '',
     price: 0,
-    notes: ''
+    notes: '',
+    pdf_url: '',
+    pdf_name: '',
+    pdf_size: ''
   });
   const [search, setSearch] = useState('');
   const [speciesFilter, setSpeciesFilter] = useState('ALL');
@@ -474,6 +504,15 @@ export const PatientsPage: React.FC = () => {
                   Abrir Prontuário →
                 </Link>
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPetForPrescription(patient)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-teal-850 border border-teal-200 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
+                    title="Emitir prescrição médica ou receita rápida diretamente para este paciente"
+                  >
+                    <Pill className="w-3.5 h-3.5 text-teal-700" />
+                    <span>+ Prescrição</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSelectedPetForMedicalRecord(patient)}
@@ -991,7 +1030,10 @@ export const PatientsPage: React.FC = () => {
                         results: '',
                         reference_values: '',
                         price: 0,
-                        notes: ''
+                        notes: '',
+                        pdf_url: '',
+                        pdf_name: '',
+                        pdf_size: ''
                       });
                       setShowNewExamModal(true);
                     }}
@@ -1045,6 +1087,49 @@ export const PatientsPage: React.FC = () => {
                             </p>
                           )}
 
+                          {exam.pdf_url && (
+                            <div className="p-3 bg-teal-50/80 border border-teal-200/90 rounded-xl flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-black text-[10px] border border-rose-200 shrink-0">
+                                  PDF
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="font-bold text-xs text-teal-950 block truncate">
+                                    Laudo do Laboratório Anexado
+                                  </span>
+                                  <span className="text-[10px] text-teal-800 font-mono block truncate">
+                                    {exam.pdf_name || 'Laudo_Exame.pdf'} {exam.pdf_size ? `• ${exam.pdf_size}` : ''}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingExamPdf({
+                                    url: exam.pdf_url!,
+                                    title: `${exam.exam_type} - ${selectedPetForExams.name}`,
+                                    filename: exam.pdf_name
+                                  })}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
+                                  title="Abrir e visualizar laudo PDF do laboratório"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Visualizar Laudo</span>
+                                </button>
+                                <a
+                                  href={exam.pdf_url}
+                                  download={exam.pdf_name || `Laudo_${exam.exam_type}_${selectedPetForExams.name}.pdf`}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition cursor-pointer"
+                                  title="Baixar arquivo PDF no dispositivo"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Baixar</span>
+                                </a>
+                              </div>
+                            </div>
+                          )}
+
                           {exam.results && (
                             <div className="bg-white p-3 rounded-lg border border-slate-200 text-slate-800 space-y-1">
                               <span className="font-bold text-[10px] uppercase tracking-wider text-teal-800 block">
@@ -1067,12 +1152,37 @@ export const PatientsPage: React.FC = () => {
                             </p>
                           )}
 
-                          <div className="pt-2 border-t border-slate-200/70 flex items-center justify-between text-[11px]">
-                            {exam.price ? (
-                              <span className="font-bold text-emerald-800 font-mono">
-                                Valor: R$ {exam.price.toFixed(2)}
-                              </span>
-                            ) : <span></span>}
+                          <div className="pt-2 border-t border-slate-200/70 flex items-center justify-between text-[11px] flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              {exam.price ? (
+                                <span className="font-bold text-emerald-800 font-mono">
+                                  Valor: R$ {exam.price.toFixed(2)}
+                                </span>
+                              ) : null}
+
+                              {/* WhatsApp Share to Tutor */}
+                              {(() => {
+                                const petTutor = tutors.find((t) => t.id === selectedPetForExams.tutor_id);
+                                const tutorPhone = petTutor?.whatsapp || petTutor?.phone;
+                                if (!tutorPhone) return null;
+                                const cleanPhone = tutorPhone.replace(/\D/g, '');
+                                const text = encodeURIComponent(
+                                  `Olá, ${petTutor.name}! Informamos que o resultado do exame de *${exam.exam_type}* do pet *${selectedPetForExams.name}* ${exam.laboratory ? `(Laboratório: ${exam.laboratory})` : ''} já se encontra registrado no prontuário clínico. Qualquer dúvida, estamos à disposição!`
+                                );
+                                return (
+                                  <a
+                                    href={`https://wa.me/55${cleanPhone}?text=${text}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-emerald-800 hover:text-emerald-950 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200"
+                                    title="Notificar tutor pelo WhatsApp"
+                                  >
+                                    <Share2 className="w-3 h-3 text-emerald-600" />
+                                    <span>Notificar Tutor (WhatsApp)</span>
+                                  </a>
+                                );
+                              })()}
+                            </div>
 
                             <button
                               type="button"
@@ -1083,7 +1193,7 @@ export const PatientsPage: React.FC = () => {
                                   showToast('Exame removido com sucesso.');
                                 }
                               }}
-                              className="text-rose-600 hover:text-rose-800 font-medium"
+                              className="text-rose-600 hover:text-rose-800 font-medium cursor-pointer"
                             >
                               Excluir Exame
                             </button>
@@ -1126,6 +1236,19 @@ export const PatientsPage: React.FC = () => {
 
                     setExams((prev) => [created, ...prev]);
                     setShowNewExamModal(false);
+                    setExamForm({
+                      exam_type: 'Hemograma Completo',
+                      date: new Date().toISOString().split('T')[0],
+                      laboratory: '',
+                      status: 'CONCLUIDO',
+                      results: '',
+                      reference_values: '',
+                      price: 0,
+                      notes: '',
+                      pdf_url: '',
+                      pdf_name: '',
+                      pdf_size: ''
+                    });
                     showToast(`Exame "${examForm.exam_type}" registrado com sucesso!`);
                   } catch (err) {
                     console.error('Erro ao salvar exame:', err);
@@ -1214,6 +1337,99 @@ export const PatientsPage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Seção de Anexo do Laudo em PDF (Recebido do Laboratório) */}
+                <div className="p-3.5 bg-teal-50/70 border-2 border-dashed border-teal-300 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-teal-900 flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-teal-700" />
+                      Anexar Laudo do Laboratório em PDF (.pdf)
+                    </span>
+                    {examForm.pdf_url && (
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        PDF Pronto ({examForm.pdf_size})
+                      </span>
+                    )}
+                  </div>
+
+                  {examForm.pdf_url ? (
+                    <div className="p-3 bg-white border border-teal-200 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-black text-xs border border-rose-200 shrink-0">
+                          PDF
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-slate-900 block truncate">
+                            {examForm.pdf_name}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {examForm.pdf_size} • Pronto para arquivar no prontuário
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setViewingExamPdf({
+                            url: examForm.pdf_url,
+                            title: examForm.exam_type,
+                            filename: examForm.pdf_name
+                          })}
+                          className="px-2.5 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-50 rounded-lg border border-teal-200 transition cursor-pointer"
+                        >
+                          Pré-visualizar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExamForm((prev) => ({ ...prev, pdf_url: '', pdf_name: '', pdf_size: '' }))}
+                          className="p-1 text-rose-500 hover:text-rose-700 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                          title="Remover anexo PDF"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-slate-200 hover:border-teal-400 hover:bg-teal-50/30 transition cursor-pointer text-center space-y-1">
+                        <UploadCloud className="w-7 h-7 text-teal-600" />
+                        <span className="text-xs font-bold text-slate-800">
+                          Clique para selecionar o PDF do exame recebido do laboratório
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          Suporta laudos laboratoriais, hemogramas, bioquímicas, citologia e laudos de imagem (.pdf)
+                        </span>
+                        <input
+                          type="file"
+                          accept="application/pdf,.pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                                alert('Por favor, selecione apenas arquivos em formato PDF (.pdf).');
+                                return;
+                              }
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                const base64Data = ev.target?.result as string;
+                                setExamForm((prev) => ({
+                                  ...prev,
+                                  pdf_url: base64Data,
+                                  pdf_name: file.name,
+                                  pdf_size: `${(file.size / 1024).toFixed(1)} KB`
+                                }));
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     Laudo / Resultados Encontrados (Valores e Achados Clínicos)
@@ -1260,13 +1476,13 @@ export const PatientsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowNewExamModal(false)}
-                    className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-100 rounded-lg transition"
+                    className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-100 rounded-lg transition cursor-pointer"
                   >
                     Voltar
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-teal-700 text-white font-bold rounded-lg hover:bg-teal-800 transition flex items-center gap-1.5 shadow-sm"
+                    className="px-4 py-2 bg-teal-700 text-white font-bold rounded-lg hover:bg-teal-800 transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     Salvar Exame no Prontuário
@@ -1276,6 +1492,68 @@ export const PatientsPage: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Modal de Pré-visualização de Laudo em PDF */}
+      {viewingExamPdf && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/70 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-4xl w-full h-[90vh] p-4 sm:p-6 shadow-2xl border border-slate-200 flex flex-col space-y-3">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-black text-xs border border-rose-200">
+                  PDF
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    {viewingExamPdf.title}
+                  </h3>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {viewingExamPdf.filename || 'Laudo_Laboratorio.pdf'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={viewingExamPdf.url}
+                  download={viewingExamPdf.filename || `${viewingExamPdf.title}.pdf`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar PDF</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setViewingExamPdf(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200">
+              <iframe
+                src={viewingExamPdf.url}
+                title={viewingExamPdf.title}
+                className="w-full h-full border-0"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Emissão Direta de Prescrição */}
+      {selectedPetForPrescription && (
+        <DirectPrescriptionModal
+          isOpen={Boolean(selectedPetForPrescription)}
+          onClose={() => setSelectedPetForPrescription(null)}
+          patient={selectedPetForPrescription}
+          tutor={tutors.find((t) => t.id === selectedPetForPrescription.tutor_id) || null}
+          onPrescriptionSaved={() => {
+            showToast(`Prescrição emitida e arquivada no prontuário de ${selectedPetForPrescription.name}!`);
+          }}
+        />
       )}
     </div>
   );

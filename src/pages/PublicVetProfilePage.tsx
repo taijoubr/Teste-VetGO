@@ -253,6 +253,46 @@ export const PublicVetProfilePage: React.FC = () => {
   const vetPhoto = profile.about_image_url || profile.logo_url || ASSETS.defaultVetDoctor;
   const heroPhoto = profile.hero_image_url || ASSETS.heroVetWithPets;
   const bannerPhoto = profile.banner_image_url || ASSETS.bannerDogAndCat;
+  const clinicOrBrand = profile.clinic_name || vetFullName;
+
+  // Logomarca e Identidade do Veterinário: O veterinário é a marca principal
+  const renderVetBrandHeader = () => {
+    if (profile.logo_url) {
+      return (
+        <a href="#inicio" className="flex items-center gap-3 group">
+          <img
+            src={profile.logo_url}
+            alt={clinicOrBrand}
+            className="h-10 sm:h-11 max-w-[170px] sm:max-w-[220px] object-contain rounded-md"
+          />
+          <div className="hidden sm:block border-l border-slate-200 pl-3 text-left">
+            <span className="block text-xs font-bold text-slate-900 group-hover:text-emerald-800 transition leading-tight">
+              {clinicOrBrand}
+            </span>
+            <span className="block text-[10px] font-semibold text-emerald-700 leading-tight mt-0.5">
+              {crmvLabel}
+            </span>
+          </div>
+        </a>
+      );
+    }
+
+    return (
+      <a href="#inicio" className="flex items-center gap-2.5 text-left group">
+        <div className="w-10 h-10 rounded-xl bg-emerald-800 text-white flex items-center justify-center font-bold shadow-xs group-hover:bg-emerald-900 transition shrink-0">
+          <Stethoscope className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <span className="block text-sm sm:text-base font-extrabold text-slate-900 group-hover:text-emerald-800 transition leading-tight">
+            {clinicOrBrand}
+          </span>
+          <span className="block text-[11px] font-semibold text-emerald-700 leading-tight mt-0.5">
+            {crmvLabel}
+          </span>
+        </div>
+      </a>
+    );
+  };
 
   const activeServices = (profile.services && profile.services.length > 0)
     ? profile.services.filter(s => s.show_on_public_page !== false)
@@ -748,7 +788,7 @@ export const PublicVetProfilePage: React.FC = () => {
         <nav className="bg-white border-b border-slate-100 sticky top-0 z-40">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <AppLogo size="sm" />
+              {renderVetBrandHeader()}
             </div>
 
             <div className="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-600">
@@ -1052,7 +1092,7 @@ export const PublicVetProfilePage: React.FC = () => {
         <nav className="bg-white border-b border-slate-100 sticky top-0 z-40">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <AppLogo size="sm" />
+              {renderVetBrandHeader()}
             </div>
 
             <div className="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-600">
@@ -1359,7 +1399,9 @@ export const PublicVetProfilePage: React.FC = () => {
           <div className="bg-white rounded-3xl border border-slate-200/90 shadow-md overflow-hidden">
             {/* Header / Brand */}
             <div className="px-5 py-3.5 flex items-center justify-between border-b border-slate-100">
-              <AppLogo size="sm" />
+              <div className="flex items-center gap-2">
+                {renderVetBrandHeader()}
+              </div>
               <button
                 onClick={() => setIsBookingModalOpen(true)}
                 className="text-slate-600 hover:text-slate-900 p-1 rounded-lg"
@@ -1578,13 +1620,57 @@ export const PublicVetProfilePage: React.FC = () => {
             </div>
 
             {/* Micro Footer inside Card */}
-            <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-              <AppLogo size="sm" />
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+              <div className="flex items-center gap-2">
+                {profile.logo_url ? (
+                  <img src={profile.logo_url} alt="" className="h-5 max-w-[90px] object-contain rounded" />
+                ) : (
+                  <Stethoscope className="w-3.5 h-3.5 text-emerald-700" />
+                )}
+                <span className="font-bold text-slate-700">{clinicOrBrand}</span>
+              </div>
               <div className="flex items-center gap-2 text-slate-600">
-                <Instagram className="w-4 h-4 cursor-pointer hover:text-emerald-700" />
-                <MessageCircle className="w-4 h-4 cursor-pointer hover:text-emerald-700" />
+                {profile.instagram && (
+                  <a
+                    href={`https://instagram.com/${profile.instagram.replace('@', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-emerald-700 transition"
+                  >
+                    <Instagram className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                {directWaUrl && (
+                  <a
+                    href={directWaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-emerald-700 transition"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                  </a>
+                )}
               </div>
             </div>
+          </div>
+
+          {/* Menção sobre a plataforma Vetgo no rodapé */}
+          <div className="text-center space-y-1.5 pt-3 pb-6">
+            <p className="text-[11px] font-medium text-slate-400">
+              © {new Date().getFullYear()} {clinicOrBrand}. Todos os direitos reservados.
+            </p>
+            <div className="inline-flex items-center gap-1.5 text-[10px] text-slate-400">
+              <span>Tecnologia & agendamento por</span>
+              <a
+                href="/"
+                className="inline-flex items-center gap-1 font-bold text-slate-600 hover:text-emerald-700 transition"
+              >
+                <AppLogo size="sm" showText={true} />
+              </a>
+            </div>
+            <p className="text-[10px] text-slate-400">
+              Vetgo — Plataforma de gestão para médicos-veterinários autônomos e atendimentos volantes
+            </p>
           </div>
         </main>
       </div>
@@ -1597,25 +1683,77 @@ export const PublicVetProfilePage: React.FC = () => {
   function renderSharedFooter() {
     if (!profile) return null;
     return (
-      <footer className="bg-slate-50 border-t border-slate-200 py-8 mt-12">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <AppLogo size="sm" />
-            <span className="text-slate-300">·</span>
-            <span className="text-xs text-slate-500">Veterinária onde você precisa</span>
+      <footer className="bg-slate-50 border-t border-slate-200/90 pt-10 pb-8 mt-14">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-8">
+          {/* Linha Principal do Veterinário - O Veterinário é o Destaque */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+              {profile.logo_url ? (
+                <img
+                  src={profile.logo_url}
+                  alt={clinicOrBrand}
+                  className="h-10 sm:h-12 max-w-[200px] object-contain rounded"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-emerald-800 text-white flex items-center justify-center font-bold shadow-xs">
+                  <Stethoscope className="w-5 h-5 text-white" />
+                </div>
+              )}
+              <div className="text-left">
+                <div className="text-sm sm:text-base font-bold text-slate-900">{clinicOrBrand}</div>
+                <div className="text-xs font-semibold text-emerald-700">{crmvLabel}</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-5 text-xs font-semibold text-slate-600 flex-wrap justify-center">
+              <a href="#inicio" className="hover:text-emerald-800 transition">Início</a>
+              <a href="#sobre" className="hover:text-emerald-800 transition">Sobre</a>
+              <a href="#servicos" className="hover:text-emerald-800 transition">Serviços</a>
+              <a href="#depoimentos" className="hover:text-emerald-800 transition">Depoimentos</a>
+              <a href="#contato" className="hover:text-emerald-800 transition">Contato</a>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              {profile.instagram && (
+                <a
+                  href={`https://instagram.com/${profile.instagram.replace('@', '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-emerald-800 hover:border-emerald-300 transition shadow-2xs"
+                  title="Instagram"
+                >
+                  <Instagram className="w-4 h-4" />
+                </a>
+              )}
+              {directWaUrl && (
+                <a
+                  href={directWaUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition shadow-2xs"
+                  title="WhatsApp"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                </a>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-4 text-xs font-semibold text-slate-500">
-            <a href="#inicio" className="hover:text-emerald-800 transition">Início</a>
-            <a href="#sobre" className="hover:text-emerald-800 transition">Sobre</a>
-            <a href="#servicos" className="hover:text-emerald-800 transition">Serviços</a>
-            <a href="#depoimentos" className="hover:text-emerald-800 transition">Depoimentos</a>
-            <a href="#contato" className="hover:text-emerald-800 transition">Contato</a>
-          </div>
-
-          <div className="flex items-center gap-3 text-slate-600">
-            <Instagram className="w-4 h-4 hover:text-emerald-700 cursor-pointer transition" />
-            <MessageCircle className="w-4 h-4 hover:text-emerald-700 cursor-pointer transition" />
+          {/* Rodapé inferior com menção sobre a plataforma Vetgo */}
+          <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+            <p>© {new Date().getFullYear()} {clinicOrBrand}. Todos os direitos reservados.</p>
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span>Tecnologia & agendamento por</span>
+              <a
+                href="/"
+                className="inline-flex items-center gap-1.5 font-bold text-slate-700 hover:text-emerald-800 transition"
+                title="Vetgo - Plataforma de Gestão Veterinária"
+              >
+                <AppLogo size="sm" showText={true} />
+              </a>
+              <span className="hidden sm:inline text-slate-300">·</span>
+              <span className="hidden sm:inline text-[11px] text-slate-400">Plataforma de gestão para médicos-veterinários autônomos</span>
+            </div>
           </div>
         </div>
       </footer>
