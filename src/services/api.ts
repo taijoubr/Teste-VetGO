@@ -852,7 +852,7 @@ export const api = {
 
     // Resgata tutores de TODAS as chaves locais existentes (isolamento resiliente contra redeploys)
     const localMap = new Map<number, Tutor>();
-    const tutorKeys = new Set<string>([key, 'vetgo_tutors']);
+    const tutorKeys = new Set<string>([key, 'vetgo_tutors', 'vetgo_permanent_vault_tutors']);
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -908,16 +908,16 @@ export const api = {
         // Salva na chave do usuário e na chave mestre
         localStorage.setItem(key, JSON.stringify(merged));
         localStorage.setItem('vetgo_tutors', JSON.stringify(merged));
+        localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(merged));
 
-        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio (ex: Vercel cold deployment)
+        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio (ex: Cloud Run redeploy)
         const serverIdSet = new Set(validServerList.map((s) => Number(s.id)));
-        for (const loc of localList) {
-          if (loc && loc.id && !serverIdSet.has(Number(loc.id))) {
-            this.request('/tutors', {
-              method: 'POST',
-              body: JSON.stringify(loc)
-            }).catch(() => {});
-          }
+        const missingTutors = localList.filter((loc) => loc && loc.id && !serverIdSet.has(Number(loc.id)));
+        if (missingTutors.length > 0) {
+          this.request('/sync/vault', {
+            method: 'POST',
+            body: JSON.stringify({ tutors: missingTutors })
+          }).catch(() => {});
         }
 
         return merged;
@@ -970,11 +970,17 @@ export const api = {
       const nextList = [tutorItem, ...existing.filter((t) => Number(t.id) !== Number(tutorId))];
       localStorage.setItem(key, JSON.stringify(nextList));
       localStorage.setItem('vetgo_tutors', JSON.stringify(nextList));
+      localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(nextList));
     } catch {}
 
     const user = this.getCachedUser();
     const userId = user?.id ? String(user.id) : 'vet_1';
-    firestoreSync.saveDoc('tutors', String(tutorItem.id), { ...tutorItem, userId }).catch(() => {});
+    firestoreSync.saveDoc(
+      'tutors',
+      String(tutorItem.id),
+      { ...tutorItem, userId },
+      `Tutor: ${tutorItem.name || 'Sem Nome'} (${tutorItem.cpf ? `CPF: ${tutorItem.cpf}` : tutorItem.phone || 'Cadastrado'})`
+    ).catch(() => {});
 
     return tutorItem;
   },
@@ -1003,11 +1009,17 @@ export const api = {
       const nextList = list.map((t: any) => Number(t.id) === Number(id) ? { ...t, ...mergedTutor } : t);
       localStorage.setItem(key, JSON.stringify(nextList));
       localStorage.setItem('vetgo_tutors', JSON.stringify(nextList));
+      localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(nextList));
     } catch {}
 
     const user = this.getCachedUser();
     const userId = user?.id ? String(user.id) : 'vet_1';
-    firestoreSync.saveDoc('tutors', String(id), { ...mergedTutor, userId }).catch(() => {});
+    firestoreSync.saveDoc(
+      'tutors',
+      String(id),
+      { ...mergedTutor, userId },
+      `Tutor Atualizado: ${mergedTutor.name || 'ID ' + id}`
+    ).catch(() => {});
 
     return mergedTutor;
   },
@@ -1033,9 +1045,10 @@ export const api = {
       const nextList = list.filter((t: any) => Number(t.id) !== Number(id));
       localStorage.setItem(key, JSON.stringify(nextList));
       localStorage.setItem('vetgo_tutors', JSON.stringify(nextList));
+      localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(nextList));
     } catch {}
 
-    firestoreSync.deleteDoc('tutors', String(id)).catch(() => {});
+    firestoreSync.deleteDoc('tutors', String(id), `Tutor Excluído (ID: ${id})`).catch(() => {});
 
     // 3. Notifica o servidor
     try {
@@ -1087,7 +1100,7 @@ export const api = {
 
     // Resgata pacientes de TODAS as chaves locais existentes
     const localMap = new Map<number, Patient>();
-    const patientKeys = new Set<string>([key, 'vetgo_patients']);
+    const patientKeys = new Set<string>([key, 'vetgo_patients', 'vetgo_permanent_vault_patients']);
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -1141,16 +1154,16 @@ export const api = {
 
         localStorage.setItem(key, JSON.stringify(merged));
         localStorage.setItem('vetgo_patients', JSON.stringify(merged));
+        localStorage.setItem('vetgo_permanent_vault_patients', JSON.stringify(merged));
 
-        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio
+        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio (ex: Cloud Run redeploy)
         const serverIdSet = new Set(validServerList.map((s) => Number(s.id)));
-        for (const loc of localList) {
-          if (loc && loc.id && !serverIdSet.has(Number(loc.id))) {
-            this.request('/patients', {
-              method: 'POST',
-              body: JSON.stringify(loc)
-            }).catch(() => {});
-          }
+        const missingPatients = localList.filter((loc) => loc && loc.id && !serverIdSet.has(Number(loc.id)));
+        if (missingPatients.length > 0) {
+          this.request('/sync/vault', {
+            method: 'POST',
+            body: JSON.stringify({ patients: missingPatients })
+          }).catch(() => {});
         }
 
         if (tutorId) {
@@ -1207,11 +1220,17 @@ export const api = {
       const nextList = [patientItem, ...existing.filter((p) => Number(p.id) !== Number(patientId))];
       localStorage.setItem(key, JSON.stringify(nextList));
       localStorage.setItem('vetgo_patients', JSON.stringify(nextList));
+      localStorage.setItem('vetgo_permanent_vault_patients', JSON.stringify(nextList));
     } catch {}
 
     const user = this.getCachedUser();
     const userId = user?.id ? String(user.id) : 'vet_1';
-    firestoreSync.saveDoc('patients', String(patientItem.id), { ...patientItem, userId }).catch(() => {});
+    firestoreSync.saveDoc(
+      'patients',
+      String(patientItem.id),
+      { ...patientItem, userId },
+      `Paciente: ${patientItem.name || 'Sem Nome'} (${patientItem.species || 'Pet'}, Tutor ID: ${patientItem.tutor_id})`
+    ).catch(() => {});
 
     return patientItem;
   },
@@ -1240,11 +1259,17 @@ export const api = {
       const nextList = list.map((p: any) => Number(p.id) === Number(id) ? { ...p, ...mergedPatient } : p);
       localStorage.setItem(key, JSON.stringify(nextList));
       localStorage.setItem('vetgo_patients', JSON.stringify(nextList));
+      localStorage.setItem('vetgo_permanent_vault_patients', JSON.stringify(nextList));
     } catch {}
 
     const user = this.getCachedUser();
     const userId = user?.id ? String(user.id) : 'vet_1';
-    firestoreSync.saveDoc('patients', String(id), { ...mergedPatient, userId }).catch(() => {});
+    firestoreSync.saveDoc(
+      'patients',
+      String(id),
+      { ...mergedPatient, userId },
+      `Paciente Atualizado: ${mergedPatient.name || 'ID ' + id}`
+    ).catch(() => {});
 
     return mergedPatient;
   },
@@ -1270,9 +1295,10 @@ export const api = {
       const nextList = list.filter((p: any) => Number(p.id) !== Number(id));
       localStorage.setItem(key, JSON.stringify(nextList));
       localStorage.setItem('vetgo_patients', JSON.stringify(nextList));
+      localStorage.setItem('vetgo_permanent_vault_patients', JSON.stringify(nextList));
     } catch {}
 
-    firestoreSync.deleteDoc('patients', String(id)).catch(() => {});
+    firestoreSync.deleteDoc('patients', String(id), `Paciente Excluído (ID: ${id})`).catch(() => {});
 
     // 3. Notifica o servidor
     try {

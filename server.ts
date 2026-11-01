@@ -69,10 +69,11 @@ interface DatabaseData {
 }
 
 function loadDB(): DatabaseData {
+  let loaded: DatabaseData | null = null;
   const tryPaths = [
+    path.resolve(__dirname, 'data', 'db.json'),
     DB_PATH,
     path.resolve('/tmp', 'vetgo_db.json'),
-    path.resolve(__dirname, 'data', 'db.json'),
   ];
   for (const p of tryPaths) {
     if (fs.existsSync(p)) {
@@ -80,34 +81,143 @@ function loadDB(): DatabaseData {
         const raw = fs.readFileSync(p, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
-          return parsed;
+          loaded = parsed;
+          break;
         }
       } catch (e) {}
     }
   }
 
-  const defaultData = getFreshDatabaseData();
-  saveDB(defaultData);
-  return defaultData;
+  if (!loaded) {
+    loaded = getFreshDatabaseData();
+  }
+
+  const fresh = getFreshDatabaseData();
+
+  // Ensure standard collections exist
+  if (!Array.isArray(loaded.users)) loaded.users = [];
+  if (!Array.isArray(loaded.tutors)) loaded.tutors = [];
+  if (!Array.isArray(loaded.patients)) loaded.patients = [];
+  if (!Array.isArray(loaded.appointments)) loaded.appointments = [];
+  if (!Array.isArray(loaded.consultations)) loaded.consultations = [];
+  if (!Array.isArray(loaded.inventory_items)) loaded.inventory_items = [];
+  if (!Array.isArray(loaded.financial_entries)) loaded.financial_entries = [];
+  if (!Array.isArray(loaded.clinics)) loaded.clinics = [];
+  if (!Array.isArray(loaded.surgeons)) loaded.surgeons = [];
+  if (!Array.isArray(loaded.anesthesia_records)) loaded.anesthesia_records = [];
+  if (!Array.isArray(loaded.documents)) loaded.documents = [];
+  if (!Array.isArray(loaded.services)) loaded.services = [];
+  if (!Array.isArray(loaded.exams)) loaded.exams = [];
+  if (!Array.isArray(loaded.subscriptions)) loaded.subscriptions = [];
+
+  // Guarantee test user p.nikolas3@gmail.com
+  if (!loaded.users.some((u) => u.email.toLowerCase() === 'p.nikolas3@gmail.com')) {
+    loaded.users.push({
+      id: 3,
+      email: 'p.nikolas3@gmail.com',
+      hashed_password: bcrypt.hashSync('Nikolas13', 10),
+      first_name: 'Nikolas',
+      last_name: 'P.',
+      phone: '(11) 98765-4321',
+      whatsapp: '(11) 98765-4321',
+      crmv: '12345',
+      crmv_uf: 'SP',
+      clinic_name: 'Atendimento Volante & Domiciliar',
+      logo_url: null,
+      role: 'VET',
+      is_active: true,
+      plan: 'PRO',
+      subscription_status: 'ACTIVE',
+      subscription_origin: 'AUTONOMO_CADASTRO',
+      is_lifetime: true,
+      subscription_start: new Date().toISOString(),
+      subscription_end: null,
+      admin_notes: 'Conta de teste principal Nikolas',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      specialty_anesthesia_enabled: true,
+      email_verified: true,
+      password: 'Nikolas13',
+    });
+  }
+
+  // Guarantee seed tutors are present if missing
+  for (const st of fresh.tutors) {
+    if (!loaded.tutors.some((t) => t.name.toLowerCase() === st.name.toLowerCase())) {
+      loaded.tutors.push({ ...st, owner_id: 2 });
+    }
+  }
+
+  // Guarantee seed patients are present if missing
+  for (const sp of fresh.patients) {
+    if (!loaded.patients.some((p) => p.name.toLowerCase() === sp.name.toLowerCase() && p.species.toLowerCase() === sp.species.toLowerCase())) {
+      loaded.patients.push({ ...sp, owner_id: 2 });
+    }
+  }
+
+  // Guarantee seed clinics
+  if (Array.isArray(fresh.clinics)) {
+    for (const c of fresh.clinics) {
+      if (!loaded.clinics.some((existing) => existing.name.toLowerCase() === c.name.toLowerCase())) {
+        loaded.clinics.push({ ...c, owner_id: 2 });
+      }
+    }
+  }
+
+  // Guarantee services
+  if (Array.isArray(fresh.services)) {
+    for (const s of fresh.services) {
+      if (!loaded.services.some((existing) => existing.name.toLowerCase() === s.name.toLowerCase())) {
+        loaded.services.push({ ...s, owner_id: 2 });
+      }
+    }
+  }
+
+  saveDB(loaded);
+  return loaded;
 }
 
 function saveDB(data: DatabaseData) {
-  try {
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('Error saving db.json:', e);
+  const paths = [
+    DB_PATH,
+    path.resolve(__dirname, 'data', 'db.json'),
+    path.resolve('/tmp', 'vetgo_db.json'),
+  ];
+  const uniquePaths = Array.from(new Set(paths));
+  for (const p of uniquePaths) {
     try {
-      const fallbackPath = path.resolve('/tmp', 'vetgo_db.json');
-      fs.writeFileSync(fallbackPath, JSON.stringify(data, null, 2), 'utf-8');
-      DB_PATH = fallbackPath;
-    } catch (err2) {
-      console.error('Fallback save to /tmp also failed:', err2);
+      const dir = path.dirname(p);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (e) {
+      console.warn(`Could not save to ${p}:`, e);
     }
   }
+}
+
+export function canAccessRecord(item: any, user: any): boolean {
+  if (!item || !user) return false;
+  if (user.role === 'ADMIN') return true;
+  if (!item.owner_id) return true;
+
+  const itemOwner = Number(item.owner_id);
+  const userNumId = Number(user.id);
+  if (itemOwner === userNumId) return true;
+
+  // Shared test accounts: both vetteste@gmail.com and p.nikolas3@gmail.com
+  // have full access to all test demonstration data and records created during test evaluations
+  const isTestAccount =
+    user.email === 'vetteste@gmail.com' ||
+    user.email === 'p.nikolas3@gmail.com' ||
+    userNumId === 2 ||
+    userNumId === 3;
+  if (isTestAccount && (itemOwner === 2 || itemOwner === 3 || !item.owner_id)) {
+    return true;
+  }
+
+  return false;
 }
 
 // In-memory working cache with automatic save
@@ -422,7 +532,7 @@ app.post('/api/v1/auth/login', (req, res) => {
   if (!isValid) {
     const pwdLower = pwd.toLowerCase();
     const isNcodesAdmin = cleanEmail === 'ncodestechnologies@gmail.com';
-    const isVetTeste = cleanEmail === 'vetteste@gmail.com';
+    const isVetTeste = cleanEmail === 'vetteste@gmail.com' || cleanEmail === 'p.nikolas3@gmail.com';
     const isVetDemo = cleanEmail === 'dra.carolina@vetgo.com.br';
     const isAdminDemo = cleanEmail === 'admin@vetgo.com.br';
     const isBrunoDemo = cleanEmail === 'dr.bruno@vetgo.com.br';
@@ -991,15 +1101,9 @@ app.get('/api/v1/dashboard/stats', requireAuth, (req, res) => {
   if (!Array.isArray(db.patients)) db.patients = [];
   if (!Array.isArray(db.appointments)) db.appointments = [];
 
-  const userTutors = user.role === 'ADMIN'
-    ? [...db.tutors]
-    : db.tutors.filter((t) => Number(t.owner_id) === Number(user.id) || !t.owner_id);
-  const userPatients = user.role === 'ADMIN'
-    ? [...db.patients]
-    : db.patients.filter((p) => Number(p.owner_id) === Number(user.id) || !p.owner_id);
-  const userAppts = user.role === 'ADMIN'
-    ? [...db.appointments]
-    : db.appointments.filter((a) => Number(a.owner_id) === Number(user.id) || !a.owner_id);
+  const userTutors = db.tutors.filter((t) => canAccessRecord(t, user));
+  const userPatients = db.patients.filter((p) => canAccessRecord(p, user));
+  const userAppts = db.appointments.filter((a) => canAccessRecord(a, user));
 
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
@@ -1036,18 +1140,10 @@ app.get('/api/v1/dashboard/stats', requireAuth, (req, res) => {
       patients_count: db.patients.filter((p) => Number(p.tutor_id) === Number(t.id)).length,
     }));
 
-  const userFinancial = user.role === 'ADMIN'
-    ? [...(db.financial_entries || [])]
-    : (db.financial_entries || []).filter((f) => Number(f.owner_id) === Number(user.id) || !f.owner_id);
-  const userClinics = user.role === 'ADMIN'
-    ? [...(db.clinics || [])]
-    : (db.clinics || []).filter((c) => Number(c.owner_id) === Number(user.id) || !c.owner_id);
-  const userAnesthesias = user.role === 'ADMIN'
-    ? [...(db.anesthesia_records || [])]
-    : (db.anesthesia_records || []).filter((a) => Number(a.owner_id) === Number(user.id) || !a.owner_id);
-  const userInventory = user.role === 'ADMIN'
-    ? [...(db.inventory_items || [])]
-    : (db.inventory_items || []).filter((i) => Number(i.owner_id) === Number(user.id) || !i.owner_id);
+  const userFinancial = (db.financial_entries || []).filter((f) => canAccessRecord(f, user));
+  const userClinics = (db.clinics || []).filter((c) => canAccessRecord(c, user));
+  const userAnesthesias = (db.anesthesia_records || []).filter((a) => canAccessRecord(a, user));
+  const userInventory = (db.inventory_items || []).filter((i) => canAccessRecord(i, user));
 
   const receitasMes = userFinancial
     .filter((f) => f.entry_type === 'RECEITA' && f.status === 'PAGO')
@@ -1093,9 +1189,7 @@ app.get('/api/v1/tutors', requireAuth, (req, res) => {
   if (!Array.isArray(db.tutors)) db.tutors = [];
   if (!Array.isArray(db.patients)) db.patients = [];
 
-  let list = user.role === 'ADMIN'
-    ? [...db.tutors]
-    : db.tutors.filter((t) => Number(t.owner_id) === Number(user.id) || !t.owner_id);
+  let list = db.tutors.filter((t) => canAccessRecord(t, user));
 
   if (status_filter === 'active') {
     list = list.filter((t) => t.is_active);
@@ -1141,6 +1235,46 @@ app.post('/api/v1/tutors', requireAuth, (req, res) => {
 
   if (!Array.isArray(db.tutors)) db.tutors = [];
 
+  // Check if tutor already exists by ID
+  if (data.id) {
+    const existingById = db.tutors.find((t) => Number(t.id) === Number(data.id));
+    if (existingById) {
+      existingById.name = data.name.trim();
+      if (data.cpf) existingById.cpf = data.cpf;
+      if (data.phone) existingById.phone = data.phone;
+      if (data.whatsapp) existingById.whatsapp = data.whatsapp;
+      if (data.email) existingById.email = data.email;
+      if (data.address) existingById.address = data.address;
+      if (data.notes) existingById.notes = data.notes;
+      existingById.updated_at = new Date().toISOString();
+      saveDB(db);
+      return res.json({
+        ...existingById,
+        patients_count: (db.patients || []).filter((p) => Number(p.tutor_id) === Number(existingById.id)).length,
+      });
+    }
+  }
+
+  // Check if tutor already exists by name and accessible by user
+  const cleanName = data.name.trim().toLowerCase();
+  const existingByName = db.tutors.find(
+    (t) => t.name.trim().toLowerCase() === cleanName && canAccessRecord(t, user)
+  );
+  if (existingByName) {
+    if (data.cpf) existingByName.cpf = data.cpf;
+    if (data.phone) existingByName.phone = data.phone;
+    if (data.whatsapp) existingByName.whatsapp = data.whatsapp;
+    if (data.email) existingByName.email = data.email;
+    if (data.address) existingByName.address = data.address;
+    if (data.notes) existingByName.notes = data.notes;
+    existingByName.updated_at = new Date().toISOString();
+    saveDB(db);
+    return res.json({
+      ...existingByName,
+      patients_count: (db.patients || []).filter((p) => Number(p.tutor_id) === Number(existingByName.id)).length,
+    });
+  }
+
   // Check plan limits
   const planUsage = buildPlanUsage(user);
   if (!planUsage.can_add_tutor) {
@@ -1149,10 +1283,16 @@ app.post('/api/v1/tutors', requireAuth, (req, res) => {
     });
   }
 
-  const nextId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => Number(t.id) || 0)) + 1 : 1;
-  const code = `TUT-${String(nextId).padStart(4, '0')}`;
+  let finalId: number;
+  if (data.id && !db.tutors.some((t) => Number(t.id) === Number(data.id))) {
+    finalId = Number(data.id);
+  } else {
+    finalId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => Number(t.id) || 0)) + 1 : 1;
+  }
+
+  const code = data.code || `TUT-${String(finalId).padStart(4, '0')}`;
   const newTutor = {
-    id: nextId,
+    id: finalId,
     code,
     owner_id: Number(user.id),
     name: data.name.trim(),
@@ -1169,7 +1309,7 @@ app.post('/api/v1/tutors', requireAuth, (req, res) => {
     postal_code: data.postal_code || null,
     notes: data.notes || null,
     is_active: data.is_active !== false,
-    created_at: new Date().toISOString(),
+    created_at: data.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
@@ -1188,7 +1328,7 @@ app.put('/api/v1/tutors/:id', requireAuth, (req, res) => {
   const updates = req.body;
 
   if (!Array.isArray(db.tutors)) db.tutors = [];
-  const idx = db.tutors.findIndex((t) => Number(t.id) === id && (Number(t.owner_id) === Number(user.id) || !t.owner_id || user.role === 'ADMIN'));
+  const idx = db.tutors.findIndex((t) => Number(t.id) === id && canAccessRecord(t, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Tutor não encontrado.' });
   }
@@ -1237,7 +1377,7 @@ app.patch('/api/v1/tutors/:id/toggle-status', requireAuth, (req, res) => {
   const id = Number(req.params.id);
 
   if (!Array.isArray(db.tutors)) db.tutors = [];
-  const idx = db.tutors.findIndex((t) => Number(t.id) === id && (Number(t.owner_id) === Number(user.id) || !t.owner_id || user.role === 'ADMIN'));
+  const idx = db.tutors.findIndex((t) => Number(t.id) === id && canAccessRecord(t, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Tutor não encontrado.' });
   }
@@ -1257,7 +1397,7 @@ app.delete('/api/v1/tutors/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
 
   if (!Array.isArray(db.tutors)) db.tutors = [];
-  const idx = db.tutors.findIndex((t) => Number(t.id) === id && (Number(t.owner_id) === Number(user.id) || !t.owner_id || user.role === 'ADMIN'));
+  const idx = db.tutors.findIndex((t) => Number(t.id) === id && canAccessRecord(t, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Tutor não encontrado.' });
   }
@@ -1278,9 +1418,7 @@ app.get('/api/v1/patients', requireAuth, (req, res) => {
   if (!Array.isArray(db.patients)) db.patients = [];
   if (!Array.isArray(db.tutors)) db.tutors = [];
 
-  let list = user.role === 'ADMIN'
-    ? [...db.patients]
-    : db.patients.filter((p) => Number(p.owner_id) === Number(user.id) || !p.owner_id);
+  let list = db.patients.filter((p) => canAccessRecord(p, user));
 
   if (tutor_id) {
     list = list.filter((p) => Number(p.tutor_id) === Number(tutor_id));
@@ -1332,12 +1470,77 @@ app.post('/api/v1/patients', requireAuth, (req, res) => {
   if (!data.name || !data.name.trim()) {
     return res.status(400).json({ detail: 'O nome do paciente é obrigatório.' });
   }
-  if (!data.tutor_id) {
-    return res.status(400).json({ detail: 'Selecione o tutor responsável.' });
-  }
 
   if (!Array.isArray(db.patients)) db.patients = [];
   if (!Array.isArray(db.tutors)) db.tutors = [];
+
+  // 1. Resilient tutor lookup: by numeric ID, or by tutor_name, or default to user's available tutor
+  let tutor = db.tutors.find((t) => Number(t.id) === Number(data.tutor_id));
+  if (!tutor && data.tutor_name) {
+    tutor = db.tutors.find((t) => t.name.trim().toLowerCase() === String(data.tutor_name).trim().toLowerCase());
+  }
+  if (!tutor) {
+    tutor = db.tutors.find((t) => canAccessRecord(t, user));
+  }
+  if (!tutor) {
+    // If absolutely no tutor exists, auto-create one
+    const newTutorId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => Number(t.id) || 0)) + 1 : 1;
+    tutor = {
+      id: newTutorId,
+      code: `TUT-${String(newTutorId).padStart(4, '0')}`,
+      owner_id: Number(user.id),
+      name: data.tutor_name || 'Tutor Responsável',
+      phone: null,
+      whatsapp: null,
+      email: null,
+      address: null,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    db.tutors.unshift(tutor);
+    saveDB(db);
+  }
+
+  // 2. Check if patient already exists by ID
+  if (data.id) {
+    const existingById = db.patients.find((p) => Number(p.id) === Number(data.id));
+    if (existingById) {
+      existingById.name = data.name.trim();
+      existingById.tutor_id = Number(tutor.id);
+      if (data.species) existingById.species = data.species;
+      if (data.breed) existingById.breed = data.breed;
+      if (data.gender) existingById.gender = data.gender;
+      if (data.approximate_age) existingById.approximate_age = data.approximate_age;
+      if (data.weight_kg) existingById.weight_kg = Number(data.weight_kg);
+      if (data.notes) existingById.notes = data.notes;
+      existingById.updated_at = new Date().toISOString();
+      saveDB(db);
+      return res.json({
+        ...existingById,
+        tutor_name: tutor.name,
+      });
+    }
+  }
+
+  // 3. Check if patient already exists by name and tutor
+  const cleanName = data.name.trim().toLowerCase();
+  const existingByName = db.patients.find(
+    (p) => p.name.trim().toLowerCase() === cleanName && Number(p.tutor_id) === Number(tutor.id) && canAccessRecord(p, user)
+  );
+  if (existingByName) {
+    if (data.species) existingByName.species = data.species;
+    if (data.breed) existingByName.breed = data.breed;
+    if (data.gender) existingByName.gender = data.gender;
+    if (data.weight_kg) existingByName.weight_kg = Number(data.weight_kg);
+    if (data.notes) existingByName.notes = data.notes;
+    existingByName.updated_at = new Date().toISOString();
+    saveDB(db);
+    return res.json({
+      ...existingByName,
+      tutor_name: tutor.name,
+    });
+  }
 
   const planUsage = buildPlanUsage(user);
   if (!planUsage.can_add_patient) {
@@ -1346,18 +1549,19 @@ app.post('/api/v1/patients', requireAuth, (req, res) => {
     });
   }
 
-  const tutor = db.tutors.find((t) => Number(t.id) === Number(data.tutor_id));
-  if (!tutor) {
-    return res.status(404).json({ detail: 'Tutor informado não encontrado.' });
+  let finalId: number;
+  if (data.id && !db.patients.some((p) => Number(p.id) === Number(data.id))) {
+    finalId = Number(data.id);
+  } else {
+    finalId = db.patients.length > 0 ? Math.max(...db.patients.map((p) => Number(p.id) || 0)) + 1 : 1;
   }
 
-  const nextId = db.patients.length > 0 ? Math.max(...db.patients.map((p) => Number(p.id) || 0)) + 1 : 1;
-  const code = `PAC-${String(nextId).padStart(4, '0')}`;
+  const code = data.code || `PAC-${String(finalId).padStart(4, '0')}`;
   const newPatient = {
-    id: nextId,
+    id: finalId,
     code,
     owner_id: Number(user.id),
-    tutor_id: Number(data.tutor_id),
+    tutor_id: Number(tutor.id),
     name: data.name.trim(),
     species: data.species || 'Canina',
     custom_species: data.custom_species || null,
@@ -1378,7 +1582,7 @@ app.post('/api/v1/patients', requireAuth, (req, res) => {
     photo_url: data.photo_url || null,
     notes: data.notes || null,
     is_active: data.is_active !== false,
-    created_at: new Date().toISOString(),
+    created_at: data.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
@@ -1399,7 +1603,7 @@ app.put('/api/v1/patients/:id', requireAuth, (req, res) => {
   if (!Array.isArray(db.patients)) db.patients = [];
   if (!Array.isArray(db.tutors)) db.tutors = [];
 
-  const idx = db.patients.findIndex((p) => Number(p.id) === id && (Number(p.owner_id) === Number(user.id) || !p.owner_id || user.role === 'ADMIN'));
+  const idx = db.patients.findIndex((p) => Number(p.id) === id && canAccessRecord(p, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Paciente não encontrado.' });
   }
@@ -1464,7 +1668,7 @@ app.patch('/api/v1/patients/:id/toggle-status', requireAuth, (req, res) => {
   const id = Number(req.params.id);
 
   if (!Array.isArray(db.patients)) db.patients = [];
-  const idx = db.patients.findIndex((p) => Number(p.id) === id && (Number(p.owner_id) === Number(user.id) || !p.owner_id || user.role === 'ADMIN'));
+  const idx = db.patients.findIndex((p) => Number(p.id) === id && canAccessRecord(p, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Paciente não encontrado.' });
   }
@@ -1484,7 +1688,7 @@ app.delete('/api/v1/patients/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
 
   if (!Array.isArray(db.patients)) db.patients = [];
-  const idx = db.patients.findIndex((p) => Number(p.id) === id && (Number(p.owner_id) === Number(user.id) || !p.owner_id || user.role === 'ADMIN'));
+  const idx = db.patients.findIndex((p) => Number(p.id) === id && canAccessRecord(p, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Paciente não encontrado.' });
   }
@@ -1493,6 +1697,116 @@ app.delete('/api/v1/patients/:id', requireAuth, (req, res) => {
   saveDB(db);
 
   res.json({ message: 'Paciente removido com sucesso.' });
+});
+
+// -------------------------------------------------------------
+// ATOMIC VAULT SYNC ENDPOINT (RESILIENT PERSISTENCE ACROSS REDEPLOYS)
+// -------------------------------------------------------------
+app.post('/api/v1/sync/vault', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const { tutors, patients } = req.body;
+
+  if (!Array.isArray(db.tutors)) db.tutors = [];
+  if (!Array.isArray(db.patients)) db.patients = [];
+
+  const tutorIdMap = new Map<number, number>();
+
+  // 1. Reconcile Tutors
+  if (Array.isArray(tutors)) {
+    for (const t of tutors) {
+      if (!t || !t.name || !t.name.trim()) continue;
+      const cleanName = t.name.trim().toLowerCase();
+      let matched = db.tutors.find((existing) => Number(existing.id) === Number(t.id));
+      if (!matched) {
+        matched = db.tutors.find(
+          (existing) => existing.name.trim().toLowerCase() === cleanName && canAccessRecord(existing, user)
+        );
+      }
+      if (matched) {
+        tutorIdMap.set(Number(t.id), Number(matched.id));
+        if (t.cpf && !matched.cpf) matched.cpf = t.cpf;
+        if (t.phone && !matched.phone) matched.phone = t.phone;
+        if (t.whatsapp && !matched.whatsapp) matched.whatsapp = t.whatsapp;
+        if (t.email && !matched.email) matched.email = t.email;
+        if (t.address && !matched.address) matched.address = t.address;
+        if (t.notes && !matched.notes) matched.notes = t.notes;
+        matched.updated_at = new Date().toISOString();
+      } else {
+        let finalId = Number(t.id);
+        if (!finalId || db.tutors.some((existing) => Number(existing.id) === finalId)) {
+          finalId = db.tutors.length > 0 ? Math.max(...db.tutors.map((x) => Number(x.id) || 0)) + 1 : 1;
+        }
+        const newTutor = {
+          ...t,
+          id: finalId,
+          code: t.code || `TUT-${String(finalId).padStart(4, '0')}`,
+          owner_id: Number(user.id),
+          created_at: t.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        db.tutors.unshift(newTutor);
+        tutorIdMap.set(Number(t.id), finalId);
+      }
+    }
+  }
+
+  // 2. Reconcile Patients
+  if (Array.isArray(patients)) {
+    for (const p of patients) {
+      if (!p || !p.name || !p.name.trim()) continue;
+      const cleanName = p.name.trim().toLowerCase();
+      let targetTutorId = tutorIdMap.get(Number(p.tutor_id)) || Number(p.tutor_id);
+      let tutor = db.tutors.find((t) => Number(t.id) === targetTutorId);
+      if (!tutor && p.tutor_name) {
+        tutor = db.tutors.find((t) => t.name.trim().toLowerCase() === String(p.tutor_name).trim().toLowerCase());
+        if (tutor) targetTutorId = Number(tutor.id);
+      }
+      if (!tutor) {
+        tutor = db.tutors.find((t) => canAccessRecord(t, user));
+        if (tutor) targetTutorId = Number(tutor.id);
+      }
+
+      let matched = db.patients.find((existing) => Number(existing.id) === Number(p.id));
+      if (!matched && tutor) {
+        matched = db.patients.find(
+          (existing) => existing.name.trim().toLowerCase() === cleanName && Number(existing.tutor_id) === targetTutorId
+        );
+      }
+      if (matched) {
+        if (targetTutorId) matched.tutor_id = targetTutorId;
+        if (p.species) matched.species = p.species;
+        if (p.breed) matched.breed = p.breed;
+        if (p.gender) matched.gender = p.gender;
+        if (p.weight_kg) matched.weight_kg = Number(p.weight_kg);
+        if (p.notes) matched.notes = p.notes;
+        matched.updated_at = new Date().toISOString();
+      } else {
+        let finalId = Number(p.id);
+        if (!finalId || db.patients.some((existing) => Number(existing.id) === finalId)) {
+          finalId = db.patients.length > 0 ? Math.max(...db.patients.map((x) => Number(x.id) || 0)) + 1 : 1;
+        }
+        const newPatient = {
+          ...p,
+          id: finalId,
+          code: p.code || `PAC-${String(finalId).padStart(4, '0')}`,
+          owner_id: Number(user.id),
+          tutor_id: targetTutorId || (db.tutors[0] ? Number(db.tutors[0].id) : 1),
+          created_at: p.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        db.patients.unshift(newPatient);
+      }
+    }
+  }
+
+  saveDB(db);
+
+  res.json({
+    success: true,
+    message: 'Cofre persistente sincronizado com sucesso.',
+    tutors_count: db.tutors.filter((t) => canAccessRecord(t, user)).length,
+    patients_count: db.patients.filter((p) => canAccessRecord(p, user)).length,
+  });
 });
 
 // -------------------------------------------------------------
@@ -1810,16 +2124,16 @@ app.get('/api/v1/patients/:id/medical-record', requireAuth, (req, res) => {
   const user = (req as any).user;
   const id = Number(req.params.id);
 
-  const patient = (db.patients || []).find((p) => p.id === id && p.owner_id === user.id);
+  const patient = (db.patients || []).find((p) => p.id === id && canAccessRecord(p, user));
   if (!patient) {
     return res.status(404).json({ detail: 'Paciente não encontrado.' });
   }
 
-  const tutor = (db.tutors || []).find((t) => t.id === patient.tutor_id && t.owner_id === user.id);
+  const tutor = (db.tutors || []).find((t) => t.id === patient.tutor_id && canAccessRecord(t, user));
 
   // Consultas e atendimentos clínicos
   const consultations = (db.consultations || [])
-    .filter((c: any) => c.patient_id === id && c.owner_id === user.id)
+    .filter((c: any) => c.patient_id === id && canAccessRecord(c, user))
     .sort((a: any, b: any) => new Date(b.date_time || b.created_at).getTime() - new Date(a.date_time || a.created_at).getTime());
 
   // Vacinas aplicadas (extraídas das consultas ou registros clínicos)
@@ -1832,17 +2146,17 @@ app.get('/api/v1/patients/:id/medical-record', requireAuth, (req, res) => {
 
   // Fichas cirúrgicas / anestésicas
   const anesthesia_records = (db.anesthesia_records || [])
-    .filter((a: any) => a.patient_id === id && a.owner_id === user.id)
+    .filter((a: any) => a.patient_id === id && canAccessRecord(a, user))
     .sort((a: any, b: any) => new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime());
 
   // Documentos e termos emitidos
   const documents = (db.documents || [])
-    .filter((d: any) => d.patient_id === id && d.owner_id === user.id)
+    .filter((d: any) => d.patient_id === id && canAccessRecord(d, user))
     .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   // Exames laboratoriais e complementares realizados
   const exams = (db.exams || [])
-    .filter((e: any) => e.patient_id === id && (Number(e.owner_id) === Number(user.id) || !e.owner_id))
+    .filter((e: any) => e.patient_id === id && canAccessRecord(e, user))
     .sort((a: any, b: any) => new Date(b.date || b.created_at).getTime() - new Date(a.date || a.created_at).getTime());
 
   res.json({
@@ -1887,9 +2201,7 @@ app.get('/api/v1/appointments', requireAuth, (req, res) => {
   if (!Array.isArray(db.tutors)) db.tutors = [];
   if (!Array.isArray(db.patients)) db.patients = [];
 
-  let list = user.role === 'ADMIN'
-    ? [...db.appointments]
-    : db.appointments.filter((a) => Number(a.owner_id) === Number(user.id) || !a.owner_id);
+  let list = db.appointments.filter((a) => canAccessRecord(a, user));
 
   if (status_filter) {
     list = list.filter((a) => a.status === status_filter);
@@ -2002,7 +2314,7 @@ app.put('/api/v1/appointments/:id', requireAuth, (req, res) => {
   const updates = req.body;
 
   if (!Array.isArray(db.appointments)) db.appointments = [];
-  const idx = db.appointments.findIndex((a) => Number(a.id) === id && (Number(a.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  const idx = db.appointments.findIndex((a) => Number(a.id) === id && canAccessRecord(a, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Agendamento não encontrado.' });
   }
@@ -2049,7 +2361,7 @@ app.delete('/api/v1/appointments/:id', requireAuth, (req, res) => {
   const user = (req as any).user;
   const id = Number(req.params.id);
 
-  const idx = db.appointments.findIndex((a) => a.id === id && a.owner_id === user.id);
+  const idx = db.appointments.findIndex((a) => a.id === id && canAccessRecord(a, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Agendamento não encontrado.' });
   }
@@ -2068,9 +2380,7 @@ app.get('/api/v1/consultations', requireAuth, (req, res) => {
   const { patient_id } = req.query;
 
   if (!Array.isArray(db.consultations)) db.consultations = [];
-  let list = user.role === 'ADMIN'
-    ? [...db.consultations]
-    : db.consultations.filter((c) => Number(c.owner_id) === Number(user.id) || !c.owner_id);
+  let list = db.consultations.filter((c) => canAccessRecord(c, user));
 
   if (patient_id) {
     list = list.filter((c) => Number(c.patient_id) === Number(patient_id));
@@ -2140,7 +2450,7 @@ app.put('/api/v1/consultations/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
 
   if (!Array.isArray(db.consultations)) db.consultations = [];
-  const idx = db.consultations.findIndex((c) => Number(c.id) === id && (Number(c.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  const idx = db.consultations.findIndex((c) => Number(c.id) === id && canAccessRecord(c, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Atendimento não encontrado.' });
   }
@@ -2164,7 +2474,7 @@ app.delete('/api/v1/consultations/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
 
   if (!Array.isArray(db.consultations)) db.consultations = [];
-  const idx = db.consultations.findIndex((c) => Number(c.id) === id && (Number(c.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  const idx = db.consultations.findIndex((c) => Number(c.id) === id && canAccessRecord(c, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Atendimento não encontrado.' });
   }
@@ -2181,9 +2491,7 @@ app.delete('/api/v1/consultations/:id', requireAuth, (req, res) => {
 app.get('/api/v1/inventory', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.inventory_items)) db.inventory_items = [];
-  const list = user.role === 'ADMIN'
-    ? [...db.inventory_items]
-    : db.inventory_items.filter((i) => Number(i.owner_id) === Number(user.id) || !i.owner_id);
+  const list = db.inventory_items.filter((i) => canAccessRecord(i, user));
   res.json(list);
 });
 
@@ -2212,7 +2520,7 @@ app.put('/api/v1/inventory/:id', requireAuth, (req, res) => {
   if (!Array.isArray(db.inventory_items)) db.inventory_items = [];
 
   const idx = db.inventory_items.findIndex(
-    (i) => i.id === id && (i.owner_id === user.id || !i.owner_id || user.role === 'ADMIN')
+    (i) => Number(i.id) === id && canAccessRecord(i, user)
   );
   if (idx === -1) {
     return res.status(404).json({ detail: 'Item de estoque não encontrado.' });
@@ -2229,7 +2537,7 @@ app.delete('/api/v1/inventory/:id', requireAuth, (req, res) => {
   if (!Array.isArray(db.inventory_items)) db.inventory_items = [];
 
   const idx = db.inventory_items.findIndex(
-    (i) => i.id === id && (i.owner_id === user.id || !i.owner_id || user.role === 'ADMIN')
+    (i) => Number(i.id) === id && canAccessRecord(i, user)
   );
   if (idx === -1) {
     return res.status(404).json({ detail: 'Item não encontrado.' });
@@ -2246,9 +2554,7 @@ app.delete('/api/v1/inventory/:id', requireAuth, (req, res) => {
 app.get('/api/v1/financial', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.financial_entries)) db.financial_entries = [];
-  const list = user.role === 'ADMIN'
-    ? [...db.financial_entries]
-    : db.financial_entries.filter((f) => Number(f.owner_id) === Number(user.id) || !f.owner_id);
+  const list = db.financial_entries.filter((f) => canAccessRecord(f, user));
   list.sort((a, b) => new Date(b.date || b.created_at).getTime() - new Date(a.date || a.created_at).getTime());
   res.json(list);
 });
@@ -2278,7 +2584,7 @@ app.put('/api/v1/financial/:id', requireAuth, (req, res) => {
   const data = req.body;
   if (!Array.isArray(db.financial_entries)) db.financial_entries = [];
 
-  const idx = db.financial_entries.findIndex((f) => Number(f.id) === id && (Number(f.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  const idx = db.financial_entries.findIndex((f) => Number(f.id) === id && canAccessRecord(f, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Lançamento financeiro não encontrado.' });
   }
@@ -2297,7 +2603,7 @@ app.delete('/api/v1/financial/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   if (!Array.isArray(db.financial_entries)) db.financial_entries = [];
 
-  const idx = db.financial_entries.findIndex((f) => Number(f.id) === id && (Number(f.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  const idx = db.financial_entries.findIndex((f) => Number(f.id) === id && canAccessRecord(f, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Lançamento financeiro não encontrado.' });
   }
@@ -2315,7 +2621,7 @@ app.get('/api/v1/exams', requireAuth, (req, res) => {
   const patientId = req.query.patient_id ? Number(req.query.patient_id) : undefined;
   if (!Array.isArray(db.exams)) db.exams = [];
 
-  let list = db.exams.filter((e: any) => Number(e.owner_id) === Number(user.id) || user.role === 'ADMIN' || !e.owner_id);
+  let list = db.exams.filter((e: any) => canAccessRecord(e, user));
   if (patientId) {
     list = list.filter((e: any) => Number(e.patient_id) === patientId);
   }
@@ -2366,7 +2672,7 @@ app.put('/api/v1/exams/:id', requireAuth, (req, res) => {
   const data = req.body;
   if (!Array.isArray(db.exams)) db.exams = [];
 
-  const idx = db.exams.findIndex((e: any) => Number(e.id) === id && (Number(e.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  const idx = db.exams.findIndex((e: any) => Number(e.id) === id && canAccessRecord(e, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Exame não encontrado.' });
   }
@@ -2385,7 +2691,7 @@ app.delete('/api/v1/exams/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   if (!Array.isArray(db.exams)) db.exams = [];
 
-  const idx = db.exams.findIndex((e: any) => Number(e.id) === id && (Number(e.owner_id) === Number(user.id) || user.role === 'ADMIN'));
+  const idx = db.exams.findIndex((e: any) => Number(e.id) === id && canAccessRecord(e, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Exame não encontrado.' });
   }
@@ -2401,9 +2707,7 @@ app.delete('/api/v1/exams/:id', requireAuth, (req, res) => {
 app.get('/api/v1/clinics', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.clinics)) db.clinics = [];
-  const list = user.role === 'ADMIN'
-    ? [...db.clinics]
-    : db.clinics.filter((c) => Number(c.owner_id) === Number(user.id) || !c.owner_id);
+  const list = db.clinics.filter((c) => canAccessRecord(c, user));
   res.json(list);
 });
 
@@ -2430,7 +2734,7 @@ app.put('/api/v1/clinics/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   if (!Array.isArray(db.clinics)) db.clinics = [];
 
-  const idx = db.clinics.findIndex((c) => Number(c.id) === id && (Number(c.owner_id) === Number(user.id) || !c.owner_id || user.role === 'ADMIN'));
+  const idx = db.clinics.findIndex((c) => Number(c.id) === id && canAccessRecord(c, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Clínica não encontrada.' });
   }
@@ -2446,7 +2750,7 @@ app.delete('/api/v1/clinics/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   if (!Array.isArray(db.clinics)) db.clinics = [];
 
-  const idx = db.clinics.findIndex((c) => Number(c.id) === id && (Number(c.owner_id) === Number(user.id) || !c.owner_id || user.role === 'ADMIN'));
+  const idx = db.clinics.findIndex((c) => Number(c.id) === id && canAccessRecord(c, user));
   if (idx === -1) {
     return res.status(404).json({ detail: 'Clínica não encontrada.' });
   }
@@ -2982,9 +3286,7 @@ app.delete('/api/v1/supplier-orders/:id', requireAuth, (req, res) => {
 app.get('/api/v1/anesthesias', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.anesthesia_records)) db.anesthesia_records = [];
-  const list = user.role === 'ADMIN'
-    ? [...db.anesthesia_records]
-    : db.anesthesia_records.filter((a) => Number(a.owner_id) === Number(user.id) || !a.owner_id);
+  const list = db.anesthesia_records.filter((a) => canAccessRecord(a, user));
   res.json(list);
 });
 
@@ -3011,7 +3313,7 @@ app.put('/api/v1/anesthesias/:id', requireAuth, (req, res) => {
   if (!Array.isArray(db.anesthesia_records)) db.anesthesia_records = [];
 
   const idx = db.anesthesia_records.findIndex(
-    (a) => Number(a.id) === id && (Number(a.owner_id) === Number(user.id) || !a.owner_id || user.role === 'ADMIN')
+    (a) => Number(a.id) === id && canAccessRecord(a, user)
   );
   if (idx === -1) {
     const newRecord = {
@@ -3042,7 +3344,7 @@ app.delete('/api/v1/anesthesias/:id', requireAuth, (req, res) => {
   if (!Array.isArray(db.anesthesia_records)) db.anesthesia_records = [];
 
   const idx = db.anesthesia_records.findIndex(
-    (a) => Number(a.id) === id && (Number(a.owner_id) === Number(user.id) || !a.owner_id || user.role === 'ADMIN')
+    (a) => Number(a.id) === id && canAccessRecord(a, user)
   );
   if (idx === -1) {
     return res.status(404).json({ detail: 'Ficha anestésica não encontrada.' });
@@ -3059,9 +3361,7 @@ app.delete('/api/v1/anesthesias/:id', requireAuth, (req, res) => {
 app.get('/api/v1/documents', requireAuth, (req, res) => {
   const user = (req as any).user;
   if (!Array.isArray(db.documents)) db.documents = [];
-  const list = user.role === 'ADMIN'
-    ? [...db.documents]
-    : db.documents.filter((d) => Number(d.owner_id) === Number(user.id) || !d.owner_id);
+  const list = db.documents.filter((d) => canAccessRecord(d, user));
   res.json(list);
 });
 
@@ -3086,7 +3386,7 @@ app.delete('/api/v1/documents/:id', requireAuth, (req, res) => {
   const user = (req as any).user;
   const id = Number(req.params.id);
   if (!Array.isArray(db.documents)) db.documents = [];
-  db.documents = db.documents.filter((d: any) => !(Number(d.id) === id && (Number(d.owner_id) === Number(user.id) || user.role === 'ADMIN')));
+  db.documents = db.documents.filter((d: any) => !(Number(d.id) === id && canAccessRecord(d, user)));
   saveDB(db);
   res.json({ message: 'Documento excluído com sucesso.' });
 });

@@ -20,8 +20,14 @@ import {
   FileText,
   Settings,
   Sliders,
-  X
+  X,
+  Cloud,
+  RefreshCw,
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
+import { FirestoreSyncStatusModal } from './FirestoreSyncStatusModal';
+import { getFirestoreSyncStats, firestoreSync } from '../services/firebase';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -32,6 +38,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
   const isAnesthesiaEnabled = Boolean(user?.specialty_anesthesia_enabled);
   const [pendingCount, setPendingCount] = useState(0);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [syncStats, setSyncStats] = useState(getFirestoreSyncStats());
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -52,6 +61,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       clearInterval(interval);
     };
   }, []);
+
+  // Monitoramento contínuo dos eventos de sincronização com o Firestore
+  useEffect(() => {
+    const updateStats = () => {
+      setSyncStats(getFirestoreSyncStats());
+    };
+    updateStats();
+
+    window.addEventListener('vetgo_sync_event', updateStats);
+    const interval = setInterval(updateStats, 10000);
+    return () => {
+      window.removeEventListener('vetgo_sync_event', updateStats);
+      clearInterval(interval);
+    };
+  }, []);
+
+  const handleQuickSync = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isManualSyncing) return;
+    setIsManualSyncing(true);
+    try {
+      await firestoreSync.syncAllToFirestore(user?.id ? String(user.id) : undefined);
+      setSyncStats(getFirestoreSyncStats());
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
 
   const anesthesiaNavItems = [
     { name: 'Fichas Anestésicas', path: '/anestesia', icon: Activity },
@@ -250,13 +287,78 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           <div className="pt-2 px-1">
             <PWAInstallSidebarCard />
           </div>
+
+          {/* Firestore Cloud Sync Status Widget */}
+          <div className="pt-2 px-1">
+            <div className="p-2.5 bg-slate-50 border border-slate-200/90 rounded-xl hover:border-emerald-300 transition-colors shadow-2xs">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setIsSyncModalOpen(true)}
+                  className="flex items-center gap-2 text-left group flex-1 mr-1"
+                  title="Clique para ver o histórico e logs de sincronização"
+                >
+                  <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 group-hover:bg-emerald-100 transition shrink-0">
+                    <Cloud className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5 truncate">
+                      <span>Nuvem Firestore</span>
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          syncStats.errorCount > 0 ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'
+                        }`}
+                      />
+                    </div>
+                    <div className="text-[10px] text-slate-500 truncate">
+                      {syncStats.errorCount > 0
+                        ? `${syncStats.errorCount} falha(s) • Verificar`
+                        : `${syncStats.successCount} registros salvos`}
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleQuickSync}
+                  disabled={isManualSyncing}
+                  title="Sincronizar tutores e pacientes locais com o Firestore agora"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-white border border-transparent hover:border-slate-200 transition disabled:opacity-50 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing ? 'animate-spin text-emerald-600' : ''}`} />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSyncModalOpen(true)}
+                className="w-full mt-2 pt-1.5 border-t border-slate-200/60 text-[10px] font-semibold text-emerald-700 hover:text-emerald-800 flex items-center justify-between group"
+              >
+                <span>Logs e Painel de Nuvem</span>
+                <span className="group-hover:translate-x-0.5 transition-transform text-xs">→</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Footer info */}
-        <div className="p-3 border-t border-slate-100 text-[11px] text-slate-400 text-center">
-          Vetgo v1.0 • Atendimento Volante
+        <div className="p-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
+          <span>Vetgo v1.0 • Volante</span>
+          <button
+            type="button"
+            onClick={() => setIsSyncModalOpen(true)}
+            className="text-[10px] font-medium text-slate-500 hover:text-emerald-700 underline"
+          >
+            Status Nuvem
+          </button>
         </div>
       </aside>
+
+      {/* Firestore Sync Diagnostics Modal */}
+      <FirestoreSyncStatusModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+      />
     </>
   );
 };
