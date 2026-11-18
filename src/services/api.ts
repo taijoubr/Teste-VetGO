@@ -95,6 +95,25 @@ async function parseJsonResponse<T>(res: Response, defaultErrorMsg: string): Pro
  * Preserva dados críticos do veterinário (como assinatura digital desenhada/anexada, carimbo e preferências)
  * entre sessões, reinicializações e ambientes efêmeros na nuvem ("online").
  */
+function getNextSequentialCode(items: Array<{ code?: string }>, prefix: string): string {
+  if (!Array.isArray(items) || items.length === 0) {
+    return `${prefix}-0001`;
+  }
+  const regex = new RegExp(`^${prefix}-(\\d+)$`, 'i');
+  const maxReasonable = items.length + 500;
+  let maxNum = items.length;
+  for (const item of items) {
+    const match = typeof item?.code === 'string' ? item.code.match(regex) : null;
+    if (match) {
+      const parsed = parseInt(match[1], 10);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed <= maxReasonable && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
+  }
+  return `${prefix}-${String(maxNum + 1).padStart(4, '0')}`;
+}
+
 function getSpecialtyVaultKey(user: Partial<User>): string {
   const emailPart = (user.email || '').trim().toLowerCase();
   return `vetgo_user_specialty_anesthesia_${user.id}_${emailPart}`;
@@ -966,12 +985,18 @@ export const api = {
       console.warn('Requisição de tutor no servidor falhou/offline, persistindo localmente:', err);
     }
 
+    let existing: Tutor[] = [];
+    try {
+      existing = await this.getTutors();
+    } catch {}
+
     const tutorId = created?.id || Date.now();
+    const sequentialCode = created?.code || tutorData.code || getNextSequentialCode(existing, 'TUT');
     const tutorItem: Tutor = {
       ...tutorData,
       ...(created || {}),
       id: tutorId,
-      code: created?.code || `TUT-${String(tutorId).slice(-4).padStart(4, '0')}`,
+      code: sequentialCode,
       created_at: created?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
       is_active: created?.is_active !== false,
@@ -989,7 +1014,6 @@ export const api = {
 
     // Salva imediatamente no espelho local antes de qualquer requisição subsequente em ambas as chaves
     try {
-      const existing = await this.getTutors();
       const nextList = [tutorItem, ...existing.filter((t) => Number(t.id) !== Number(tutorId))];
       localStorage.setItem(key, JSON.stringify(nextList));
       localStorage.setItem('vetgo_tutors', JSON.stringify(nextList));
@@ -1218,11 +1242,18 @@ export const api = {
       console.warn('Requisição de paciente no servidor falhou/offline, persistindo localmente:', err);
     }
 
+    let existing: Patient[] = [];
+    try {
+      existing = await this.getPatients();
+    } catch {}
+
     const patientId = created?.id || Date.now();
+    const sequentialCode = created?.code || patientData.code || getNextSequentialCode(existing, 'PAC');
     const patientItem: Patient = {
       ...patientData,
       ...(created || {}),
       id: patientId,
+      code: sequentialCode,
       created_at: created?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
       is_active: created?.is_active !== false,
@@ -1239,7 +1270,6 @@ export const api = {
 
     // Salva imediatamente no espelho local antes de qualquer requisição subsequente
     try {
-      const existing = await this.getPatients();
       const nextList = [patientItem, ...existing.filter((p) => Number(p.id) !== Number(patientId))];
       localStorage.setItem(key, JSON.stringify(nextList));
       localStorage.setItem('vetgo_patients', JSON.stringify(nextList));

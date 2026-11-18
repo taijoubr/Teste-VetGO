@@ -220,6 +220,26 @@ export function canAccessRecord(item: any, user: any): boolean {
   return false;
 }
 
+function getNextOwnerSequentialCode(list: any[], ownerId: number, prefix: string): string {
+  const ownerItems = (list || []).filter((item) => Number(item?.owner_id) === Number(ownerId));
+  if (ownerItems.length === 0) {
+    return `${prefix}-0001`;
+  }
+  const regex = new RegExp(`^${prefix}-(\\d+)$`, 'i');
+  const maxReasonable = ownerItems.length + 500;
+  let maxNum = ownerItems.length;
+  for (const item of ownerItems) {
+    const match = typeof item?.code === 'string' ? item.code.match(regex) : null;
+    if (match) {
+      const parsed = parseInt(match[1], 10);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed <= maxReasonable && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
+  }
+  return `${prefix}-${String(maxNum + 1).padStart(4, '0')}`;
+}
+
 // In-memory working cache with automatic save
 let db: DatabaseData = loadDB();
 if (!Array.isArray(db.subscriptions)) {
@@ -1290,7 +1310,7 @@ app.post('/api/v1/tutors', requireAuth, (req, res) => {
     finalId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => Number(t.id) || 0)) + 1 : 1;
   }
 
-  const code = data.code || `TUT-${String(finalId).padStart(4, '0')}`;
+  const code = data.code || getNextOwnerSequentialCode(db.tutors, Number(user.id), 'TUT');
   const newTutor = {
     id: finalId,
     code,
@@ -1487,7 +1507,7 @@ app.post('/api/v1/patients', requireAuth, (req, res) => {
     const newTutorId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => Number(t.id) || 0)) + 1 : 1;
     tutor = {
       id: newTutorId,
-      code: `TUT-${String(newTutorId).padStart(4, '0')}`,
+      code: getNextOwnerSequentialCode(db.tutors, Number(user.id), 'TUT'),
       owner_id: Number(user.id),
       name: data.tutor_name || 'Tutor Responsável',
       phone: null,
@@ -1556,7 +1576,7 @@ app.post('/api/v1/patients', requireAuth, (req, res) => {
     finalId = db.patients.length > 0 ? Math.max(...db.patients.map((p) => Number(p.id) || 0)) + 1 : 1;
   }
 
-  const code = data.code || `PAC-${String(finalId).padStart(4, '0')}`;
+  const code = data.code || getNextOwnerSequentialCode(db.patients, Number(user.id), 'PAC');
   const newPatient = {
     id: finalId,
     code,
@@ -2007,7 +2027,7 @@ app.post('/api/v1/public/vet/:slug/request-consultation', (req, res) => {
     const nextTutorId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => Number(t.id) || 0)) + 1 : 1;
     tutor = {
       id: nextTutorId,
-      code: `TUT-${String(nextTutorId).padStart(4, '0')}`,
+      code: getNextOwnerSequentialCode(db.tutors, Number(user.id), 'TUT'),
       owner_id: Number(user.id),
       name: data.tutor_name.trim(),
       phone: data.tutor_phone.trim(),
@@ -2029,7 +2049,7 @@ app.post('/api/v1/public/vet/:slug/request-consultation', (req, res) => {
     const nextPatientId = db.patients.length > 0 ? Math.max(...db.patients.map((p) => Number(p.id) || 0)) + 1 : 1;
     patient = {
       id: nextPatientId,
-      code: `PAC-${String(nextPatientId).padStart(4, '0')}`,
+      code: getNextOwnerSequentialCode(db.patients, Number(user.id), 'PAC'),
       owner_id: Number(user.id),
       tutor_id: Number(tutor.id),
       name: data.pet_name.trim(),
@@ -4683,6 +4703,7 @@ async function startServer() {
       server: {
         middlewareMode: true,
         hmr: false,
+        allowedHosts: true,
       },
       appType: 'spa',
     });
