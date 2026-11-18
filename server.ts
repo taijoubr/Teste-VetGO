@@ -173,6 +173,8 @@ function loadDB(): DatabaseData {
     }
   }
 
+  normalizeAllTutorCodes(loaded.tutors);
+
   saveDB(loaded);
   return loaded;
 }
@@ -220,8 +222,50 @@ export function canAccessRecord(item: any, user: any): boolean {
   return false;
 }
 
+function getTutorOwnerGroupKey(item: any): string {
+  const oid = Number(item?.owner_id || 0);
+  if (oid === 2 || oid === 3 || oid === 0) return 'shared_test';
+  return `owner_${oid}`;
+}
+
+function normalizeAllTutorCodes(tutors: any[]): boolean {
+  if (!Array.isArray(tutors) || tutors.length === 0) return false;
+  const groups = new Map<string, any[]>();
+  for (const t of tutors) {
+    if (!t) continue;
+    const gKey = getTutorOwnerGroupKey(t);
+    const arr = groups.get(gKey) || [];
+    arr.push(t);
+    groups.set(gKey, arr);
+  }
+  let changed = false;
+  for (const group of groups.values()) {
+    group.sort((a, b) => {
+      const timeA = a?.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b?.created_at ? new Date(b.created_at).getTime() : 0;
+      const safeA = Number.isFinite(timeA) ? timeA : 0;
+      const safeB = Number.isFinite(timeB) ? timeB : 0;
+      if (safeA !== safeB) return safeA - safeB;
+      return Number(a?.id || 0) - Number(b?.id || 0);
+    });
+    for (let i = 0; i < group.length; i++) {
+      const expected = `TUT-${String(i + 1).padStart(4, '0')}`;
+      if (group[i].code !== expected) {
+        group[i].code = expected;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 function getNextOwnerSequentialCode(list: any[], ownerId: number, prefix: string): string {
-  const ownerItems = (list || []).filter((item) => Number(item?.owner_id) === Number(ownerId));
+  const ownerItems = (list || []).filter((item) => {
+    if (prefix === 'TUT') {
+      return getTutorOwnerGroupKey(item) === getTutorOwnerGroupKey({ owner_id: ownerId });
+    }
+    return Number(item?.owner_id) === Number(ownerId);
+  });
   if (ownerItems.length === 0) {
     return `${prefix}-0001`;
   }
@@ -1209,6 +1253,10 @@ app.get('/api/v1/tutors', requireAuth, (req, res) => {
   if (!Array.isArray(db.tutors)) db.tutors = [];
   if (!Array.isArray(db.patients)) db.patients = [];
 
+  if (normalizeAllTutorCodes(db.tutors)) {
+    saveDB(db);
+  }
+
   let list = db.tutors.filter((t) => canAccessRecord(t, user));
 
   if (status_filter === 'active') {
@@ -1310,7 +1358,7 @@ app.post('/api/v1/tutors', requireAuth, (req, res) => {
     finalId = db.tutors.length > 0 ? Math.max(...db.tutors.map((t) => Number(t.id) || 0)) + 1 : 1;
   }
 
-  const code = data.code || getNextOwnerSequentialCode(db.tutors, Number(user.id), 'TUT');
+  const code = getNextOwnerSequentialCode(db.tutors, Number(user.id), 'TUT');
   const newTutor = {
     id: finalId,
     code,
@@ -1334,6 +1382,7 @@ app.post('/api/v1/tutors', requireAuth, (req, res) => {
   };
 
   db.tutors.unshift(newTutor);
+  normalizeAllTutorCodes(db.tutors);
   saveDB(db);
 
   res.status(201).json({
@@ -1423,6 +1472,7 @@ app.delete('/api/v1/tutors/:id', requireAuth, (req, res) => {
   }
 
   db.tutors.splice(idx, 1);
+  normalizeAllTutorCodes(db.tutors);
   saveDB(db);
 
   res.json({ message: 'Tutor removido com sucesso.' });
@@ -1821,6 +1871,7 @@ app.post('/api/v1/sync/vault', requireAuth, (req, res) => {
     }
   }
 
+  normalizeAllTutorCodes(db.tutors);
   saveDB(db);
 
   res.json({

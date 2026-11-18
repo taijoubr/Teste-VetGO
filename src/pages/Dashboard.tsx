@@ -47,9 +47,15 @@ export const Dashboard: React.FC = () => {
       }
     });
 
+    const handleCloudSynced = () => {
+      if (isMounted) loadDashboard();
+    };
+    window.addEventListener('vetgo_cloud_synced', handleCloudSynced);
+
     return () => {
       isMounted = false;
       clearTimeout(timer);
+      window.removeEventListener('vetgo_cloud_synced', handleCloudSynced);
     };
   }, []);
 

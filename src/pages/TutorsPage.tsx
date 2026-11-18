@@ -50,6 +50,9 @@ export const TutorsPage: React.FC = () => {
 
   useEffect(() => {
     loadTutors();
+    const handleCloudSynced = () => loadTutors(false);
+    window.addEventListener('vetgo_cloud_synced', handleCloudSynced);
+    return () => window.removeEventListener('vetgo_cloud_synced', handleCloudSynced);
   }, []);
 
   const loadTutors = async (showLoadingSpinner = true) => {
@@ -226,7 +229,7 @@ export const TutorsPage: React.FC = () => {
           setTutors((prev) => [
             {
               ...created,
-              code: created.code || `TUT-${String(created.id).padStart(4, '0')}`,
+              code: created.code || `TUT-${String(prev.length + 1).padStart(4, '0')}`,
               patients_count: 0,
             },
             ...prev.filter((t) => Number(t.id) !== Number(created.id)),

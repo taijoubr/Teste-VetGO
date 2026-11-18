@@ -114,6 +114,40 @@ function getNextSequentialCode(items: Array<{ code?: string }>, prefix: string):
   return `${prefix}-${String(maxNum + 1).padStart(4, '0')}`;
 }
 
+function normalizeTutorCodesList(items: Tutor[]): { list: Tutor[]; changed: Tutor[] } {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { list: [], changed: [] };
+  }
+  const validItems = items.filter((t) => t && t.id);
+  const chrono = [...validItems].sort((a, b) => {
+    const timeA = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const timeB = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    const safeA = Number.isFinite(timeA) ? timeA : 0;
+    const safeB = Number.isFinite(timeB) ? timeB : 0;
+    if (safeA !== safeB) return safeA - safeB;
+    return Number(a?.id || 0) - Number(b?.id || 0);
+  });
+  const changed: Tutor[] = [];
+  const normalizedChrono = chrono.map((item, idx) => {
+    const expectedCode = `TUT-${String(idx + 1).padStart(4, '0')}`;
+    if (item.code !== expectedCode) {
+      const updated = { ...item, code: expectedCode };
+      changed.push(updated);
+      return updated;
+    }
+    return item;
+  });
+  const list = [...normalizedChrono].sort((a, b) => {
+    const timeA = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const timeB = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    const safeA = Number.isFinite(timeA) ? timeA : 0;
+    const safeB = Number.isFinite(timeB) ? timeB : 0;
+    if (safeB !== safeA) return safeB - safeA;
+    return Number(b?.id || 0) - Number(a?.id || 0);
+  });
+  return { list, changed };
+}
+
 function getSpecialtyVaultKey(user: Partial<User>): string {
   const emailPart = (user.email || '').trim().toLowerCase();
   return `vetgo_user_specialty_anesthesia_${user.id}_${emailPart}`;
@@ -892,17 +926,11 @@ export const api = {
       }
     } catch {}
 
-    // Resgata tutores de TODAS as chaves locais existentes (isolamento resiliente contra redeploys)
+    // Resgata tutores apenas da chave do usuário atual e das chaves globais filtradas pelo owner_id
+    const currentUser = this.getCachedUser();
+    const currentUserId = currentUser?.id ? Number(currentUser.id) : null;
     const localMap = new Map<number, Tutor>();
-    const tutorKeys = new Set<string>([key, 'vetgo_tutors', 'vetgo_permanent_vault_tutors']);
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('vetgo_tutors') && !k.endsWith('_deleted')) {
-          tutorKeys.add(k);
-        }
-      }
-    } catch {}
+    const tutorKeys = [key, 'vetgo_tutors', 'vetgo_permanent_vault_tutors'];
 
     tutorKeys.forEach((k) => {
       try {
@@ -911,9 +939,12 @@ export const api = {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             parsed.forEach((t) => {
-              if (t && t.id && !deletedIds.has(Number(t.id))) {
-                localMap.set(Number(t.id), t);
+              if (!t || !t.id || deletedIds.has(Number(t.id))) return;
+              if (k !== key && currentUserId !== null) {
+                const recordOwner = t.owner_id ?? (t.userId ? Number(t.userId) : null);
+                if (recordOwner !== null && Number(recordOwner) !== currentUserId) return;
               }
+              localMap.set(Number(t.id), t);
             });
           }
         }
@@ -947,28 +978,50 @@ export const api = {
           return tB - tA;
         });
 
-        // Salva na chave do usuário e na chave mestre
-        localStorage.setItem(key, JSON.stringify(merged));
-        localStorage.setItem('vetgo_tutors', JSON.stringify(merged));
-        localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(merged));
+        const { list: normalizedMerged, changed: normalizedChanged } = normalizeTutorCodesList(merged);
 
-        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio (ex: Cloud Run redeploy)
+        // Salva na chave do usuário e na chave mestre
+        localStorage.setItem(key, JSON.stringify(normalizedMerged));
+        localStorage.setItem('vetgo_tutors', JSON.stringify(normalizedMerged));
+        localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(normalizedMerged));
+
+        if (normalizedChanged.length > 0) {
+          const userId = currentUser?.id ? String(currentUser.id) : 'vet_1';
+          for (const ch of normalizedChanged) {
+            firestoreSync.saveDoc('tutors', String(ch.id), { ...ch, userId }).catch(() => {});
+          }
+        }
+
+        // Auto re-sincronização no backend caso servidor tenha reiniciado vazio ou códigos precisem normalizar
         const serverIdSet = new Set(validServerList.map((s) => Number(s.id)));
-        const missingTutors = localList.filter((loc) => loc && loc.id && !serverIdSet.has(Number(loc.id)));
-        if (missingTutors.length > 0) {
+        const missingTutors = normalizedMerged.filter((loc) => loc && loc.id && !serverIdSet.has(Number(loc.id)));
+        if (missingTutors.length > 0 || normalizedChanged.length > 0) {
           this.request('/sync/vault', {
             method: 'POST',
-            body: JSON.stringify({ tutors: missingTutors })
+            body: JSON.stringify({ tutors: missingTutors.length > 0 ? missingTutors : normalizedChanged })
           }).catch(() => {});
         }
 
-        return merged;
+        return normalizedMerged;
       }
     } catch (err) {
       console.warn('Erro ao carregar tutores do servidor, usando persistência local blindada:', err);
     }
 
-    return localList;
+    const { list: normalizedLocal, changed: localChanged } = normalizeTutorCodesList(localList);
+    if (localChanged.length > 0) {
+      try {
+        localStorage.setItem(key, JSON.stringify(normalizedLocal));
+        localStorage.setItem('vetgo_tutors', JSON.stringify(normalizedLocal));
+        localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(normalizedLocal));
+        const userId = currentUser?.id ? String(currentUser.id) : 'vet_1';
+        for (const ch of localChanged) {
+          firestoreSync.saveDoc('tutors', String(ch.id), { ...ch, userId }).catch(() => {});
+        }
+      } catch {}
+    }
+
+    return normalizedLocal;
   },
 
   async createTutor(tutorData: Partial<Tutor>): Promise<Tutor> {
@@ -1086,13 +1139,21 @@ export const api = {
       }
     } catch {}
 
-    // 2. Remove imediatamente das listas locais
+    // 2. Remove imediatamente das listas locais e renumera sequência
     try {
       const list = await this.getTutors();
-      const nextList = list.filter((t: any) => Number(t.id) !== Number(id));
+      const filteredList = list.filter((t: any) => Number(t.id) !== Number(id));
+      const { list: nextList, changed } = normalizeTutorCodesList(filteredList);
       localStorage.setItem(key, JSON.stringify(nextList));
       localStorage.setItem('vetgo_tutors', JSON.stringify(nextList));
       localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(nextList));
+      if (changed.length > 0) {
+        const user = this.getCachedUser();
+        const userId = user?.id ? String(user.id) : 'vet_1';
+        for (const ch of changed) {
+          firestoreSync.saveDoc('tutors', String(ch.id), { ...ch, userId }).catch(() => {});
+        }
+      }
     } catch {}
 
     firestoreSync.deleteDoc('tutors', String(id), `Tutor Excluído (ID: ${id})`).catch(() => {});
@@ -1145,17 +1206,11 @@ export const api = {
       }
     } catch {}
 
-    // Resgata pacientes de TODAS as chaves locais existentes
+    // Resgata pacientes apenas da chave do usuário atual e das chaves globais filtradas pelo owner_id
+    const currentUser = this.getCachedUser();
+    const currentUserId = currentUser?.id ? Number(currentUser.id) : null;
     const localMap = new Map<number, Patient>();
-    const patientKeys = new Set<string>([key, 'vetgo_patients', 'vetgo_permanent_vault_patients']);
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('vetgo_patients') && !k.endsWith('_deleted')) {
-          patientKeys.add(k);
-        }
-      }
-    } catch {}
+    const patientKeys = [key, 'vetgo_patients', 'vetgo_permanent_vault_patients'];
 
     patientKeys.forEach((k) => {
       try {
@@ -1164,9 +1219,12 @@ export const api = {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             parsed.forEach((p) => {
-              if (p && p.id && !deletedIds.has(Number(p.id))) {
-                localMap.set(Number(p.id), p);
+              if (!p || !p.id || deletedIds.has(Number(p.id))) return;
+              if (k !== key && currentUserId !== null) {
+                const recordOwner = p.owner_id ?? (p.userId ? Number(p.userId) : null);
+                if (recordOwner !== null && Number(recordOwner) !== currentUserId) return;
               }
+              localMap.set(Number(p.id), p);
             });
           }
         }
@@ -3789,6 +3847,23 @@ export const api = {
     const userId = user?.id ? String(user.id) : undefined;
     let totalSynced = 0;
     try {
+      const userIdAliases = new Set<string>();
+      if (userId) userIdAliases.add(userId);
+      if (user?.email) {
+        try {
+          const allCloudUsers = await firestoreSync.fetchCollection('users');
+          const cleanEmail = user.email.trim().toLowerCase();
+          for (const cu of allCloudUsers) {
+            if (cu && cu.email && String(cu.email).trim().toLowerCase() === cleanEmail) {
+              if (cu.id) userIdAliases.add(String(cu.id));
+            }
+          }
+        } catch {}
+      }
+      const userIdsToFetch = Array.from(userIdAliases);
+
+      const finKey = user?.id ? `vetgo_financial_u${user.id}` : 'vetgo_financial';
+      const invKey = user?.id ? `vetgo_inventory_u${user.id}` : 'vetgo_inventory';
       const collectionsMap: { col: string; key: string }[] = [
         { col: 'clinics', key: 'vetgo_clinics' },
         { col: 'surgeons', key: 'vetgo_surgeons' },
@@ -3796,10 +3871,29 @@ export const api = {
         { col: 'patients', key: this.getPatientsStorageKey() },
         { col: 'anesthesias', key: 'vetgo_anesthesias' },
         { col: 'appointments', key: this.getAppointmentsStorageKey() },
+        { col: 'financial_entries', key: finKey },
+        { col: 'inventory_items', key: invKey },
+        { col: 'consultations', key: 'vetgo_consultations' },
+        { col: 'documents', key: 'vetgo_documents' },
       ];
 
+      let restoredTutors: any[] = [];
+      let restoredPatients: any[] = [];
+
       for (const item of collectionsMap) {
-        const cloudDocs = await firestoreSync.fetchCollection(item.col, userId);
+        let cloudDocs: any[] = [];
+        if (userIdsToFetch.length === 0) {
+          cloudDocs = await firestoreSync.fetchCollection(item.col);
+        } else {
+          const fetchedById = new Map<string, any>();
+          for (const aliasId of userIdsToFetch) {
+            const docs = await firestoreSync.fetchCollection(item.col, aliasId);
+            for (const d of docs) {
+              if (d && d.id) fetchedById.set(String(d.id), d);
+            }
+          }
+          cloudDocs = Array.from(fetchedById.values());
+        }
         if (cloudDocs && cloudDocs.length > 0) {
           const raw = localStorage.getItem(item.key);
           let localList: any[] = [];
@@ -3813,13 +3907,73 @@ export const api = {
           for (const c of cloudDocs) {
             if (c && c.id) {
               const ex = map.get(String(c.id));
-              map.set(String(c.id), ex ? { ...c, ...ex } : c);
+              if (ex && item.col === 'tutors') {
+                // Preserva o código já corrigido na nuvem se existir, evitando sobrescrita com cache antigo (ex: TUT-9242)
+                map.set(String(c.id), { ...c, ...ex, code: c.code || ex.code });
+              } else {
+                map.set(String(c.id), ex ? { ...c, ...ex } : c);
+              }
             }
           }
-          const merged = Array.from(map.values());
-          localStorage.setItem(item.key, JSON.stringify(merged));
+          let merged = Array.from(map.values());
+          if (item.col === 'tutors') {
+            let deletedIds = new Set<number>();
+            try {
+              const delRaw = localStorage.getItem(`${item.key}_deleted`) || localStorage.getItem('vetgo_tutors_deleted');
+              if (delRaw) deletedIds = new Set(JSON.parse(delRaw).map(Number));
+            } catch {}
+            const activeMerged = merged.filter((t) => t && t.id && !deletedIds.has(Number(t.id)));
+            const { list: normalizedTutors, changed: tutorChanged } = normalizeTutorCodesList(activeMerged);
+            merged = normalizedTutors;
+            localStorage.setItem(item.key, JSON.stringify(merged));
+            localStorage.setItem('vetgo_tutors', JSON.stringify(merged));
+            localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(merged));
+            if (tutorChanged.length > 0) {
+              for (const ch of tutorChanged) {
+                firestoreSync.saveDoc('tutors', String(ch.id), { ...ch, userId: userId || 'vet_1' }).catch(() => {});
+              }
+            }
+            restoredTutors = merged;
+          } else {
+            localStorage.setItem(item.key, JSON.stringify(merged));
+          }
+          if (item.col === 'patients') restoredPatients = merged;
           totalSynced += cloudDocs.length;
+        } else if (item.col === 'tutors') {
+          // Mesmo sem registros na nuvem, normaliza eventuais tutores locais antigos fora de ordem
+          const raw = localStorage.getItem(item.key);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const { list: normalizedTutors, changed } = normalizeTutorCodesList(parsed);
+                if (changed.length > 0) {
+                  localStorage.setItem(item.key, JSON.stringify(normalizedTutors));
+                  localStorage.setItem('vetgo_tutors', JSON.stringify(normalizedTutors));
+                  localStorage.setItem('vetgo_permanent_vault_tutors', JSON.stringify(normalizedTutors));
+                  for (const ch of changed) {
+                    firestoreSync.saveDoc('tutors', String(ch.id), { ...ch, userId: userId || 'vet_1' }).catch(() => {});
+                  }
+                  totalSynced += changed.length;
+                }
+              }
+            } catch {}
+          }
         }
+      }
+
+      if (restoredTutors.length > 0 || restoredPatients.length > 0) {
+        this.request('/sync/vault', {
+          method: 'POST',
+          body: JSON.stringify({
+            tutors: restoredTutors,
+            patients: restoredPatients,
+          }),
+        }).catch(() => {});
+      }
+
+      if (totalSynced > 0 && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('vetgo_cloud_synced', { detail: { count: totalSynced } }));
       }
       return { synced: true, count: totalSynced };
     } catch (e) {

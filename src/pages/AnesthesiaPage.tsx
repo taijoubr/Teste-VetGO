@@ -909,15 +909,15 @@ export const AnesthesiaPage: React.FC = () => {
                         : 'bg-slate-700 text-white'
                     }`}
                   >
-                    {activeAnesthesia.status.replace('_', ' ')}
+                    {((activeAnesthesia.status || 'EM_ANDAMENTO') as string).replace('_', ' ')}
                   </span>
                   <span className="text-[11px] text-slate-300">
-                    ASA {activeAnesthesia.asa_category.replace('_', ' ')}
+                    ASA {((activeAnesthesia.asa_category || (activeAnesthesia as any).asa_classification || 'ASA_I') as string).replace('_', ' ')}
                     {activeAnesthesia.is_emergency ? '-E' : ''}
                   </span>
                 </div>
                 <h2 className="text-base font-bold tracking-tight text-white mt-0.5">
-                  {activeAnesthesia.patient_name} ({activeAnesthesia.patient_species} • {activeAnesthesia.pre_evaluation.weight_kg} kg)
+                  {activeAnesthesia.patient_name} ({activeAnesthesia.patient_species || 'Canina'} • {activeAnesthesia.pre_evaluation?.weight_kg ?? '-'} kg)
                 </h2>
                 <p className="text-xs text-slate-400">
                   {activeAnesthesia.procedure_name} • {activeAnesthesia.clinic_name} • {activeAnesthesia.surgeon_name}
@@ -1288,7 +1288,7 @@ export const AnesthesiaPage: React.FC = () => {
               </div>
 
               <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
-                {activeAnesthesia.protocol_drugs.map((drug) => (
+                {(activeAnesthesia.protocol_drugs || []).map((drug) => (
                   <div key={drug.id} className="p-3.5 bg-white hover:bg-slate-50 flex items-center justify-between text-xs">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
@@ -1374,18 +1374,18 @@ export const AnesthesiaPage: React.FC = () => {
                   <span className="font-bold text-slate-800 uppercase tracking-wider text-[10px]">
                     Avaliação Clínica & Sinais Pré-Operatórios
                   </span>
-                  <p><strong>Peso:</strong> {activeAnesthesia.pre_evaluation.weight_kg} kg</p>
-                  <p><strong>Jejum Alimentar:</strong> {activeAnesthesia.pre_evaluation.fasting_food_hours || '-'} horas</p>
-                  <p><strong>Jejum Hídrico:</strong> {activeAnesthesia.pre_evaluation.fasting_water_hours || '-'} horas</p>
-                  <p><strong>Nível de Consciência:</strong> {activeAnesthesia.pre_evaluation.consciousness_level}</p>
-                  <p><strong>FC Basal:</strong> {activeAnesthesia.pre_evaluation.heart_rate_bpm ? `${activeAnesthesia.pre_evaluation.heart_rate_bpm} bpm` : '-'}</p>
-                  <p><strong>FR Basal:</strong> {activeAnesthesia.pre_evaluation.respiratory_rate_mpm ? `${activeAnesthesia.pre_evaluation.respiratory_rate_mpm} mpm` : '-'}</p>
-                  <p><strong>Temperatura:</strong> {activeAnesthesia.pre_evaluation.temperature_c ? `${activeAnesthesia.pre_evaluation.temperature_c}°C` : '-'}</p>
-                  <p><strong>TPC:</strong> {activeAnesthesia.pre_evaluation.capillary_refill_time_sec ? `${activeAnesthesia.pre_evaluation.capillary_refill_time_sec} s` : '-'}</p>
-                  <p><strong>Reflexos:</strong> {activeAnesthesia.pre_evaluation.reflexes}</p>
-                  <p><strong>Mucosas:</strong> {activeAnesthesia.pre_evaluation.mucous_membranes}</p>
-                  <p><strong>Hidratação:</strong> {activeAnesthesia.pre_evaluation.hydration_status}</p>
-                  <p><strong>Alergias:</strong> {activeAnesthesia.pre_evaluation.allergies || 'Sem relatos'}</p>
+                  <p><strong>Peso:</strong> {activeAnesthesia.pre_evaluation?.weight_kg ?? '-'} kg</p>
+                  <p><strong>Jejum Alimentar:</strong> {activeAnesthesia.pre_evaluation?.fasting_food_hours || '-'} horas</p>
+                  <p><strong>Jejum Hídrico:</strong> {activeAnesthesia.pre_evaluation?.fasting_water_hours || '-'} horas</p>
+                  <p><strong>Nível de Consciência:</strong> {activeAnesthesia.pre_evaluation?.consciousness_level || '-'}</p>
+                  <p><strong>FC Basal:</strong> {activeAnesthesia.pre_evaluation?.heart_rate_bpm ? `${activeAnesthesia.pre_evaluation.heart_rate_bpm} bpm` : '-'}</p>
+                  <p><strong>FR Basal:</strong> {activeAnesthesia.pre_evaluation?.respiratory_rate_mpm ? `${activeAnesthesia.pre_evaluation.respiratory_rate_mpm} mpm` : '-'}</p>
+                  <p><strong>Temperatura:</strong> {activeAnesthesia.pre_evaluation?.temperature_c ? `${activeAnesthesia.pre_evaluation.temperature_c}°C` : '-'}</p>
+                  <p><strong>TPC:</strong> {activeAnesthesia.pre_evaluation?.capillary_refill_time_sec ? `${activeAnesthesia.pre_evaluation.capillary_refill_time_sec} s` : '-'}</p>
+                  <p><strong>Reflexos:</strong> {activeAnesthesia.pre_evaluation?.reflexes || '-'}</p>
+                  <p><strong>Mucosas:</strong> {activeAnesthesia.pre_evaluation?.mucous_membranes || '-'}</p>
+                  <p><strong>Hidratação:</strong> {activeAnesthesia.pre_evaluation?.hydration_status || '-'}</p>
+                  <p><strong>Alergias:</strong> {activeAnesthesia.pre_evaluation?.allergies || 'Sem relatos'}</p>
                 </div>
 
                 <div className="p-4 bg-emerald-50/50 rounded-lg border border-emerald-100 space-y-2">
@@ -1393,7 +1393,7 @@ export const AnesthesiaPage: React.FC = () => {
                     Classificação ASA & Justificativa
                   </span>
                   <div className="text-base font-black text-emerald-900">
-                    {activeAnesthesia.asa_category.replace('_', ' ')}
+                    {((activeAnesthesia.asa_category || (activeAnesthesia as any).asa_classification || 'ASA_I') as string).replace('_', ' ')}
                     {activeAnesthesia.is_emergency ? ' (EMERGÊNCIA)' : ''}
                   </div>
                   <p className="text-slate-700 italic">
@@ -1404,11 +1404,11 @@ export const AnesthesiaPage: React.FC = () => {
                     <span className="font-bold text-emerald-900 uppercase tracking-wider text-[10px] block mb-1">
                       Planejamento Anestésico
                     </span>
-                    <p><strong>Técnica:</strong> {activeAnesthesia.planning.technique}</p>
-                    <p><strong>Circuito:</strong> {activeAnesthesia.planning.breathing_circuit}</p>
-                    <p><strong>Intubação:</strong> {activeAnesthesia.planning.intubation ? `Sim (${activeAnesthesia.planning.tube_size || 'Com cuff'})` : 'Não'}</p>
-                    <p><strong>Ventilação:</strong> {activeAnesthesia.planning.ventilation_type}</p>
-                    <p><strong>Fluidoterapia:</strong> {activeAnesthesia.planning.fluid_type} a {activeAnesthesia.planning.fluid_rate_ml_kg_h} ml/kg/h</p>
+                    <p><strong>Técnica:</strong> {activeAnesthesia.planning?.technique || '-'}</p>
+                    <p><strong>Circuito:</strong> {activeAnesthesia.planning?.breathing_circuit || '-'}</p>
+                    <p><strong>Intubação:</strong> {activeAnesthesia.planning?.intubation ? `Sim (${activeAnesthesia.planning?.tube_size || 'Com cuff'})` : 'Não'}</p>
+                    <p><strong>Ventilação:</strong> {activeAnesthesia.planning?.ventilation_type || '-'}</p>
+                    <p><strong>Fluidoterapia:</strong> {activeAnesthesia.planning?.fluid_type || '-'} a {activeAnesthesia.planning?.fluid_rate_ml_kg_h ?? '-'} ml/kg/h</p>
                   </div>
                 </div>
               </div>
@@ -1454,32 +1454,32 @@ export const AnesthesiaPage: React.FC = () => {
                           : 'bg-slate-100 text-slate-700'
                       }`}
                     >
-                      {a.status.replace('_', ' ')}
+                      {((a.status || 'EM_ANDAMENTO') as string).replace('_', ' ')}
                     </span>
                   </div>
 
                   <div className="p-2.5 bg-slate-50 rounded-lg text-xs space-y-1">
                     <p className="font-semibold text-slate-800 line-clamp-1">{a.procedure_name}</p>
                     <p className="text-slate-500">
-                      <strong>Clínica:</strong> {a.clinic_name}
+                      <strong>Clínica:</strong> {a.clinic_name || '-'}
                     </p>
                     <p className="text-slate-500">
-                      <strong>Cirurgião:</strong> {a.surgeon_name}
+                      <strong>Cirurgião:</strong> {a.surgeon_name || '-'}
                     </p>
                   </div>
 
                   <div className="flex items-center gap-2 text-xs">
                     <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold">
-                      {a.asa_category.replace('_', ' ')}
+                      {((a.asa_category || (a as any).asa_classification || 'ASA_I') as string).replace('_', ' ')}
                       {a.is_emergency ? '-E' : ''}
                     </span>
                     <span className="text-slate-400">•</span>
                     <span className="text-slate-500 font-medium">
-                      {a.monitorings.length} leituras
+                      {(a.monitorings || []).length} leituras
                     </span>
                     <span className="text-slate-400">•</span>
                     <span className="text-slate-500 font-medium">
-                      {a.protocol_drugs.length} fármacos
+                      {(a.protocol_drugs || []).length} fármacos
                     </span>
                   </div>
                 </div>

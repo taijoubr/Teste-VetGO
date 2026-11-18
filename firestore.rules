@@ -17,113 +17,132 @@ service cloud.firestore {
 
     // Health-check / test connection document
     match /test/{docId} {
-      allow read, write: if isValidId(docId);
+      allow get: if isValidId(docId);
+      allow list: if true;
+      allow create, update, delete: if isValidId(docId);
     }
 
     // Master cloud sync for container redeployments
     match /vetgo_cloud_db/{docId} {
-      allow read, write: if isValidId(docId);
+      allow get: if isValidId(docId);
+      allow list: if true;
+      allow create, update, delete: if isValidId(docId);
     }
 
     // Users Collection (Veterinarian / Staff Profile)
     match /users/{userId} {
-      allow get, list: if isValidId(userId);
+      allow get: if isValidId(userId);
+      allow list: if true;
       allow create, update: if isValidId(userId);
       allow delete: if isValidId(userId);
     }
 
     // Partner Clinics
     match /clinics/{clinicId} {
-      allow get, list: if isValidId(clinicId);
+      allow get: if isValidId(clinicId);
+      allow list: if true;
       allow create, update: if isValidId(clinicId);
       allow delete: if isValidId(clinicId);
     }
 
     // Partner Surgeons
     match /surgeons/{surgeonId} {
-      allow get, list: if isValidId(surgeonId);
+      allow get: if isValidId(surgeonId);
+      allow list: if true;
       allow create, update: if isValidId(surgeonId);
       allow delete: if isValidId(surgeonId);
     }
 
     // Tutors (Pet Guardians)
     match /tutors/{tutorId} {
-      allow get, list: if isValidId(tutorId);
+      allow get: if isValidId(tutorId);
+      allow list: if true;
       allow create, update: if isValidId(tutorId);
       allow delete: if isValidId(tutorId);
     }
 
     // Patients (Animals)
     match /patients/{patientId} {
-      allow get, list: if isValidId(patientId);
+      allow get: if isValidId(patientId);
+      allow list: if true;
       allow create, update: if isValidId(patientId);
       allow delete: if isValidId(patientId);
     }
 
     // Anesthesia Records
     match /anesthesias/{anesthesiaId} {
-      allow get, list: if isValidId(anesthesiaId);
+      allow get: if isValidId(anesthesiaId);
+      allow list: if true;
       allow create, update: if isValidId(anesthesiaId);
       allow delete: if isValidId(anesthesiaId);
     }
 
     // Appointments & Schedules
     match /appointments/{appointmentId} {
-      allow get, list: if isValidId(appointmentId);
+      allow get: if isValidId(appointmentId);
+      allow list: if true;
       allow create, update: if isValidId(appointmentId);
       allow delete: if isValidId(appointmentId);
     }
 
     // Financial Entries
     match /financial_entries/{entryId} {
-      allow get, list: if isValidId(entryId);
+      allow get: if isValidId(entryId);
+      allow list: if true;
       allow create, update: if isValidId(entryId);
       allow delete: if isValidId(entryId);
     }
 
     // Inventory & Pharmacy Items
     match /inventory_items/{itemId} {
-      allow get, list: if isValidId(itemId);
+      allow get: if isValidId(itemId);
+      allow list: if true;
       allow create, update: if isValidId(itemId);
       allow delete: if isValidId(itemId);
     }
 
     // Clinical Consultations
     match /consultations/{consultationId} {
-      allow get, list: if isValidId(consultationId);
+      allow get: if isValidId(consultationId);
+      allow list: if true;
       allow create, update: if isValidId(consultationId);
       allow delete: if isValidId(consultationId);
     }
 
     // Documents & Signed TCLEs
     match /documents/{docId} {
-      allow get, list: if isValidId(docId);
+      allow get: if isValidId(docId);
+      allow list: if true;
       allow create, update: if isValidId(docId);
       allow delete: if isValidId(docId);
     }
 
     // Clinical Alerts, Vaccinations & Recalls
     match /alerts/{alertId} {
-      allow get, list: if isValidId(alertId);
+      allow get: if isValidId(alertId);
+      allow list: if true;
       allow create, update: if isValidId(alertId);
       allow delete: if isValidId(alertId);
     }
 
     // Price Catalog & Clinical Services
     match /clinical_services/{serviceId} {
-      allow get, list: if isValidId(serviceId);
+      allow get: if isValidId(serviceId);
+      allow list: if true;
       allow create, update: if isValidId(serviceId);
       allow delete: if isValidId(serviceId);
     }
 
     // Patient Exams & Laboratory
     match /patient_exams/{examId} {
-      allow get, list: if isValidId(examId);
+      allow get: if isValidId(examId);
+      allow list: if true;
       allow create, update: if isValidId(examId);
       allow delete: if isValidId(examId);
     }
     match /exams/{examId} {
-      allow get, list: if isValidId(examId);
+      allow get: if isValidId(examId);
+      allow list: if true;
       allow create, update: if isValidId(examId);
       allow delete: if isValidId(examId);
     }

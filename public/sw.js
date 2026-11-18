@@ -3,7 +3,7 @@
 // Permite carregamento total do Dashboard, Pacientes, Tutores e Prontuários sem sinal de internet
 // ==============================================================================
 
-const VERSION = 'vetgo-v7';
+const VERSION = 'vetgo-v8';
 const STATIC_CACHE = `vetgo-static-${VERSION}`;
 const DYNAMIC_CACHE = `vetgo-dynamic-${VERSION}`;
 
@@ -47,7 +47,7 @@ self.addEventListener('activate', (event) => {
 });
 
 // Helper de timeout para conexões instáveis / 2G / sem sinal
-function fetchWithTimeout(request, timeoutMs = 2500) {
+function fetchWithTimeout(request, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error('Network timeout'));
@@ -71,12 +71,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   // -------------------------------------------------------------
-  // 1. REQUISIÇÕES DE API (/api/v1/...)
+  // 1. REQUISIÇÕES DE API (/api/...) E MÓDULOS DE DESENVOLVIMENTO VITE
   // -------------------------------------------------------------
-  // As requisições de API passam diretamente para o backend via rede.
-  // O suporte offline com isolamento multi-tenant por ID do veterinário
-  // é garantido diretamente pelo offlineStorage no cliente (src/services/offlineStorage.ts).
-  if (url.pathname.startsWith('/api/')) {
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/@vite') ||
+    url.pathname.startsWith('/@react-refresh') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/')
+  ) {
     return;
   }
 
@@ -88,7 +91,7 @@ self.addEventListener('fetch', (event) => {
       (async () => {
         try {
           // Tenta a rede primeiro para obter HTML mais recente
-          const networkResponse = await fetchWithTimeout(request, 2000);
+          const networkResponse = await fetchWithTimeout(request, 8000);
           if (networkResponse && networkResponse.ok) {
             const staticCache = await caches.open(STATIC_CACHE);
             staticCache.put('/index.html', networkResponse.clone()).catch(() => {});
@@ -116,7 +119,7 @@ self.addEventListener('fetch', (event) => {
 
   // -------------------------------------------------------------
   // 3. ATIVOS ESTÁTICOS (JS, CSS, Fontes, Imagens, Ícones)
-  // Estratégia: Stale-While-Revalidate (resposta instantânea do cache + atualização em segundo plano)
+  // Em ambiente de desenvolvimento/preview, prioriza rede para evitar código obsoleto
   // -------------------------------------------------------------
   if (
     request.method === 'GET' &&
@@ -125,6 +128,9 @@ self.addEventListener('fetch', (event) => {
       url.hostname.includes('fonts.gstatic.com') ||
       url.pathname.startsWith('/assets/'))
   ) {
+    if (url.hostname === 'localhost' || url.hostname.includes('ais-dev')) {
+      return;
+    }
     event.respondWith(
       (async () => {
         const dynamicCache = await caches.open(DYNAMIC_CACHE);
