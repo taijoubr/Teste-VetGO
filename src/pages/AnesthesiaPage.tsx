@@ -39,12 +39,15 @@ import {
   ArrowRight,
   ShieldAlert,
   Edit3,
-  Download
+  Download,
+  FileCheck2
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { printElement, exportToPdf } from '../utils/printHelper';
 import { TraditionalAnesthesiaSheet } from '../components/TraditionalAnesthesiaSheet';
+import { ConsentTermModal } from '../components/ConsentTermModal';
+import { ClinicalSnippetsToolbar } from '../components/ClinicalSnippetsToolbar';
 
 interface StandardAnestheticDrug {
   name: string;
@@ -147,6 +150,9 @@ export const AnesthesiaPage: React.FC = () => {
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [sheetSignToggle, setSheetSignToggle] = useState<boolean>(true);
+  const [showConsentModal, setShowConsentModal] = useState(false);
+  const [selectedConsentPatientId, setSelectedConsentPatientId] = useState<number | null>(null);
+  const [selectedConsentProcedure, setSelectedConsentProcedure] = useState<string>('');
 
   // Visualização de tabs
   const [viewMode, setViewMode] = useState<'LIST' | 'ACTIVE_ROOM'>('LIST');
@@ -824,6 +830,21 @@ export const AnesthesiaPage: React.FC = () => {
             </button>
           )}
           <button
+            type="button"
+            onClick={() => {
+              if (activeAnesthesia) {
+                setSelectedConsentPatientId(activeAnesthesia.patient_id);
+                setSelectedConsentProcedure(activeAnesthesia.procedure_name);
+              }
+              setShowConsentModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-900 border border-indigo-200 hover:bg-indigo-100 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
+            title="Emitir Termo de Consentimento Anestésico e Cirúrgico (TCLE) com assinatura na tela, impressão manual ou GOV.BR"
+          >
+            <FileCheck2 className="w-4 h-4 text-indigo-700" />
+            <span>TCLE Anestésico</span>
+          </button>
+          <button
             onClick={handleOpenNewAnesthesiaModal}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
           >
@@ -1031,6 +1052,20 @@ export const AnesthesiaPage: React.FC = () => {
                 className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-bold transition"
               >
                 <AlertTriangle className="w-3.5 h-3.5" /> + Intercorrência
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeAnesthesia) {
+                    setSelectedConsentPatientId(activeAnesthesia.patient_id);
+                    setSelectedConsentProcedure(activeAnesthesia.procedure_name);
+                  }
+                  setShowConsentModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition cursor-pointer"
+                title="Emitir Termo de Consentimento Anestésico e Cirúrgico (TCLE) com assinatura na tela, impressão manual ou GOV.BR"
+              >
+                <FileCheck2 className="w-3.5 h-3.5 text-indigo-700" /> TCLE Anestésico
               </button>
             </div>
           </div>
@@ -2778,7 +2813,23 @@ export const AnesthesiaPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Observações da Alta / Entrega</label>
+                <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                  <label className="font-semibold text-slate-700">Observações da Alta / Entrega</label>
+                  <ClinicalSnippetsToolbar
+                    category="CIRURGIA"
+                    onInsert={(text, mode) => {
+                      setRecoveryForm((prev) => ({
+                        ...prev,
+                        discharge_notes:
+                          mode === 'replace'
+                            ? text
+                            : prev.discharge_notes
+                            ? `${prev.discharge_notes}\n${text}`
+                            : text,
+                      }));
+                    }}
+                  />
+                </div>
                 <textarea
                   rows={2}
                   value={recoveryForm.discharge_notes}
@@ -2879,6 +2930,17 @@ export const AnesthesiaPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* MODAL: TERMO DE CONSENTIMENTO LIVRE E ESCLARECIDO (TCLE) */}
+      <ConsentTermModal
+        isOpen={showConsentModal}
+        onClose={() => setShowConsentModal(false)}
+        patients={patients}
+        tutors={tutors}
+        initialPatientId={selectedConsentPatientId}
+        initialTermType="CIRURGICO_ANESTESICO"
+        procedureName={selectedConsentProcedure}
+      />
     </div>
   );
 };

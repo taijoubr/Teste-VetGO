@@ -201,6 +201,8 @@ export interface Patient {
   microchip_notes?: string;
   photo_url?: string;
   notes?: string;
+  vaccines?: VaccineRecord[];
+  parasite_controls?: ParasiteControlRecord[];
   is_active: boolean;
   created_at: string;
 }
@@ -983,4 +985,34 @@ export interface PatientExam {
   created_at: string;
   updated_at?: string;
 }
+
+export type ClinicalSnippetCategory =
+  | 'EXAME_FISICO'
+  | 'ANAMNESE'
+  | 'CONDUTA'
+  | 'ANESTESIA'
+  | 'CIRURGIA'
+  | 'DIAGNOSTICO'
+  | 'OUTROS';
+
+export interface ClinicalSnippet {
+  id: string;
+  title: string;
+  category: ClinicalSnippetCategory;
+  text: string;
+  shortcut?: string;
+  isCustom?: boolean;
+}
+
+export interface ParasiteControlRecord {
+  id: string;
+  type: 'VERMIFUGO' | 'ECTOPARASITA' | 'OUTRO';
+  product_name: string;
+  application_date: string;
+  next_dose_date: string;
+  weight_at_application?: string;
+  notes?: string;
+  applied_by?: string;
+}
+
 

@@ -185,6 +185,31 @@
         "created_at": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "userId", "title"]
+    },
+    "Alert": {
+      "title": "Alert",
+      "description": "Vaccine, medication or recall clinical alert",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "date": { "type": "string", "maxLength": 64 },
+        "type": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "title"]
+    },
+    "ClinicalService": {
+      "title": "ClinicalService",
+      "description": "Veterinary price table item and service",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "price": { "type": "number" },
+        "category": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "name"]
     }
   },
   "firestore": {
@@ -231,6 +256,14 @@
     "/documents/{docId}": {
       "schema": "DocumentRecord",
       "description": "Generated certificates, recipes and consent documents"
+    },
+    "/alerts/{alertId}": {
+      "schema": "Alert",
+      "description": "Vaccination, return and recall notifications"
+    },
+    "/clinical_services/{serviceId}": {
+      "schema": "ClinicalService",
+      "description": "Veterinary procedure price list and service catalog"
     }
   }
 }

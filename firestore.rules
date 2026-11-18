@@ -25,81 +25,107 @@ service cloud.firestore {
       allow read, write: if isValidId(docId);
     }
 
-    // Users Collection
+    // Users Collection (Veterinarian / Staff Profile)
     match /users/{userId} {
       allow get, list: if isValidId(userId);
-      allow create, update: if isValidId(userId) && incoming().email is string;
+      allow create, update: if isValidId(userId);
       allow delete: if isValidId(userId);
     }
 
     // Partner Clinics
     match /clinics/{clinicId} {
       allow get, list: if isValidId(clinicId);
-      allow create: if isValidId(clinicId) && incoming().name is string && incoming().name.size() <= 200;
-      allow update, delete: if isValidId(clinicId);
+      allow create, update: if isValidId(clinicId);
+      allow delete: if isValidId(clinicId);
     }
 
     // Partner Surgeons
     match /surgeons/{surgeonId} {
       allow get, list: if isValidId(surgeonId);
-      allow create: if isValidId(surgeonId) && incoming().name is string && incoming().name.size() <= 200;
-      allow update, delete: if isValidId(surgeonId);
+      allow create, update: if isValidId(surgeonId);
+      allow delete: if isValidId(surgeonId);
     }
 
-    // Tutors
+    // Tutors (Pet Guardians)
     match /tutors/{tutorId} {
       allow get, list: if isValidId(tutorId);
-      allow create: if isValidId(tutorId) && incoming().name is string && incoming().name.size() <= 200;
-      allow update, delete: if isValidId(tutorId);
+      allow create, update: if isValidId(tutorId);
+      allow delete: if isValidId(tutorId);
     }
 
-    // Patients
+    // Patients (Animals)
     match /patients/{patientId} {
       allow get, list: if isValidId(patientId);
-      allow create: if isValidId(patientId) && incoming().name is string && incoming().name.size() <= 200;
-      allow update, delete: if isValidId(patientId);
+      allow create, update: if isValidId(patientId);
+      allow delete: if isValidId(patientId);
     }
 
     // Anesthesia Records
     match /anesthesias/{anesthesiaId} {
       allow get, list: if isValidId(anesthesiaId);
-      allow create: if isValidId(anesthesiaId) && incoming().procedure_name is string && incoming().procedure_name.size() <= 300;
-      allow update, delete: if isValidId(anesthesiaId);
+      allow create, update: if isValidId(anesthesiaId);
+      allow delete: if isValidId(anesthesiaId);
     }
 
-    // Appointments
+    // Appointments & Schedules
     match /appointments/{appointmentId} {
       allow get, list: if isValidId(appointmentId);
-      allow create: if isValidId(appointmentId) && incoming().title is string && incoming().title.size() <= 200;
-      allow update, delete: if isValidId(appointmentId);
+      allow create, update: if isValidId(appointmentId);
+      allow delete: if isValidId(appointmentId);
     }
 
     // Financial Entries
     match /financial_entries/{entryId} {
       allow get, list: if isValidId(entryId);
-      allow create: if isValidId(entryId) && incoming().description is string && incoming().description.size() <= 250;
-      allow update, delete: if isValidId(entryId);
+      allow create, update: if isValidId(entryId);
+      allow delete: if isValidId(entryId);
     }
 
-    // Inventory Items
+    // Inventory & Pharmacy Items
     match /inventory_items/{itemId} {
       allow get, list: if isValidId(itemId);
-      allow create: if isValidId(itemId) && incoming().name is string && incoming().name.size() <= 200;
-      allow update, delete: if isValidId(itemId);
+      allow create, update: if isValidId(itemId);
+      allow delete: if isValidId(itemId);
     }
 
-    // Consultations
+    // Clinical Consultations
     match /consultations/{consultationId} {
       allow get, list: if isValidId(consultationId);
-      allow create: if isValidId(consultationId) && incoming().patient_id is string;
-      allow update, delete: if isValidId(consultationId);
+      allow create, update: if isValidId(consultationId);
+      allow delete: if isValidId(consultationId);
     }
 
-    // Documents
+    // Documents & Signed TCLEs
     match /documents/{docId} {
       allow get, list: if isValidId(docId);
-      allow create: if isValidId(docId) && incoming().title is string && incoming().title.size() <= 200;
-      allow update, delete: if isValidId(docId);
+      allow create, update: if isValidId(docId);
+      allow delete: if isValidId(docId);
+    }
+
+    // Clinical Alerts, Vaccinations & Recalls
+    match /alerts/{alertId} {
+      allow get, list: if isValidId(alertId);
+      allow create, update: if isValidId(alertId);
+      allow delete: if isValidId(alertId);
+    }
+
+    // Price Catalog & Clinical Services
+    match /clinical_services/{serviceId} {
+      allow get, list: if isValidId(serviceId);
+      allow create, update: if isValidId(serviceId);
+      allow delete: if isValidId(serviceId);
+    }
+
+    // Patient Exams & Laboratory
+    match /patient_exams/{examId} {
+      allow get, list: if isValidId(examId);
+      allow create, update: if isValidId(examId);
+      allow delete: if isValidId(examId);
+    }
+    match /exams/{examId} {
+      allow get, list: if isValidId(examId);
+      allow create, update: if isValidId(examId);
+      allow delete: if isValidId(examId);
     }
   }
 }

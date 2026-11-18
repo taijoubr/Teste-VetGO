@@ -20,7 +20,8 @@ import {
   MapPin,
   ExternalLink,
   MessageCircle,
-  HelpCircle
+  HelpCircle,
+  Bug
 } from 'lucide-react';
 import { printElement, exportToPdf } from '../utils/printHelper';
 
@@ -63,6 +64,15 @@ interface PublicCardData {
     route: string;
     applied_by?: string;
   }[];
+  parasite_controls?: {
+    id: string;
+    type: 'VERMIFUGO' | 'ECTOPARASITA' | 'OUTRO';
+    product_name: string;
+    application_date: string;
+    next_dose_date: string;
+    weight_at_application?: string;
+    notes?: string;
+  }[];
   has_vaccines?: boolean;
   verified_at: string;
 }
@@ -72,6 +82,7 @@ export const PublicPetCardPage: React.FC = () => {
   const [data, setData] = useState<PublicCardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   useEffect(() => {
     if (!patientId) return;
@@ -174,12 +185,24 @@ export const PublicPetCardPage: React.FC = () => {
           <div className="flex items-center gap-1.5 shrink-0 print:hidden">
             <button
               type="button"
-              onClick={() => exportToPdf('printable-public-pet-card', `Carteira_Vacinacao_${data.name}`)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-2xs transition cursor-pointer"
+              disabled={isDownloadingPdf}
+              onClick={async () => {
+                if (isDownloadingPdf) return;
+                setIsDownloadingPdf(true);
+                try {
+                  const ok = await exportToPdf('printable-public-pet-card', `Carteira_Vacinacao_${data.name}`);
+                  if (!ok) {
+                    printElement('printable-public-pet-card', `Carteira_Vacinacao_${data.name}`);
+                  }
+                } finally {
+                  setIsDownloadingPdf(false);
+                }
+              }}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 rounded-xl shadow-2xs transition cursor-pointer"
               title="Baixar PDF da Carteira de Vacinação"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Baixar PDF</span>
+              <Download className={`w-3.5 h-3.5 ${isDownloadingPdf ? 'animate-bounce' : ''}`} />
+              <span className="hidden sm:inline">{isDownloadingPdf ? 'Gerando PDF...' : 'Baixar PDF'}</span>
             </button>
             <button
               type="button"
@@ -429,6 +452,37 @@ export const PublicPetCardPage: React.FC = () => {
                     </a>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Controle de Vermífugos e Antipulgas */}
+            {Array.isArray(data.parasite_controls) && data.parasite_controls.length > 0 && (
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Bug className="w-3.5 h-3.5 text-emerald-700" />
+                  Controle Parasitário (Vermífugos & Antipulgas)
+                </h3>
+                <div className="space-y-2">
+                  {data.parasite_controls.map((par) => (
+                    <div
+                      key={par.id}
+                      className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 text-xs flex items-center justify-between gap-2"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-900">{par.product_name}</div>
+                        <div className="text-[10px] text-slate-500">
+                          {par.type === 'ECTOPARASITA' ? 'Antipulgas e Carrapatos' : 'Vermífugo'} • Aplicado em {new Date(par.application_date).toLocaleDateString('pt-BR')}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="block text-[9px] text-slate-400 uppercase font-semibold">Próxima dose</span>
+                        <strong className="text-emerald-800 font-bold text-[11px]">
+                          {new Date(par.next_dose_date).toLocaleDateString('pt-BR')}
+                        </strong>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

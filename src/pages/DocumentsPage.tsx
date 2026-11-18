@@ -28,6 +28,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { formatPatientCode, formatTutorCode } from '../utils/formatters';
 import { printElement, exportToPdf } from '../utils/printHelper';
 import { VeterinarianSignatureManager } from '../components/VeterinarianSignatureManager';
+import { ConsentTermModal } from '../components/ConsentTermModal';
 
 // Available Dynamic Variables for templates
 const TEMPLATE_VARIABLES = [
@@ -94,6 +95,7 @@ export const DocumentsPage: React.FC = () => {
   const [generatingDraft, setGeneratingDraft] = useState(false);
   const [signWithSystemSignature, setSignWithSystemSignature] = useState<boolean>(true);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(false);
 
   // Custom Template Management Modal (Create / Edit)
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -595,6 +597,16 @@ export const DocumentsPage: React.FC = () => {
           >
             <PenTool className="w-3.5 h-3.5" />
             <span>{user?.signature_url ? 'Minha Assinatura Digital (Cadastrada)' : 'Cadastrar Minha Assinatura'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowConsentModal(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-indigo-700 hover:bg-indigo-800 text-white shadow-xs transition cursor-pointer"
+            title="Emitir Termo de Consentimento Livre e Esclarecido (TCLE) com assinatura na tela, impressão manual ou GOV.BR"
+          >
+            <FileCheck2 className="w-4 h-4 text-indigo-200" />
+            <span>Emitir Termo / TCLE</span>
           </button>
 
           {activeTab === 'templates' ? (
@@ -1711,6 +1723,18 @@ export const DocumentsPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* MODAL: TERMO DE CONSENTIMENTO LIVRE E ESCLARECIDO (TCLE) */}
+      <ConsentTermModal
+        isOpen={showConsentModal}
+        onClose={() => setShowConsentModal(false)}
+        patients={patients}
+        tutors={tutors}
+        initialPatientId={selectedPatientId}
+        onSaved={() => {
+          loadData();
+          showToast('Termo arquivado com sucesso!');
+        }}
+      />
     </div>
   );
 };

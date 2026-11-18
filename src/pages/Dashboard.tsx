@@ -22,6 +22,7 @@ import {
   X
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { VaccineAndRecallAlertsCard } from '../components/VaccineAndRecallAlertsCard';
 
 export const Dashboard: React.FC = () => {
   const { user, isVet } = useAuth();
@@ -368,6 +369,9 @@ export const Dashboard: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Alertas de Retorno e Reforços de Vacinas (Opção 5) */}
+          <VaccineAndRecallAlertsCard />
 
           {/* Recent Patients */}
           <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">

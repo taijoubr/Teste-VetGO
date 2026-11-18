@@ -24,13 +24,17 @@ import {
   Download,
   Share2,
   Paperclip,
-  ExternalLink
+  ExternalLink,
+  FileCheck2,
+  Syringe
 } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SPECIES_CONFIGS } from '../utils/speciesData';
 import { PetCardModal } from '../components/PetCardModal';
 import { FullMedicalRecordModal } from '../components/FullMedicalRecordModal';
 import { DirectPrescriptionModal } from '../components/DirectPrescriptionModal';
+import { ConsentTermModal } from '../components/ConsentTermModal';
+import { VaccinationBookletModal } from '../components/VaccinationBookletModal';
 import { formatPatientCode, formatTutorCode } from '../utils/formatters';
 
 const SPECIES_LIST: Species[] = [
@@ -61,6 +65,7 @@ export const PatientsPage: React.FC = () => {
   const [exams, setExams] = useState<PatientExam[]>([]);
   const [selectedPetForExams, setSelectedPetForExams] = useState<Patient | null>(null);
   const [selectedPetForPrescription, setSelectedPetForPrescription] = useState<Patient | null>(null);
+  const [selectedPetForConsent, setSelectedPetForConsent] = useState<Patient | null>(null);
   const [viewingExamPdf, setViewingExamPdf] = useState<{ url: string; title: string; filename?: string } | null>(null);
   const [showNewExamModal, setShowNewExamModal] = useState(false);
   const [examForm, setExamForm] = useState({
@@ -83,6 +88,7 @@ export const PatientsPage: React.FC = () => {
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [selectedPetForCard, setSelectedPetForCard] = useState<Patient | null>(null);
   const [selectedPetForMedicalRecord, setSelectedPetForMedicalRecord] = useState<Patient | null>(null);
+  const [selectedPetForVaccineBooklet, setSelectedPetForVaccineBooklet] = useState<Patient | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
   const [microchipWarning, setMicrochipWarning] = useState<string | null>(null);
   const [feedbackToast, setFeedbackToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -515,6 +521,15 @@ export const PatientsPage: React.FC = () => {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setSelectedPetForConsent(patient)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
+                    title="Emitir Termo de Consentimento Livre e Esclarecido (TCLE) com assinatura na tela, impressão ou envio de PDF"
+                  >
+                    <FileCheck2 className="w-3.5 h-3.5 text-indigo-700" />
+                    <span>+ Termo (TCLE)</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setSelectedPetForMedicalRecord(patient)}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
                     title="Exportar Prontuário Completo e Histórico Clínico em PDF (A4)"
@@ -538,6 +553,15 @@ export const PatientsPage: React.FC = () => {
                   >
                     <span>+ Orçamento</span>
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPetForVaccineBooklet(patient)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
+                    title="Abrir Carteira de Vacinação Oficial, imprimir em A4 e compartilhar no WhatsApp"
+                  >
+                    <Syringe className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Carteira de Vacinação</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSelectedPetForCard(patient)}
@@ -960,6 +984,15 @@ export const PatientsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal da Carteira de Vacinação Oficial do Pet */}
+      <VaccinationBookletModal
+        isOpen={!!selectedPetForVaccineBooklet}
+        onClose={() => setSelectedPetForVaccineBooklet(null)}
+        patient={selectedPetForVaccineBooklet}
+        tutor={tutors.find((t) => t.id === selectedPetForVaccineBooklet?.tutor_id) || null}
+        onRefresh={loadData}
+      />
 
       {/* Modal da Carteirinha Digital do Pet com QR Code */}
       <PetCardModal
@@ -1555,6 +1588,18 @@ export const PatientsPage: React.FC = () => {
           }}
         />
       )}
+
+      {/* Modal de Emissão de Termo de Consentimento (TCLE) */}
+      <ConsentTermModal
+        isOpen={Boolean(selectedPetForConsent)}
+        onClose={() => setSelectedPetForConsent(null)}
+        patients={patients}
+        tutors={tutors}
+        initialPatientId={selectedPetForConsent?.id || null}
+        onSaved={() => {
+          showToast(`Termo arquivado no prontuário de ${selectedPetForConsent?.name}!`);
+        }}
+      />
     </div>
   );
 };

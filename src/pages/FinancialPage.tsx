@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PixPaymentModal } from '../components/PixPaymentModal';
+import { PaymentReceiptModal, PaymentReceiptData } from '../components/PaymentReceiptModal';
 import { printElement, exportToPdf } from '../utils/printHelper';
 
 export const FinancialPage: React.FC = () => {
@@ -119,6 +120,12 @@ export const FinancialPage: React.FC = () => {
     e.preventDefault();
     if (!settlingEntry) return;
     try {
+      const settled = {
+        ...settlingEntry,
+        status: 'PAGO' as const,
+        payment_method: settleMethod,
+        date: settleDate,
+      };
       await api.updateFinancialEntry(settlingEntry.id, {
         status: 'PAGO',
         payment_method: settleMethod,
@@ -126,6 +133,9 @@ export const FinancialPage: React.FC = () => {
       });
       setToastMessage(`Lançamento #${settlingEntry.id} liquidado com sucesso como PAGO!`);
       setSettlingEntry(null);
+      if (settlingEntry.entry_type === 'RECEITA') {
+        setSelectedReceipt(settled);
+      }
       loadData();
       setTimeout(() => setToastMessage(null), 4000);
     } catch (err) {
@@ -511,85 +521,30 @@ export const FinancialPage: React.FC = () => {
         </div>
       )}
 
-      {/* Receipt Modal */}
-      {selectedReceipt && (
-        <div className="printable-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="printable-modal-box bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 print:hidden">
-              <span className="text-xs font-bold text-slate-500 uppercase">
-                Recibo Oficial de Honorários Veterinários
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => exportToPdf('printable-financial-receipt', `Recibo_${selectedReceipt.receipt_number || 'REC'}`)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 text-white hover:bg-emerald-800 transition flex items-center gap-1"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Baixar PDF
-                </button>
-                <button
-                  onClick={() => printElement('printable-financial-receipt', `Recibo_${selectedReceipt.receipt_number || 'REC'}`)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition flex items-center gap-1"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Imprimir
-                </button>
-                <button
-                  onClick={() => setSelectedReceipt(null)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Printable Receipt Card */}
-            <div id="printable-financial-receipt" className="space-y-4 text-xs text-slate-800 bg-white p-2">
-              <div className="text-center border-b border-slate-200 pb-3">
-                <h3 className="text-base font-black text-slate-900 uppercase">
-                  {user?.clinic_name || `${user?.first_name} ${user?.last_name}`}
-                </h3>
-                <div className="text-xs font-semibold text-emerald-800">
-                  CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}
-                </div>
-                {user?.phone && <div className="text-[11px] text-slate-500 mt-0.5">Contato: {user.phone}</div>}
-              </div>
-
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center">
-                <div>
-                  <span className="text-[11px] text-slate-400 block font-mono">
-                    NÚMERO: {selectedReceipt.receipt_number || 'REC-2026-001'}
-                  </span>
-                  <span className="font-semibold text-slate-700">VALOR RECEBIDO:</span>
-                </div>
-                <div className="text-xl font-black text-emerald-800 font-mono">
-                  R$ {selectedReceipt.amount.toFixed(2)}
-                </div>
-              </div>
-
-              <p className="leading-relaxed text-slate-700">
-                Recebi de <strong>{selectedReceipt.tutor_name || 'Tutor Responsável'}</strong> a quantia supra de{' '}
-                <strong>R$ {selectedReceipt.amount.toFixed(2)}</strong> via{' '}
-                <strong>{selectedReceipt.payment_method}</strong>, referente a prestação de serviços médico-veterinários
-                volantes: <em>{selectedReceipt.description}</em>.
-              </p>
-
-              <div className="pt-8 text-center space-y-1">
-                <div className="w-48 border-t border-slate-400 mx-auto"></div>
-                <div className="font-bold text-slate-900">Dr(a). {user?.first_name} {user?.last_name}</div>
-                <div className="text-[10px] text-slate-400 font-mono">CRMV-{user?.crmv_uf || 'SP'} {user?.crmv || '34892'}</div>
-                <div className="text-[10px] text-slate-400">
-                  Emitido em {new Date(selectedReceipt.date).toLocaleDateString('pt-BR')}
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 text-center text-[10px] text-slate-400">
-                Emitido via <strong>Vetgo</strong> • Veterinária onde você precisa
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modern Payment Receipt Modal with PDF & WhatsApp */}
+      <PaymentReceiptModal
+        isOpen={Boolean(selectedReceipt)}
+        onClose={() => setSelectedReceipt(null)}
+        receipt={
+          selectedReceipt
+            ? {
+                id: selectedReceipt.id,
+                receipt_number: selectedReceipt.receipt_number,
+                amount: selectedReceipt.amount,
+                payment_method: selectedReceipt.payment_method,
+                date: selectedReceipt.date,
+                tutor_name: selectedReceipt.tutor_name,
+                tutor_phone: tutors.find((t) => t.id === selectedReceipt.tutor_id)?.whatsapp || tutors.find((t) => t.id === selectedReceipt.tutor_id)?.phone,
+                tutor_cpf: tutors.find((t) => t.id === selectedReceipt.tutor_id)?.cpf,
+                patient_name: selectedReceipt.patient_name,
+                patient_species: patients.find((p) => p.id === selectedReceipt.patient_id)?.species,
+                patient_breed: patients.find((p) => p.id === selectedReceipt.patient_id)?.breed,
+                description: selectedReceipt.description || selectedReceipt.category,
+                notes: selectedReceipt.notes,
+              }
+            : null
+        }
+      />
 
       {/* New Entry Modal */}
       {showModal && (
@@ -776,6 +731,34 @@ export const FinancialPage: React.FC = () => {
         defaultAmount={pixAmount}
         description={pixDesc}
         tutorPhone={pixTutorPhone}
+      />
+
+      {/* Modal de Recibo Oficial de Pagamento com PDF, Impressão e WhatsApp */}
+      <PaymentReceiptModal
+        isOpen={Boolean(selectedReceipt)}
+        onClose={() => setSelectedReceipt(null)}
+        receipt={
+          selectedReceipt
+            ? {
+                receipt_number: `REC-${selectedReceipt.id.toString().padStart(6, '0')}`,
+                date: selectedReceipt.date || new Date().toISOString().split('T')[0],
+                amount: selectedReceipt.amount,
+                tutor_name:
+                  selectedReceipt.tutor_name ||
+                  tutors.find((t) => t.id === selectedReceipt.tutor_id)?.name ||
+                  'Tutor Responsável',
+                tutor_cpf: tutors.find((t) => t.id === selectedReceipt.tutor_id)?.cpf,
+                tutor_phone:
+                  tutors.find((t) => t.id === selectedReceipt.tutor_id)?.whatsapp ||
+                  tutors.find((t) => t.id === selectedReceipt.tutor_id)?.phone,
+                patient_name: patients.find((p) => p.id === selectedReceipt.patient_id)?.name,
+                patient_species: patients.find((p) => p.id === selectedReceipt.patient_id)?.species,
+                description: selectedReceipt.description || `Honorários Veterinários - ${selectedReceipt.category}`,
+                payment_method: selectedReceipt.payment_method || 'PIX',
+                notes: selectedReceipt.notes
+              }
+            : null
+        }
       />
     </div>
   );

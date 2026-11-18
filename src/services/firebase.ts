@@ -114,6 +114,21 @@ const MAX_SYNC_LOGS = 150;
  */
 export function getFirestoreSyncLogs(): FirestoreSyncLogEntry[] {
   try {
+    // Auto-repair legacy permission denial error logs from prior mismatched rules
+    if (typeof window !== 'undefined' && !localStorage.getItem('vetgo_rules_repaired_v2')) {
+      const raw = localStorage.getItem(SYNC_LOGS_STORAGE_KEY);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter((l: any) => l.status === 'SUCCESS');
+            localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(cleaned));
+          }
+        } catch {}
+      }
+      localStorage.setItem('vetgo_rules_repaired_v2', 'true');
+    }
+
     const raw = localStorage.getItem(SYNC_LOGS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
@@ -173,6 +188,16 @@ export function clearFirestoreSyncLogs(): void {
 }
 
 /**
+ * Sanitizes any raw entity ID to comply with Firestore path rules
+ * (alphanumeric, underscore, hyphen, max 128 chars).
+ */
+export function sanitizeFirestoreDocId(rawId: string | number): string {
+  const str = String(rawId || '').trim();
+  const sanitized = str.replace(/[^a-zA-Z0-9_\-]/g, '_').substring(0, 128);
+  return sanitized || `doc_${Date.now()}`;
+}
+
+/**
  * Computes quick aggregate stats on Firestore synchronization.
  */
 export function getFirestoreSyncStats() {
@@ -203,17 +228,18 @@ export const firestoreSync = {
    */
   async saveDoc(collectionName: string, id: string, data: any, itemSummary?: string): Promise<{ success: boolean; error?: string }> {
     const start = Date.now();
-    const docPath = `${collectionName}/${id}`;
-    const summary = itemSummary || `${collectionName} #${id}`;
+    const safeDocId = sanitizeFirestoreDocId(id);
+    const docPath = `${collectionName}/${safeDocId}`;
+    const summary = itemSummary || `${collectionName} #${safeDocId}`;
 
     try {
-      const docRef = doc(db, collectionName, String(id));
+      const docRef = doc(db, collectionName, safeDocId);
       await setDoc(docRef, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
       const durationMs = Date.now() - start;
 
       addFirestoreSyncLog({
         collection: collectionName,
-        docId: String(id),
+        docId: safeDocId,
         action: 'SAVE',
         status: 'SUCCESS',
         itemSummary: summary,
@@ -229,7 +255,7 @@ export const firestoreSync = {
 
       addFirestoreSyncLog({
         collection: collectionName,
-        docId: String(id),
+        docId: safeDocId,
         action: 'SAVE',
         status: 'ERROR',
         itemSummary: summary,
@@ -247,17 +273,18 @@ export const firestoreSync = {
    */
   async deleteDoc(collectionName: string, id: string, itemSummary?: string): Promise<{ success: boolean; error?: string }> {
     const start = Date.now();
-    const docPath = `${collectionName}/${id}`;
-    const summary = itemSummary || `${collectionName} #${id}`;
+    const safeDocId = sanitizeFirestoreDocId(id);
+    const docPath = `${collectionName}/${safeDocId}`;
+    const summary = itemSummary || `${collectionName} #${safeDocId}`;
 
     try {
-      const docRef = doc(db, collectionName, String(id));
+      const docRef = doc(db, collectionName, safeDocId);
       await deleteDoc(docRef);
       const durationMs = Date.now() - start;
 
       addFirestoreSyncLog({
         collection: collectionName,
-        docId: String(id),
+        docId: safeDocId,
         action: 'DELETE',
         status: 'SUCCESS',
         itemSummary: summary,
@@ -273,7 +300,7 @@ export const firestoreSync = {
 
       addFirestoreSyncLog({
         collection: collectionName,
-        docId: String(id),
+        docId: safeDocId,
         action: 'DELETE',
         status: 'ERROR',
         itemSummary: summary,

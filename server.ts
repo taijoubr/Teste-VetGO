@@ -1632,6 +1632,8 @@ app.put('/api/v1/patients/:id', requireAuth, (req, res) => {
     'microchip_notes',
     'photo_url',
     'notes',
+    'vaccines',
+    'parasite_controls',
     'is_active',
     'tutor_id',
   ];
@@ -1822,13 +1824,28 @@ app.get('/api/v1/public/patients/:id/card', (req, res) => {
   const tutor = (db.tutors || []).find((t) => t.id === patient.tutor_id);
   const vet = (db.users || []).find((u) => u.id === patient.owner_id);
 
-  const vaccines: any[] = [];
+  const vaccinesMap = new Map<string, any>();
+  if (Array.isArray(patient.vaccines)) {
+    for (const v of patient.vaccines) {
+      if (v && v.id) vaccinesMap.set(String(v.id), v);
+    }
+  }
   const consultations = (db.consultations || []).filter((c: any) => c.patient_id === id);
   for (const c of consultations) {
     if (Array.isArray(c.vaccines)) {
-      vaccines.push(...c.vaccines);
+      for (const v of c.vaccines) {
+        if (v && v.id && !vaccinesMap.has(String(v.id))) {
+          vaccinesMap.set(String(v.id), v);
+        } else if (v && !v.id) {
+          vaccinesMap.set(`cons_${c.id}_${vaccinesMap.size}`, v);
+        }
+      }
     }
   }
+  const vaccines = Array.from(vaccinesMap.values()).sort(
+    (a: any, b: any) => new Date(b.application_date || 0).getTime() - new Date(a.application_date || 0).getTime()
+  );
+  const parasite_controls = Array.isArray(patient.parasite_controls) ? patient.parasite_controls : [];
 
   res.json({
     id: patient.id,
@@ -1860,6 +1877,7 @@ app.get('/api/v1/public/patients/:id/card', (req, res) => {
     crmv: vet ? `${vet.crmv || ''} ${vet.crmv_uf || ''}`.trim() : null,
     clinic_name: vet?.clinic_name || 'Atendimento Veterinário Especializado',
     vaccines,
+    parasite_controls,
     has_vaccines: vaccines.length > 0,
     verified_at: new Date().toISOString(),
   });

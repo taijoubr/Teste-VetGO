@@ -95,23 +95,34 @@ async function parseJsonResponse<T>(res: Response, defaultErrorMsg: string): Pro
  * Preserva dados críticos do veterinário (como assinatura digital desenhada/anexada, carimbo e preferências)
  * entre sessões, reinicializações e ambientes efêmeros na nuvem ("online").
  */
+function getSpecialtyVaultKey(user: Partial<User>): string {
+  const emailPart = (user.email || '').trim().toLowerCase();
+  return `vetgo_user_specialty_anesthesia_${user.id}_${emailPart}`;
+}
+
 export function enrichUserWithLocalVault(user: User): User {
   if (!user || !user.id) return user;
   const userId = user.id;
 
-  // 1. Preservar especialidade de anestesia
+  // 1. Preservar especialidade de anestesia usando chave dedicada da conta (nunca sobrescreve updates com cache antigo)
   let specialtyEnabled = typeof user.specialty_anesthesia_enabled === 'boolean'
     ? user.specialty_anesthesia_enabled
     : false;
+
+  try {
+    const storedSpecialty = localStorage.getItem(getSpecialtyVaultKey(user));
+    if (storedSpecialty === 'true') {
+      specialtyEnabled = true;
+    } else if (storedSpecialty === 'false') {
+      specialtyEnabled = false;
+    }
+  } catch {}
 
   const cachedStr = localStorage.getItem('vetgo_current_user');
   let cachedUser: any = null;
   if (cachedStr) {
     try {
       cachedUser = JSON.parse(cachedStr);
-      if (cachedUser && cachedUser.id === userId && typeof cachedUser.specialty_anesthesia_enabled === 'boolean') {
-        specialtyEnabled = cachedUser.specialty_anesthesia_enabled;
-      }
     } catch {}
   }
 
@@ -403,6 +414,9 @@ export const api = {
       ...result.user,
       specialty_anesthesia_enabled: false
     };
+    try {
+      localStorage.setItem(getSpecialtyVaultKey(user), 'false');
+    } catch {}
     localStorage.setItem('vetgo_current_user', JSON.stringify(user));
     return {
       user,
@@ -652,6 +666,15 @@ export const api = {
       ...updated,
       ...updates,
     };
+
+    if (typeof updates.specialty_anesthesia_enabled === 'boolean') {
+      try {
+        localStorage.setItem(
+          getSpecialtyVaultKey(mergedUser),
+          String(updates.specialty_anesthesia_enabled)
+        );
+      } catch {}
+    }
 
     const finalUser = enrichUserWithLocalVault(mergedUser);
     localStorage.setItem('vetgo_current_user', JSON.stringify(finalUser));

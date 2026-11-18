@@ -44,13 +44,19 @@ import {
   MessageCircle,
   Percent,
   Tag,
-  Download
+  Download,
+  FileCheck2,
+  Syringe
 } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AIAssistantModal } from '../components/AIAssistantModal';
 import { PixPaymentModal } from '../components/PixPaymentModal';
 import { FullMedicalRecordModal } from '../components/FullMedicalRecordModal';
+import { PaymentReceiptModal, PaymentReceiptData } from '../components/PaymentReceiptModal';
+import { ConsentTermModal } from '../components/ConsentTermModal';
+import { ClinicalSnippetsToolbar } from '../components/ClinicalSnippetsToolbar';
+import { VaccinationBookletModal } from '../components/VaccinationBookletModal';
 import { printElement, exportToPdf } from '../utils/printHelper';
 
 export const ConsultationsPage: React.FC = () => {
@@ -72,6 +78,11 @@ export const ConsultationsPage: React.FC = () => {
   const [viewingExamDoc, setViewingExamDoc] = useState<ClinicalConsultation | null>(null);
   const [viewingBudgetDoc, setViewingBudgetDoc] = useState<ClinicalConsultation | null>(null);
   const [viewingPrescriptionDoc, setViewingPrescriptionDoc] = useState<ClinicalConsultation | null>(null);
+  const [selectedReceiptForPrint, setSelectedReceiptForPrint] = useState<PaymentReceiptData | null>(null);
+  const [showConsentModal, setShowConsentModal] = useState<boolean>(false);
+  const [selectedConsentPatientId, setSelectedConsentPatientId] = useState<number | null>(null);
+  const [selectedConsentProcedure, setSelectedConsentProcedure] = useState<string>('');
+  const [selectedPatientForVaccineBooklet, setSelectedPatientForVaccineBooklet] = useState<Patient | null>(null);
   const [prescriptionSignToggle, setPrescriptionSignToggle] = useState<boolean>(true);
   const [budgetPixQr, setBudgetPixQr] = useState<string>('');
   const [budgetPixPayload, setBudgetPixPayload] = useState<string>('');
@@ -762,6 +773,31 @@ export const ConsultationsPage: React.FC = () => {
     }
   };
 
+  const handleOpenReceiptForConsultation = (doc: ClinicalConsultation) => {
+    const pt = patients.find((p) => p.id === doc.patient_id);
+    const tut = tutors.find((t) => t.id === (doc.tutor_id || pt?.tutor_id));
+    const amount = Number(doc.total_amount) || 180;
+
+    const receiptData: PaymentReceiptData = {
+      receipt_number: `REC-CLIN-${doc.id || Date.now().toString().slice(-6)}`,
+      date: doc.date_time ? new Date(doc.date_time).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      amount: amount,
+      tutor_name: tut?.name || doc.tutor_name || 'Tutor Responsável',
+      tutor_cpf: tut?.cpf,
+      tutor_phone: tut?.whatsapp || tut?.phone,
+      patient_name: doc.patient_name || pt?.name || 'Paciente',
+      patient_species: pt?.species,
+      patient_breed: pt?.breed,
+      description: `Serviços médico-veterinários prestados (Atendimento Clínico / Consulta Veterinária).`,
+      payment_method: doc.payment_method || 'PIX',
+      notes: doc.chief_complaint && doc.chief_complaint !== 'Orçamento de Procedimentos & Serviços'
+        ? `Queixa / Motivo: ${doc.chief_complaint}`
+        : undefined
+    };
+
+    setSelectedReceiptForPrint(receiptData);
+  };
+
   const filtered = consultations.filter((c) => {
     const q = search.toLowerCase();
     const matchSearch =
@@ -1058,8 +1094,45 @@ export const ConsultationsPage: React.FC = () => {
                         <>
                           <button
                             type="button"
+                            onClick={() => handleOpenReceiptForConsultation(c)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 transition cursor-pointer shadow-2xs"
+                            title="Emitir Recibo Oficial com assinatura, QR Code, PDF e WhatsApp"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-emerald-700" />
+                            <span>Recibo</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedConsentPatientId(c.patient_id);
+                              setSelectedConsentProcedure(c.chief_complaint || '');
+                              setShowConsentModal(true);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 transition cursor-pointer shadow-2xs"
+                            title="Emitir Termo de Consentimento Livre e Esclarecido (TCLE) com assinatura na tela, impressão ou GOV.BR"
+                          >
+                            <FileCheck2 className="w-3.5 h-3.5 text-indigo-700" />
+                            <span>TCLE</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const pt = patients.find(p => p.id === c.patient_id);
+                              if (pt) setSelectedPatientForVaccineBooklet(pt);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer shadow-2xs"
+                            title="Abrir Carteira de Vacinação Oficial deste paciente"
+                          >
+                            <Syringe className="w-3.5 h-3.5 text-emerald-700" />
+                            <span>Vacinas</span>
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => setViewingConsultation(c)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-50 text-slate-800 border border-slate-200 hover:bg-slate-100 transition cursor-pointer"
                           >
                             <FileText className="w-3.5 h-3.5" />
                             <span>Ver Prontuário / Receita</span>
@@ -2362,9 +2435,25 @@ export const ConsultationsPage: React.FC = () => {
                     </h4>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Motivo da Consulta / Queixa Principal do Tutor *
-                      </label>
+                      <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                        <label className="text-xs font-semibold text-slate-700">
+                          Motivo da Consulta / Queixa Principal do Tutor *
+                        </label>
+                        <ClinicalSnippetsToolbar
+                          category="ANAMNESE"
+                          onInsert={(text, mode) => {
+                            setForm((prev) => ({
+                              ...prev,
+                              chief_complaint:
+                                mode === 'replace'
+                                  ? text
+                                  : prev.chief_complaint
+                                  ? `${prev.chief_complaint}\n${text}`
+                                  : text,
+                            }));
+                          }}
+                        />
+                      </div>
                       <textarea
                         required
                         rows={2}
@@ -2746,9 +2835,25 @@ export const ConsultationsPage: React.FC = () => {
 
                   {/* 6. Síntese Geral da Anamnese */}
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Síntese da Anamnese & Relato do Tutor
-                    </label>
+                    <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Síntese da Anamnese & Relato do Tutor
+                      </label>
+                      <ClinicalSnippetsToolbar
+                        category="ANAMNESE"
+                        onInsert={(text, mode) => {
+                          setForm((prev) => ({
+                            ...prev,
+                            anamnesis:
+                              mode === 'replace'
+                                ? text
+                                : prev.anamnesis
+                                ? `${prev.anamnesis}\n${text}`
+                                : text,
+                          }));
+                        }}
+                      />
+                    </div>
                     <textarea
                       rows={2}
                       placeholder="Resumo geral das observações relatadas pelo tutor e histórico clínico prévio..."
@@ -2840,9 +2945,25 @@ export const ConsultationsPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Achados do Exame Físico Geral e Específico
-                    </label>
+                    <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Achados do Exame Físico Geral e Específico
+                      </label>
+                      <ClinicalSnippetsToolbar
+                        category="EXAME_FISICO"
+                        onInsert={(text, mode) => {
+                          setForm((prev) => ({
+                            ...prev,
+                            physical_examination:
+                              mode === 'replace'
+                                ? text
+                                : prev.physical_examination
+                                ? `${prev.physical_examination}\n${text}`
+                                : text,
+                          }));
+                        }}
+                      />
+                    </div>
                     <textarea
                       rows={2}
                       placeholder="Palpação abdominal, ausculta cardiopulmonar, linfonodos, pele..."
@@ -3088,9 +3209,25 @@ export const ConsultationsPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Orientações e Conduta Geral ao Tutor
-                    </label>
+                    <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Orientações e Conduta Geral ao Tutor
+                      </label>
+                      <ClinicalSnippetsToolbar
+                        category="CONDUTA"
+                        onInsert={(text, mode) => {
+                          setForm((prev) => ({
+                            ...prev,
+                            conduct_plan:
+                              mode === 'replace'
+                                ? text
+                                : prev.conduct_plan
+                                ? `${prev.conduct_plan}\n${text}`
+                                : text,
+                          }));
+                        }}
+                      />
+                    </div>
                     <textarea
                       rows={2}
                       placeholder="Retorno em 15 dias, cuidados de higiene, dieta especial..."
@@ -4122,6 +4259,33 @@ export const ConsultationsPage: React.FC = () => {
         isOpen={!!selectedPatientForFullRecord}
         onClose={() => setSelectedPatientForFullRecord(null)}
         patientId={selectedPatientForFullRecord}
+      />
+
+      {/* Modal de Recibo Oficial de Pagamento com PDF e WhatsApp */}
+      <PaymentReceiptModal
+        isOpen={Boolean(selectedReceiptForPrint)}
+        onClose={() => setSelectedReceiptForPrint(null)}
+        receipt={selectedReceiptForPrint}
+      />
+
+      {/* Modal de Termo de Consentimento Livre e Esclarecido (TCLE) */}
+      <ConsentTermModal
+        isOpen={showConsentModal}
+        onClose={() => setShowConsentModal(false)}
+        patients={patients}
+        tutors={tutors}
+        initialPatientId={selectedConsentPatientId}
+        procedureName={selectedConsentProcedure}
+        onSaved={() => loadData()}
+      />
+
+      {/* Modal de Carteira de Vacinação Oficial do Pet */}
+      <VaccinationBookletModal
+        isOpen={!!selectedPatientForVaccineBooklet}
+        onClose={() => setSelectedPatientForVaccineBooklet(null)}
+        patient={selectedPatientForVaccineBooklet}
+        tutor={tutors.find((t) => t.id === selectedPatientForVaccineBooklet?.tutor_id) || null}
+        onRefresh={() => loadData()}
       />
     </div>
   );
